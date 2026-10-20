@@ -1,0 +1,6 @@
+{
+  "name": "Zoya AI Assistant",
+  "description": "Official website for Zoya AI Assistant — a smart voice and conversational AI assistant for Android.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
