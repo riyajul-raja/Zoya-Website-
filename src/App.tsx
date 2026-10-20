@@ -30,7 +30,13 @@ export default function App() {
     setLoadingRelease(true);
     try {
       const res = await fetch('/api/releases/latest');
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        // Fallback
+      }
       if (res.ok && data.published && data.release) {
         setLatestRelease(data.release);
       } else {

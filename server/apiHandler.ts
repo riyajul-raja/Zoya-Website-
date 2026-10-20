@@ -19,47 +19,129 @@ import {
   extractAuthToken,
 } from './auth';
 
-function sendJson(res: ServerResponse, status: number, data: unknown) {
+export function sendJson(res: ServerResponse, status: number, data: unknown) {
+  if (res.writableEnded || res.headersSent) {
+    return;
+  }
   res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(data));
 }
 
-function sendError(res: ServerResponse, status: number, message: string) {
+export function sendError(res: ServerResponse, status: number, message: string) {
   sendJson(res, status, { success: false, error: message });
 }
 
-function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
-  return new Promise((resolve, reject) => {
+async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
+  const anyReq = req as any;
+
+  // 1. If body has already been parsed by Vercel Serverless / Express / body-parser
+  if (anyReq.body !== undefined && anyReq.body !== null) {
+    if (typeof anyReq.body === 'object') {
+      return anyReq.body as T;
+    }
+    if (typeof anyReq.body === 'string') {
+      try {
+        const trimmed = anyReq.body.trim();
+        return (trimmed ? JSON.parse(trimmed) : {}) as T;
+      } catch {
+        throw new Error('Invalid JSON');
+      }
+    }
+  }
+
+  // 2. If the stream already ended and no body was attached
+  if (anyReq.readableEnded) {
+    return {} as T;
+  }
+
+  // 3. Otherwise read from stream with safety timeout so it never hangs
+  return new Promise<T>((resolve, reject) => {
     let body = '';
+    let done = false;
+
+    // Safety timeout: never hang forever if stream was already consumed
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        try {
+          const parsed = body.trim() ? JSON.parse(body) : {};
+          resolve(parsed as T);
+        } catch {
+          resolve({} as T);
+        }
+      }
+    }, 2500);
+
     req.on('data', (chunk) => {
       body += chunk;
       if (body.length > 5 * 1024 * 1024) {
         // 5MB limit for JSON bodies
-        reject(new Error('Request body too large'));
+        done = true;
+        clearTimeout(timer);
+        reject(new Error('Request body too large (max 5MB)'));
       }
     });
+
     req.on('end', () => {
-      try {
-        const parsed = body ? JSON.parse(body) : {};
-        resolve(parsed as T);
-      } catch (err) {
-        reject(new Error('Invalid JSON'));
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        try {
+          const parsed = body.trim() ? JSON.parse(body) : {};
+          resolve(parsed as T);
+        } catch (err) {
+          reject(new Error('Invalid JSON'));
+        }
       }
     });
-    req.on('error', reject);
+
+    req.on('error', (err) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
   });
 }
 
-function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+async function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
+  const anyReq = req as any;
+
+  // If already parsed into Buffer by Vercel or middleware
+  if (Buffer.isBuffer(anyReq.body)) {
+    return anyReq.body;
+  }
+  if (anyReq.rawBody && Buffer.isBuffer(anyReq.rawBody)) {
+    return anyReq.rawBody;
+  }
+  if (typeof anyReq.body === 'string') {
+    return Buffer.from(anyReq.body, 'binary');
+  }
+
+  if (anyReq.readableEnded) {
+    return Buffer.alloc(0);
+  }
+
+  return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
     const MAX_SIZE = 150 * 1024 * 1024; // 150MB APK limit
+    let done = false;
+
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(Buffer.concat(chunks));
+      }
+    }, 30000);
 
     req.on('data', (chunk: Buffer) => {
       totalSize += chunk.length;
       if (totalSize > MAX_SIZE) {
+        done = true;
+        clearTimeout(timer);
         reject(new Error('File exceeds maximum allowable size (150MB)'));
         return;
       }
@@ -67,26 +149,40 @@ function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
     });
 
     req.on('end', () => {
-      resolve(Buffer.concat(chunks));
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        resolve(Buffer.concat(chunks));
+      }
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => {
+      if (!done) {
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
   });
 }
 
 export async function handleApiRequest(
   req: IncomingMessage,
-  res: ServerResponse
+  res: ServerResponse,
+  explicitRoute?: string
 ): Promise<boolean> {
   const url = req.url || '';
   const parsedUrl = new URL(url, 'http://localhost:3000');
-  const pathname = parsedUrl.pathname;
-  const method = req.method?.toUpperCase() || 'GET';
+  let pathname = explicitRoute || parsedUrl.pathname;
 
-  // Only handle routes starting with /api/
+  // Ensure leading /api if missing from proxy/rewrites
   if (!pathname.startsWith('/api/')) {
-    return false;
+    pathname = `/api${pathname.startsWith('/') ? pathname : '/' + pathname}`;
   }
+
+  // Strip trailing slashes (e.g. /api/admin/login/ -> /api/admin/login)
+  pathname = pathname.replace(/\/+$/, '') || '/';
+  const method = req.method?.toUpperCase() || 'GET';
 
   // CORS headers for API safety
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -198,14 +294,29 @@ export async function handleApiRequest(
     // ----------------------------------------------------
 
     // POST /api/admin/login
-    if (pathname === '/api/admin/login' && method === 'POST') {
-      const body = await parseJsonBody<{ email?: string; password?: string }>(req);
-      if (!body.email || !body.password) {
+    if (pathname === '/api/admin/login') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      let body: { email?: string; password?: string } = {};
+      try {
+        body = await parseJsonBody<{ email?: string; password?: string }>(req);
+      } catch (err) {
+        sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+        return true;
+      }
+
+      const email = typeof body.email === 'string' ? body.email.trim() : '';
+      const password = typeof body.password === 'string' ? body.password : '';
+
+      if (!email || !password) {
         sendError(res, 400, 'Email and password are required.');
         return true;
       }
 
-      const user = authenticateAdmin(body.email, body.password);
+      const user = authenticateAdmin(email, password);
       if (!user) {
         sendError(res, 401, 'Invalid administrator email or password.');
         return true;
@@ -214,7 +325,7 @@ export async function handleApiRequest(
       const token = createToken(user);
       res.setHeader(
         'Set-Cookie',
-        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}`
+        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`
       );
 
       sendJson(res, 200, {
@@ -226,7 +337,12 @@ export async function handleApiRequest(
     }
 
     // GET /api/admin/session
-    if (pathname === '/api/admin/session' && method === 'GET') {
+    if (pathname === '/api/admin/session') {
+      if (method !== 'GET') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+        return true;
+      }
+
       const token = extractAuthToken(req.headers);
       const user = verifyToken(token);
 
@@ -394,9 +510,12 @@ export async function handleApiRequest(
         return true;
       }
 
-      // DELETE /api/admin/releases/:id
-      if (pathname.startsWith('/api/admin/releases/') && method === 'DELETE') {
-        const id = pathname.substring('/api/admin/releases/'.length);
+      // DELETE /api/admin/releases/:id or DELETE /api/admin/releases?id=...
+      if ((pathname.startsWith('/api/admin/releases/') || pathname === '/api/admin/releases') && method === 'DELETE') {
+        const queryId = (req as any).query?.id || parsedUrl.searchParams.get('id');
+        const pathId = pathname.startsWith('/api/admin/releases/') ? pathname.substring('/api/admin/releases/'.length) : '';
+        const id = (queryId || pathId || '').trim();
+
         if (!id) {
           sendError(res, 400, 'Release ID required.');
           return true;

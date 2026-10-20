@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/admin/releases/:id",
+      "destination": "/api/admin/releases/[id]"
+    }
+  ]
+}

@@ -25,9 +25,27 @@ export const AdminLoginForm: React.FC<AdminLoginFormProps> = ({ onSuccess }) => 
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: { success?: boolean; error?: string; token?: string; user?: any } = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        if (res.status === 401) {
+          throw new Error('Invalid administrator email or password.');
+        }
+        throw new Error(
+          res.ok
+            ? 'Unexpected response from server.'
+            : `Authentication server error (${res.status}): ${rawText.slice(0, 100) || res.statusText || 'Unable to connect'}`
+        );
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Authentication failed. Please verify credentials.');
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error('Server returned incomplete authentication payload.');
       }
 
       // Store in sessionStorage for client API requests

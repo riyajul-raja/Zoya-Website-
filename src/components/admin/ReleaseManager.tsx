@@ -56,8 +56,14 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        console.warn('Non-JSON response received from /api/admin/releases:', rawText);
+      }
+      if (res.ok && data.success && Array.isArray(data.releases)) {
         setReleases(data.releases);
       }
     } catch (err) {
@@ -173,7 +179,14 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`Server returned error (${res.status}): ${rawText.slice(0, 100) || res.statusText}`);
+      }
+
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to publish release');
       }
@@ -217,12 +230,19 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        // Ignored
+      }
+
       if (res.ok && data.success) {
         fetchReleases();
         onReleasePublished();
       } else {
-        alert(data.error || 'Could not delete release');
+        alert(data.error || `Could not delete release (${res.status})`);
       }
     } catch (err) {
       alert('Network error when attempting to delete release');

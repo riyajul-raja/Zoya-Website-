@@ -1,9 +1,20 @@
 import crypto from 'crypto';
 
-const DEFAULT_ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'riyajulansari113b@gmail.com';
-// If ADMIN_PASSWORD is set in env, use it; otherwise provide a default development secret
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'zoya-admin-2026';
-const JWT_SECRET = process.env.ADMIN_JWT_SECRET || 'zoya-secret-jwt-key-release-mgr-2026';
+const DEFAULT_ADMIN_EMAIL = 'riyajulansari113b@gmail.com';
+const DEFAULT_ADMIN_PASSWORD = 'zoya-admin-2026';
+const DEFAULT_JWT_SECRET = 'zoya-secret-jwt-key-release-mgr-2026';
+
+export function getAdminEmail(): string {
+  return (process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
+}
+
+export function getAdminPassword(): string {
+  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+}
+
+export function getJwtSecret(): string {
+  return process.env.ADMIN_JWT_SECRET || DEFAULT_JWT_SECRET;
+}
 
 export interface AdminUser {
   email: string;
@@ -27,7 +38,7 @@ export function createToken(user: AdminUser): string {
   ).toString('base64url');
 
   const signature = crypto
-    .createHmac('sha256', JWT_SECRET)
+    .createHmac('sha256', getJwtSecret())
     .update(`${header}.${payload}`)
     .digest('base64url');
 
@@ -46,7 +57,7 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
 
     const [header, payload, signature] = parts;
     const expectedSignature = crypto
-      .createHmac('sha256', JWT_SECRET)
+      .createHmac('sha256', getJwtSecret())
       .update(`${header}.${payload}`)
       .digest('base64url');
 
@@ -78,12 +89,12 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
  */
 export function authenticateAdmin(email: string, password: string): AdminUser | null {
   const cleanEmail = (email || '').trim().toLowerCase();
-  const targetEmail = DEFAULT_ADMIN_EMAIL.trim().toLowerCase();
+  const targetEmail = getAdminEmail();
+  const targetPassword = getAdminPassword();
 
-  // Timing safe or constant time compare
-  if (cleanEmail === targetEmail && password === ADMIN_PASSWORD) {
+  if (cleanEmail === targetEmail && password === targetPassword) {
     return {
-      email: DEFAULT_ADMIN_EMAIL,
+      email: targetEmail,
       role: 'admin',
       name: 'Riyajul (Administrator)',
     };
@@ -101,8 +112,10 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
     return authHeader.substring(7).trim();
   }
 
-  const cookieHeader = reqHeaders['cookie'] || reqHeaders['Cookie'];
-  if (typeof cookieHeader === 'string') {
+  const rawCookie = reqHeaders['cookie'] || reqHeaders['Cookie'];
+  const cookieHeaders = Array.isArray(rawCookie) ? rawCookie : typeof rawCookie === 'string' ? [rawCookie] : [];
+
+  for (const cookieHeader of cookieHeaders) {
     const cookies = cookieHeader.split(';').map((c) => c.trim());
     for (const c of cookies) {
       if (c.startsWith('zoya_admin_token=')) {

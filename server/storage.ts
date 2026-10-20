@@ -38,20 +38,59 @@ export interface ReleaseManifest {
   publishedAt: string;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), '.data');
-const RELEASES_FILE = path.join(DATA_DIR, 'releases.json');
-const APKS_DIR = path.join(DATA_DIR, 'apks');
+// Detect serverless environment (Vercel, AWS Lambda) where process.cwd() is read-only
+const IS_SERVERLESS = Boolean(
+  process.env.VERCEL ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT
+);
 
-// Ensure local persistent directories exist
+function getStoragePaths() {
+  if (IS_SERVERLESS) {
+    const tmpData = path.join('/tmp', 'zoya-data');
+    return {
+      dataDir: tmpData,
+      releasesFile: path.join(tmpData, 'releases.json'),
+      apksDir: path.join(tmpData, 'apks'),
+    };
+  }
+
+  // Local development
+  const localData = path.resolve(process.cwd(), '.data');
+  return {
+    dataDir: localData,
+    releasesFile: path.join(localData, 'releases.json'),
+    apksDir: path.join(localData, 'apks'),
+  };
+}
+
+// Ensure persistent directories exist safely without crashing on read-only filesystems
 function ensureDataDirs() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(APKS_DIR)) {
-    fs.mkdirSync(APKS_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(RELEASES_FILE)) {
-    fs.writeFileSync(RELEASES_FILE, JSON.stringify([], null, 2), 'utf-8');
+  const { dataDir, releasesFile, apksDir } = getStoragePaths();
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    if (!fs.existsSync(apksDir)) {
+      fs.mkdirSync(apksDir, { recursive: true });
+    }
+    if (!fs.existsSync(releasesFile)) {
+      // Check if seed file exists in bundled .data/releases.json
+      const bundledFile = path.resolve(process.cwd(), '.data', 'releases.json');
+      if (fs.existsSync(bundledFile)) {
+        try {
+          const bundledContent = fs.readFileSync(bundledFile, 'utf-8');
+          fs.writeFileSync(releasesFile, bundledContent, 'utf-8');
+        } catch {
+          fs.writeFileSync(releasesFile, JSON.stringify([], null, 2), 'utf-8');
+        }
+      } else {
+        fs.writeFileSync(releasesFile, JSON.stringify([], null, 2), 'utf-8');
+      }
+    }
+  } catch (err) {
+    console.warn('Storage directory initialization notice:', err);
   }
 }
 
@@ -65,10 +104,21 @@ export function formatBytes(bytes: number): string {
 
 export async function getAllReleases(): Promise<ReleaseMetadata[]> {
   ensureDataDirs();
+  const { releasesFile } = getStoragePaths();
   try {
-    const raw = fs.readFileSync(RELEASES_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (fs.existsSync(releasesFile)) {
+      const raw = fs.readFileSync(releasesFile, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    // Fallback: check if read-only bundled file exists
+    const bundledFile = path.resolve(process.cwd(), '.data', 'releases.json');
+    if (fs.existsSync(bundledFile)) {
+      const raw = fs.readFileSync(bundledFile, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    return [];
   } catch (err) {
     console.error('Error reading releases file:', err);
     return [];
@@ -94,6 +144,7 @@ export async function getReleaseById(id: string): Promise<ReleaseMetadata | null
 
 export async function saveRelease(release: ReleaseMetadata): Promise<void> {
   ensureDataDirs();
+  const { releasesFile } = getStoragePaths();
   const all = await getAllReleases();
   const index = all.findIndex((r) => r.id === release.id);
   if (index >= 0) {
@@ -101,17 +152,18 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
   } else {
     all.push(release);
   }
-  fs.writeFileSync(RELEASES_FILE, JSON.stringify(all, null, 2), 'utf-8');
+  fs.writeFileSync(releasesFile, JSON.stringify(all, null, 2), 'utf-8');
 }
 
 export async function deleteRelease(id: string): Promise<boolean> {
   ensureDataDirs();
+  const { releasesFile, apksDir } = getStoragePaths();
   const all = await getAllReleases();
   const release = all.find((r) => r.id === id);
   if (!release) return false;
 
-  // Remove physical file if in local storage
-  const filePath = path.join(APKS_DIR, release.storageKey);
+  // Remove physical file if in storage
+  const filePath = path.join(apksDir, release.storageKey);
   if (fs.existsSync(filePath)) {
     try {
       fs.unlinkSync(filePath);
@@ -121,7 +173,7 @@ export async function deleteRelease(id: string): Promise<boolean> {
   }
 
   const filtered = all.filter((r) => r.id !== id);
-  fs.writeFileSync(RELEASES_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
+  fs.writeFileSync(releasesFile, JSON.stringify(filtered, null, 2), 'utf-8');
   return true;
 }
 
@@ -138,6 +190,7 @@ export async function storeApkBuffer(
   sha256: string;
 }> {
   ensureDataDirs();
+  const { apksDir } = getStoragePaths();
 
   // Validate ZIP / APK Magic Bytes ('PK\x03\x04')
   if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b || buffer[2] !== 0x03 || buffer[3] !== 0x04) {
@@ -152,7 +205,7 @@ export async function storeApkBuffer(
   // Generate unique storage key
   const safeBase = path.basename(originalFilename).replace(/[^a-zA-Z0-9._-]/g, '_');
   const storageKey = `${Date.now()}-${safeBase}`;
-  const targetPath = path.join(APKS_DIR, storageKey);
+  const targetPath = path.join(apksDir, storageKey);
 
   fs.writeFileSync(targetPath, buffer);
 
@@ -166,9 +219,15 @@ export async function storeApkBuffer(
 
 export function getApkFilePath(storageKey: string): string | null {
   ensureDataDirs();
-  const filePath = path.join(APKS_DIR, storageKey);
+  const { apksDir } = getStoragePaths();
+  const filePath = path.join(apksDir, storageKey);
   if (fs.existsSync(filePath)) {
     return filePath;
+  }
+  // Fallback to bundled apk if in repo
+  const bundledFile = path.resolve(process.cwd(), '.data', 'apks', storageKey);
+  if (fs.existsSync(bundledFile)) {
+    return bundledFile;
   }
   return null;
 }

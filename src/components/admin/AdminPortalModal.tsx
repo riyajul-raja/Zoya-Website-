@@ -36,7 +36,14 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
         Authorization: `Bearer ${storedToken}`,
       },
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        const text = await res.text();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return { authenticated: false };
+        }
+      })
       .then((data) => {
         if (data.authenticated && data.user) {
           setToken(storedToken);
