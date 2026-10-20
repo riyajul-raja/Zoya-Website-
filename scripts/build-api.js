@@ -1,0 +1,43 @@
+import esbuild from 'esbuild';
+import path from 'path';
+import fs from 'fs';
+
+const entryPoints = [
+  'server/api/admin/login.ts',
+  'server/api/admin/session.ts',
+  'server/api/admin/logout.ts',
+  'server/api/admin/releases.ts',
+  'server/api/admin/releases/[id].ts',
+  'server/api/admin/upload.ts',
+  'server/api/admin/publish.ts',
+  'server/api/releases/latest.ts',
+  'server/api/releases/manifest.ts',
+  'server/api/releases/download.ts',
+];
+
+async function build() {
+  console.log('Building serverless API functions with esbuild...');
+  
+  // Ensure output directories exist in api/
+  fs.mkdirSync('api/admin/releases', { recursive: true });
+  fs.mkdirSync('api/releases', { recursive: true });
+
+  await esbuild.build({
+    entryPoints,
+    outdir: 'api',
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'esm',
+    sourcemap: false,
+    minify: false,
+    logLevel: 'info',
+  });
+
+  console.log('API functions successfully bundled into api/');
+}
+
+build().catch((err) => {
+  console.error('API build failed:', err);
+  process.exit(1);
+});
