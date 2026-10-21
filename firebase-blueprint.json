@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "Release": {
+      "title": "Release",
+      "description": "Zoya APK Release Metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "versionName": { "type": "string" },
+        "versionCode": { "type": "number" },
+        "applicationId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "fileSizeFormatted": { "type": "string" },
+        "sha256": { "type": "string" },
+        "storageKey": { "type": "string" },
+        "downloadUrl": { "type": "string" },
+        "releaseDate": { "type": "string" },
+        "releaseNotes": { "type": "string" },
+        "minAndroidVersion": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "publishedAt": { "type": "string" }
+      },
+      "required": ["id", "fileName", "storageKey", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/releases/{releaseId}": {
+      "schema": "Release",
+      "description": "Stores Zoya APK release records and drafts"
+    }
+  }
+}

@@ -8,6 +8,7 @@ import {
   saveRelease,
   deleteRelease,
   storeApkBuffer,
+  getApkBuffer,
   getApkFilePath,
   ReleaseMetadata,
   ReleaseManifest,
@@ -259,24 +260,23 @@ export async function handleApiRequest(
         targetRelease = await getLatestPublishedRelease();
       }
 
-      if (!targetRelease || !targetRelease.isPublished) {
-        sendError(res, 404, 'Release not found or not published.');
+      if (!targetRelease) {
+        sendError(res, 404, 'Release not found.');
         return true;
       }
 
-      const filePath = getApkFilePath(targetRelease.storageKey);
-      if (!filePath || !fs.existsSync(filePath)) {
-        sendError(res, 404, 'APK file binary missing from storage.');
+      const apkBuffer = await getApkBuffer(targetRelease.storageKey, targetRelease.storagePath);
+      if (!apkBuffer || apkBuffer.length === 0) {
+        sendError(res, 404, 'APK file binary missing from persistent storage.');
         return true;
       }
 
-      const stat = fs.statSync(filePath);
       const outputFilename = `zoya-${targetRelease.versionName || 'assistant'}.apk`;
 
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
-      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Length', apkBuffer.length);
       res.setHeader('Cache-Control', 'public, max-age=3600');
 
       if (method === 'HEAD') {
@@ -284,8 +284,7 @@ export async function handleApiRequest(
         return true;
       }
 
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
+      res.end(apkBuffer);
       return true;
     }
 
@@ -421,6 +420,7 @@ export async function handleApiRequest(
           fileSizeFormatted: stored.fileSizeFormatted,
           sha256: stored.sha256,
           storageKey: stored.storageKey,
+          storagePath: stored.storagePath,
           downloadUrl,
           releaseDate: new Date().toISOString().split('T')[0],
           releaseNotes: '',

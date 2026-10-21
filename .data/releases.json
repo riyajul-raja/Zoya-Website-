@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": "rel_1792547037861_b8p1k",
+    "releaseDate": "2026-10-21",
+    "releaseNotes": "Cloud persistent release on Firebase Storage.",
+    "downloadUrl": "/api/releases/download?id=rel_1792547037861_b8p1k",
+    "createdAt": "2026-10-21T01:43:57.861Z",
+    "isPublished": true,
+    "fileSize": 2048,
+    "versionCode": 2,
+    "fileSizeFormatted": "2 KB",
+    "minAndroidVersion": "Android 8.0 (API 26)+",
+    "fileName": "zoya-assistant-v1.0.1.apk",
+    "storageKey": "1792547037302-zoya-assistant-v1.0.1.apk",
+    "publishedAt": "2026-10-21T01:44:04.651Z",
+    "sha256": "783d5be60c1191793b337d221d3234c88e5acc58fb9764847671ec7f56e4ad00",
+    "updatedAt": "2026-10-21T01:44:04.651Z",
+    "storagePath": "apks/1792547037302-zoya-assistant-v1.0.1.apk",
+    "applicationId": "com.riyajul.zoya",
+    "versionName": "v1.0.1"
+  }
+]
