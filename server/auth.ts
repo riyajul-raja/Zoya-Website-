@@ -4,11 +4,19 @@ const DEFAULT_ADMIN_PIN = '8825316434';
 const DEFAULT_JWT_SECRET = 'zoya-secret-jwt-key-release-mgr-2026';
 
 export function getAdminPin(): string {
-  return (process.env.ZOYA_ADMIN_PIN || DEFAULT_ADMIN_PIN).trim();
+  const envPin = process.env.ZOYA_ADMIN_PIN;
+  if (envPin !== undefined && envPin !== null && String(envPin).trim().length > 0) {
+    return String(envPin).trim();
+  }
+  return DEFAULT_ADMIN_PIN;
 }
 
 export function getJwtSecret(): string {
-  return process.env.ADMIN_JWT_SECRET || DEFAULT_JWT_SECRET;
+  const envSecret = process.env.ADMIN_JWT_SECRET;
+  if (envSecret !== undefined && envSecret !== null && String(envSecret).trim().length > 0) {
+    return String(envSecret).trim();
+  }
+  return DEFAULT_JWT_SECRET;
 }
 
 export interface AdminUser {
@@ -80,10 +88,11 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
 }
 
 /**
- * Authenticates admin PIN input securely against ZOYA_ADMIN_PIN
+ * Authenticates admin PIN input securely against ZOYA_ADMIN_PIN (always handled as string)
  */
-export function authenticateAdminPin(pin: string): AdminUser | null {
-  const cleanPin = (pin || '').trim();
+export function authenticateAdminPin(pin: unknown): AdminUser | null {
+  if (pin === undefined || pin === null) return null;
+  const cleanPin = String(pin).trim();
   const targetPin = getAdminPin();
 
   if (cleanPin.length > 0 && cleanPin === targetPin) {
@@ -117,6 +126,7 @@ export function authenticateAdmin(email: string, password: string): AdminUser | 
  * Extracts Bearer token from Authorization header or cookie
  */
 export function extractAuthToken(reqHeaders: Record<string, string | string[] | undefined>): string | null {
+  if (!reqHeaders) return null;
   const authHeader = reqHeaders['authorization'] || reqHeaders['Authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
     return authHeader.substring(7).trim();

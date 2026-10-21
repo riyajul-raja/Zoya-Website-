@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { db, storage } from './firebase';
+import { getDb, getStorageInstance } from './firebase';
 import {
   collection,
   doc,
@@ -108,6 +108,7 @@ export function formatBytes(bytes: number): string {
 
 export async function getAllReleases(): Promise<ReleaseMetadata[]> {
   try {
+    const db = getDb();
     const snapshot = await getDocs(collection(db, 'releases'));
     const releases: ReleaseMetadata[] = [];
     snapshot.forEach((docSnap) => {
@@ -152,6 +153,7 @@ export async function getLatestPublishedRelease(): Promise<ReleaseMetadata | nul
 export async function getReleaseById(id: string): Promise<ReleaseMetadata | null> {
   if (!id) return null;
   try {
+    const db = getDb();
     const docRef = doc(db, 'releases', id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
@@ -172,6 +174,7 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
 
   // 1. Persist permanently to Cloud Firestore
   try {
+    const db = getDb();
     const docRef = doc(db, 'releases', updatedRelease.id);
     await setDoc(docRef, updatedRelease);
   } catch (err) {
@@ -203,6 +206,7 @@ export async function deleteRelease(id: string): Promise<boolean> {
 
   // 1. Delete permanently from Cloud Firestore
   try {
+    const db = getDb();
     const docRef = doc(db, 'releases', id);
     await deleteDoc(docRef);
   } catch (err) {
@@ -213,6 +217,7 @@ export async function deleteRelease(id: string): Promise<boolean> {
   if (existingRecord.storageKey) {
     const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
     try {
+      const storage = getStorageInstance();
       const storageRef = ref(storage, storageObjectPath);
       await deleteObject(storageRef);
     } catch (err) {
@@ -279,6 +284,7 @@ export async function storeApkBuffer(
 
   // 1. Upload persistently to Firebase Cloud Storage
   try {
+    const storage = getStorageInstance();
     const storageRef = ref(storage, storagePath);
     const uint8Array = new Uint8Array(buffer);
     await uploadBytes(storageRef, uint8Array, {
@@ -344,6 +350,7 @@ export async function getApkBuffer(storageKey: string, storagePath?: string): Pr
   // 2. Download permanently from Firebase Cloud Storage across separate Lambdas
   const objectPath = storagePath || `apks/${storageKey}`;
   try {
+    const storage = getStorageInstance();
     const storageRef = ref(storage, objectPath);
     const arrayBuffer = await getBytes(storageRef);
     const buffer = Buffer.from(arrayBuffer);

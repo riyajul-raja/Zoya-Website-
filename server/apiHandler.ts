@@ -39,8 +39,13 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
 
   // 1. If body has already been parsed by Vercel Serverless / Express / body-parser
   if (anyReq.body !== undefined && anyReq.body !== null) {
-    if (typeof anyReq.body === 'object') {
-      return anyReq.body as T;
+    if (Buffer.isBuffer(anyReq.body) || anyReq.body instanceof Uint8Array) {
+      try {
+        const text = Buffer.from(anyReq.body).toString('utf-8').trim();
+        return (text ? JSON.parse(text) : {}) as T;
+      } catch {
+        throw new Error('Invalid JSON');
+      }
     }
     if (typeof anyReq.body === 'string') {
       try {
@@ -49,6 +54,9 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
       } catch {
         throw new Error('Invalid JSON');
       }
+    }
+    if (typeof anyReq.body === 'object') {
+      return anyReq.body as T;
     }
   }
 
@@ -300,20 +308,20 @@ export async function handleApiRequest(
         return true;
       }
 
-      let body: { pin?: string; email?: string; password?: string } = {};
+      let body: { pin?: string | number; email?: string; password?: string } = {};
       try {
-        body = await parseJsonBody<{ pin?: string; email?: string; password?: string }>(req);
+        body = await parseJsonBody<{ pin?: string | number; email?: string; password?: string }>(req);
       } catch (err) {
         sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
         return true;
       }
 
-      const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
-      const email = typeof body.email === 'string' ? body.email.trim() : '';
-      const password = typeof body.password === 'string' ? body.password : '';
+      const pin = body && body.pin !== undefined && body.pin !== null ? String(body.pin).trim() : '';
+      const email = body && typeof body.email === 'string' ? body.email.trim() : '';
+      const password = body && typeof body.password === 'string' ? body.password : '';
 
       let user = null;
-      if (pin) {
+      if (pin.length > 0) {
         user = authenticateAdminPin(pin);
       } else if (email || password) {
         user = authenticateAdmin(email, password);

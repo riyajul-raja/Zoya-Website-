@@ -1,5 +1,4 @@
 import esbuild from 'esbuild';
-import path from 'path';
 import fs from 'fs';
 
 const entryPoints = [
@@ -17,7 +16,7 @@ const entryPoints = [
 
 async function build() {
   console.log('Building serverless API functions with esbuild...');
-  
+
   // Ensure output directories exist in api/
   fs.mkdirSync('api/admin/releases', { recursive: true });
   fs.mkdirSync('api/releases', { recursive: true });
@@ -29,6 +28,9 @@ async function build() {
     platform: 'node',
     target: 'node18',
     format: 'esm',
+    banner: {
+      js: "import { createRequire as __bundleCreateRequire } from 'node:module'; const require = __bundleCreateRequire(import.meta.url);",
+    },
     sourcemap: false,
     minify: false,
     logLevel: 'info',

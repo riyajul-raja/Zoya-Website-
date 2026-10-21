@@ -1,3 +1,4 @@
+import { createRequire as __bundleCreateRequire } from 'node:module'; const require = __bundleCreateRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -21077,11 +21078,11 @@ function openDB(name5, version6, { blocked, upgrade, blocking, terminated } = {}
       event
     ));
   }
-  openPromise.then((db2) => {
+  openPromise.then((db) => {
     if (terminated)
-      db2.addEventListener("close", () => terminated());
+      db.addEventListener("close", () => terminated());
     if (blocking) {
-      db2.addEventListener("versionchange", (event) => blocking(event.oldVersion, event.newVersion, event));
+      db.addEventListener("versionchange", (event) => blocking(event.oldVersion, event.newVersion, event));
     }
   }).catch(() => {
   });
@@ -21212,11 +21213,11 @@ var PLATFORM_LOG_STRING = {
 var _apps = /* @__PURE__ */ new Map();
 var _serverApps = /* @__PURE__ */ new Map();
 var _components = /* @__PURE__ */ new Map();
-function _addComponent(app2, component) {
+function _addComponent(app, component) {
   try {
-    app2.container.addComponent(component);
+    app.container.addComponent(component);
   } catch (e) {
-    logger.debug(`Component ${component.name} failed to register with FirebaseApp ${app2.name}`, e);
+    logger.debug(`Component ${component.name} failed to register with FirebaseApp ${app.name}`, e);
   }
 }
 function _registerComponent(component) {
@@ -21226,20 +21227,20 @@ function _registerComponent(component) {
     return false;
   }
   _components.set(componentName, component);
-  for (const app2 of _apps.values()) {
-    _addComponent(app2, component);
+  for (const app of _apps.values()) {
+    _addComponent(app, component);
   }
   for (const serverApp of _serverApps.values()) {
     _addComponent(serverApp, component);
   }
   return true;
 }
-function _getProvider(app2, name5) {
-  const heartbeatController = app2.container.getProvider("heartbeat").getImmediate({ optional: true });
+function _getProvider(app, name5) {
+  const heartbeatController = app.container.getProvider("heartbeat").getImmediate({ optional: true });
   if (heartbeatController) {
     void heartbeatController.triggerHeartbeat();
   }
-  return app2.container.getProvider(name5);
+  return app.container.getProvider(name5);
 }
 function _isFirebaseServerApp(obj) {
   if (obj === null || obj === void 0) {
@@ -21414,14 +21415,14 @@ function initializeApp(_options, rawConfig = {}) {
   return newApp;
 }
 function getApp(name5 = DEFAULT_ENTRY_NAME2) {
-  const app2 = _apps.get(name5);
-  if (!app2 && name5 === DEFAULT_ENTRY_NAME2 && getDefaultAppConfig()) {
+  const app = _apps.get(name5);
+  if (!app && name5 === DEFAULT_ENTRY_NAME2 && getDefaultAppConfig()) {
     return initializeApp();
   }
-  if (!app2) {
+  if (!app) {
     throw ERROR_FACTORY.create("no-app", { appName: name5 });
   }
-  return app2;
+  return app;
 }
 function getApps() {
   return Array.from(_apps.values());
@@ -21463,11 +21464,11 @@ var dbPromise = null;
 function getDbPromise() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade: (db2, oldVersion) => {
+      upgrade: (db, oldVersion) => {
         switch (oldVersion) {
           case 0:
             try {
-              db2.createObjectStore(STORE_NAME);
+              db.createObjectStore(STORE_NAME);
             } catch (e) {
               console.warn(e);
             }
@@ -21481,11 +21482,11 @@ function getDbPromise() {
   }
   return dbPromise;
 }
-async function readHeartbeatsFromIndexedDB(app2) {
+async function readHeartbeatsFromIndexedDB(app) {
   try {
-    const db2 = await getDbPromise();
-    const tx = db2.transaction(STORE_NAME);
-    const result = await tx.objectStore(STORE_NAME).get(computeKey(app2));
+    const db = await getDbPromise();
+    const tx = db.transaction(STORE_NAME);
+    const result = await tx.objectStore(STORE_NAME).get(computeKey(app));
     await tx.done;
     return result;
   } catch (e) {
@@ -21499,12 +21500,12 @@ async function readHeartbeatsFromIndexedDB(app2) {
     }
   }
 }
-async function writeHeartbeatsToIndexedDB(app2, heartbeatObject) {
+async function writeHeartbeatsToIndexedDB(app, heartbeatObject) {
   try {
-    const db2 = await getDbPromise();
-    const tx = db2.transaction(STORE_NAME, "readwrite");
+    const db = await getDbPromise();
+    const tx = db.transaction(STORE_NAME, "readwrite");
     const objectStore = tx.objectStore(STORE_NAME);
-    await objectStore.put(heartbeatObject, computeKey(app2));
+    await objectStore.put(heartbeatObject, computeKey(app));
     await tx.done;
   } catch (e) {
     if (e instanceof FirebaseError) {
@@ -21517,8 +21518,8 @@ async function writeHeartbeatsToIndexedDB(app2, heartbeatObject) {
     }
   }
 }
-function computeKey(app2) {
-  return `${app2.name}!${app2.options.appId}`;
+function computeKey(app) {
+  return `${app.name}!${app.options.appId}`;
 }
 var MAX_HEADER_BYTES = 1024;
 var MAX_NUM_STORED_HEARTBEATS = 30;
@@ -21526,8 +21527,8 @@ var HeartbeatServiceImpl = class {
   constructor(container) {
     this.container = container;
     this._heartbeatsCache = null;
-    const app2 = this.container.getProvider("app").getImmediate();
-    this._storage = new HeartbeatStorageImpl(app2);
+    const app = this.container.getProvider("app").getImmediate();
+    this._storage = new HeartbeatStorageImpl(app);
     this._heartbeatsCachePromise = this._storage.read().then((result) => {
       this._heartbeatsCache = result;
       return result;
@@ -21631,8 +21632,8 @@ function extractHeartbeatsForHeader(heartbeatsCache, maxSize = MAX_HEADER_BYTES)
   };
 }
 var HeartbeatStorageImpl = class {
-  constructor(app2) {
-    this.app = app2;
+  constructor(app) {
+    this.app = app;
     this._canUseIndexedDBPromise = this.runIndexedDBEnvironmentCheck();
   }
   async runIndexedDBEnvironmentCheck() {
@@ -30478,11 +30479,11 @@ var DatabaseId = class _DatabaseId {
     return other instanceof _DatabaseId && other.projectId === this.projectId && other.database === this.database;
   }
 };
-function databaseIdFromApp(app2, database) {
-  if (!Object.prototype.hasOwnProperty.apply(app2.options, ["projectId"])) {
+function databaseIdFromApp(app, database) {
+  if (!Object.prototype.hasOwnProperty.apply(app.options, ["projectId"])) {
     throw new FirestoreError(Code.INVALID_ARGUMENT, '"projectId" not provided in firebase.initializeApp.');
   }
-  return new DatabaseId(app2.options.projectId, database);
+  return new DatabaseId(app.options.projectId, database);
 }
 var QuadrupleBuilder = class _QuadrupleBuilder {
   constructor() {
@@ -36105,14 +36106,14 @@ var AppCheckToken = class {
   }
 };
 var FirebaseAppCheckTokenProvider = class {
-  constructor(app2, appCheckProvider) {
+  constructor(app, appCheckProvider) {
     this.appCheckProvider = appCheckProvider;
     this.forceRefresh = false;
     this.appCheck = null;
     this.latestAppCheckToken = null;
     this.serverAppAppCheckToken = null;
-    if (_isFirebaseServerApp(app2) && app2.settings.appCheckToken) {
-      this.serverAppAppCheckToken = app2.settings.appCheckToken;
+    if (_isFirebaseServerApp(app) && app.settings.appCheckToken) {
+      this.serverAppAppCheckToken = app.settings.appCheckToken;
     }
   }
   start(asyncQueue, changeListener) {
@@ -52969,11 +52970,11 @@ function getMessageOrStack(error) {
 }
 var Firestore2 = class extends Firestore$1 {
   /** @hideconstructor */
-  constructor(authCredentialsProvider, appCheckCredentialsProvider, databaseId, app2) {
-    super(authCredentialsProvider, appCheckCredentialsProvider, databaseId, app2);
+  constructor(authCredentialsProvider, appCheckCredentialsProvider, databaseId, app) {
+    super(authCredentialsProvider, appCheckCredentialsProvider, databaseId, app);
     this.type = "firestore";
     this._queue = new AsyncQueueImpl();
-    this._persistenceKey = app2?.name || "[DEFAULT]";
+    this._persistenceKey = app?.name || "[DEFAULT]";
   }
   async _terminate() {
     if (this._firestoreClient) {
@@ -52985,18 +52986,18 @@ var Firestore2 = class extends Firestore$1 {
   }
 };
 function getFirestore(appOrDatabaseId, optionalDatabaseId) {
-  const app2 = typeof appOrDatabaseId === "object" ? appOrDatabaseId : getApp();
+  const app = typeof appOrDatabaseId === "object" ? appOrDatabaseId : getApp();
   const databaseId = typeof appOrDatabaseId === "string" ? appOrDatabaseId : optionalDatabaseId || DEFAULT_DATABASE_NAME;
-  const db2 = _getProvider(app2, "firestore").getImmediate({
+  const db = _getProvider(app, "firestore").getImmediate({
     identifier: databaseId
   });
-  if (!db2._initialized) {
+  if (!db._initialized) {
     const emulator = getDefaultEmulatorHostnameAndPort("firestore");
     if (emulator) {
-      connectFirestoreEmulator(db2, ...emulator);
+      connectFirestoreEmulator(db, ...emulator);
     }
   }
-  return db2;
+  return db;
 }
 function ensureFirestoreConfigured(firestore) {
   if (firestore._terminated) {
@@ -53202,8 +53203,8 @@ var version4 = "4.18.0";
 function registerFirestore(variant, useFetchStreams = true) {
   setSDKVersion(SDK_VERSION);
   _registerComponent(new Component("firestore", (container, { instanceIdentifier: databaseId, options: settings }) => {
-    const app2 = container.getProvider("app").getImmediate();
-    const firestoreInstance = new Firestore2(new FirebaseAuthCredentialsProvider(container.getProvider("auth-internal")), new FirebaseAppCheckTokenProvider(app2, container.getProvider("app-check-internal")), databaseIdFromApp(app2, databaseId), app2);
+    const app = container.getProvider("app").getImmediate();
+    const firestoreInstance = new Firestore2(new FirebaseAuthCredentialsProvider(container.getProvider("auth-internal")), new FirebaseAppCheckTokenProvider(app, container.getProvider("app-check-internal")), databaseIdFromApp(app, databaseId), app);
     settings = { useFetchStreams, ...settings };
     firestoreInstance._setSettings(settings);
     return firestoreInstance;
@@ -53562,12 +53563,12 @@ var BundleBuilder = class {
     return bundleString;
   }
 };
-function buildDocumentSnapshotJsonBundle(db2, document2, docData, path2) {
-  const builder = new BundleBuilder(db2, AutoId.newId());
+function buildDocumentSnapshotJsonBundle(db, document2, docData, path2) {
+  const builder = new BundleBuilder(db, AutoId.newId());
   builder.addBundleDocument(documentToDocumentSnapshotBundleData(path2, docData, document2));
   return builder.build();
 }
-function buildQuerySnapshotJsonBundle(db2, query, bundleName, parent2, paths, docs, documentData) {
+function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, docs, documentData) {
   const docBundleDataArray = [];
   for (let i = 0; i < docs.length; i++) {
     docBundleDataArray.push(documentToDocumentSnapshotBundleData(paths[i], documentData[i], docs[i]));
@@ -53578,7 +53579,7 @@ function buildQuerySnapshotJsonBundle(db2, query, bundleName, parent2, paths, do
     parent: parent2,
     docBundleDataArray
   };
-  const builder = new BundleBuilder(db2, bundleName);
+  const builder = new BundleBuilder(db, bundleName);
   builder.addBundleQuery(bundleData);
   return builder.build();
 }
@@ -55247,23 +55248,23 @@ function extractBucket(host, config) {
   }
   return Location.makeFromBucketSpec(bucketString, host);
 }
-function connectStorageEmulator$1(storage2, host, port, options2 = {}) {
-  storage2.host = `${host}:${port}`;
+function connectStorageEmulator$1(storage, host, port, options2 = {}) {
+  storage.host = `${host}:${port}`;
   const useSsl = isCloudWorkstation(host);
   if (useSsl) {
-    void pingServer(`https://${storage2.host}/b`).catch(() => {
+    void pingServer(`https://${storage.host}/b`).catch(() => {
     });
   }
-  storage2._isUsingEmulator = true;
-  storage2._protocol = useSsl ? "https" : "http";
+  storage._isUsingEmulator = true;
+  storage._protocol = useSsl ? "https" : "http";
   const { mockUserToken } = options2;
   if (mockUserToken) {
-    storage2._overrideAuthToken = typeof mockUserToken === "string" ? mockUserToken : createMockUserToken(mockUserToken, storage2.app.options.projectId);
+    storage._overrideAuthToken = typeof mockUserToken === "string" ? mockUserToken : createMockUserToken(mockUserToken, storage.app.options.projectId);
   }
 }
 var FirebaseStorageImpl = class {
-  constructor(app2, _authProvider, _appCheckProvider, _url, _firebaseVersion, _isUsingEmulator = false) {
-    this.app = app2;
+  constructor(app, _authProvider, _appCheckProvider, _url, _firebaseVersion, _isUsingEmulator = false) {
+    this.app = app;
     this._authProvider = _authProvider;
     this._appCheckProvider = _appCheckProvider;
     this._url = _url;
@@ -55416,9 +55417,9 @@ function ref(serviceOrRef, pathOrUrl) {
   serviceOrRef = getModularInstance(serviceOrRef);
   return ref$1(serviceOrRef, pathOrUrl);
 }
-function getStorage(app2 = getApp(), bucketUrl) {
-  app2 = getModularInstance(app2);
-  const storageProvider = _getProvider(app2, STORAGE_TYPE);
+function getStorage(app = getApp(), bucketUrl) {
+  app = getModularInstance(app);
+  const storageProvider = _getProvider(app, STORAGE_TYPE);
   const storageInstance = storageProvider.getImmediate({
     identifier: bucketUrl
   });
@@ -55428,14 +55429,14 @@ function getStorage(app2 = getApp(), bucketUrl) {
   }
   return storageInstance;
 }
-function connectStorageEmulator(storage2, host, port, options2 = {}) {
-  connectStorageEmulator$1(storage2, host, port, options2);
+function connectStorageEmulator(storage, host, port, options2 = {}) {
+  connectStorageEmulator$1(storage, host, port, options2);
 }
 function factory(container, { instanceIdentifier: url }) {
-  const app2 = container.getProvider("app").getImmediate();
+  const app = container.getProvider("app").getImmediate();
   const authProvider = container.getProvider("auth-internal");
   const appCheckProvider = container.getProvider("app-check-internal");
-  return new FirebaseStorageImpl(app2, authProvider, appCheckProvider, url, SDK_VERSION);
+  return new FirebaseStorageImpl(app, authProvider, appCheckProvider, url, SDK_VERSION);
 }
 function registerStorage() {
   _registerComponent(new Component(
@@ -55463,10 +55464,30 @@ var firebase_applet_config_default = {
 };
 
 // server/firebase.ts
-var app = getApps().length === 0 ? initializeApp(firebase_applet_config_default) : getApp();
-var db = getFirestore(app, firebase_applet_config_default.firestoreDatabaseId);
-var bucketName = firebase_applet_config_default.storageBucket || `${firebase_applet_config_default.projectId}.appspot.com`;
-var storage = getStorage(app, `gs://${bucketName}`);
+var cachedApp = null;
+var cachedDb = null;
+var cachedStorage = null;
+function getFirebaseApp() {
+  if (!cachedApp) {
+    cachedApp = getApps().length === 0 ? initializeApp(firebase_applet_config_default) : getApp();
+  }
+  return cachedApp;
+}
+function getDb() {
+  if (!cachedDb) {
+    const app = getFirebaseApp();
+    cachedDb = getFirestore(app, firebase_applet_config_default.firestoreDatabaseId);
+  }
+  return cachedDb;
+}
+function getStorageInstance() {
+  if (!cachedStorage) {
+    const app = getFirebaseApp();
+    const bucketName = firebase_applet_config_default.storageBucket || `${firebase_applet_config_default.projectId}.appspot.com`;
+    cachedStorage = getStorage(app, `gs://${bucketName}`);
+  }
+  return cachedStorage;
+}
 
 // server/storage.ts
 var IS_SERVERLESS = Boolean(
@@ -55510,6 +55531,7 @@ function formatBytes(bytes) {
 }
 async function getAllReleases() {
   try {
+    const db = getDb();
     const snapshot = await getDocs(collection(db, "releases"));
     const releases = [];
     snapshot.forEach((docSnap) => {
@@ -55548,6 +55570,7 @@ async function getLatestPublishedRelease() {
 async function getReleaseById(id) {
   if (!id) return null;
   try {
+    const db = getDb();
     const docRef = doc(db, "releases", id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
@@ -55565,6 +55588,7 @@ async function saveRelease(release) {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   try {
+    const db = getDb();
     const docRef = doc(db, "releases", updatedRelease.id);
     await setDoc(docRef, updatedRelease);
   } catch (err) {
@@ -55590,6 +55614,7 @@ async function deleteRelease(id) {
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
   try {
+    const db = getDb();
     const docRef = doc(db, "releases", id);
     await deleteDoc(docRef);
   } catch (err) {
@@ -55598,6 +55623,7 @@ async function deleteRelease(id) {
   if (existingRecord.storageKey) {
     const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
     try {
+      const storage = getStorageInstance();
       const storageRef = ref(storage, storageObjectPath);
       await deleteObject(storageRef);
     } catch (err) {
@@ -55634,6 +55660,7 @@ async function storeApkBuffer(buffer, originalFilename) {
   const storageKey = `${Date.now()}-${safeBase}`;
   const storagePath = `apks/${storageKey}`;
   try {
+    const storage = getStorageInstance();
     const storageRef = ref(storage, storagePath);
     const uint8Array = new Uint8Array(buffer);
     await uploadBytes(storageRef, uint8Array, {
@@ -55685,6 +55712,7 @@ async function getApkBuffer(storageKey, storagePath) {
   }
   const objectPath = storagePath || `apks/${storageKey}`;
   try {
+    const storage = getStorageInstance();
     const storageRef = ref(storage, objectPath);
     const arrayBuffer = await getBytes(storageRef);
     const buffer = Buffer.from(arrayBuffer);
@@ -55704,10 +55732,18 @@ import crypto3 from "crypto";
 var DEFAULT_ADMIN_PIN = "8825316434";
 var DEFAULT_JWT_SECRET = "zoya-secret-jwt-key-release-mgr-2026";
 function getAdminPin() {
-  return (process.env.ZOYA_ADMIN_PIN || DEFAULT_ADMIN_PIN).trim();
+  const envPin = process.env.ZOYA_ADMIN_PIN;
+  if (envPin !== void 0 && envPin !== null && String(envPin).trim().length > 0) {
+    return String(envPin).trim();
+  }
+  return DEFAULT_ADMIN_PIN;
 }
 function getJwtSecret() {
-  return process.env.ADMIN_JWT_SECRET || DEFAULT_JWT_SECRET;
+  const envSecret = process.env.ADMIN_JWT_SECRET;
+  if (envSecret !== void 0 && envSecret !== null && String(envSecret).trim().length > 0) {
+    return String(envSecret).trim();
+  }
+  return DEFAULT_JWT_SECRET;
 }
 function createToken(user) {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -55751,7 +55787,8 @@ function verifyToken(token) {
   }
 }
 function authenticateAdminPin(pin) {
-  const cleanPin = (pin || "").trim();
+  if (pin === void 0 || pin === null) return null;
+  const cleanPin = String(pin).trim();
   const targetPin = getAdminPin();
   if (cleanPin.length > 0 && cleanPin === targetPin) {
     return {
@@ -55774,6 +55811,7 @@ function authenticateAdmin(email, password) {
   return null;
 }
 function extractAuthToken(reqHeaders) {
+  if (!reqHeaders) return null;
   const authHeader = reqHeaders["authorization"] || reqHeaders["Authorization"];
   if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
     return authHeader.substring(7).trim();
@@ -55806,8 +55844,13 @@ function sendError(res, status, message) {
 async function parseJsonBody(req) {
   const anyReq = req;
   if (anyReq.body !== void 0 && anyReq.body !== null) {
-    if (typeof anyReq.body === "object") {
-      return anyReq.body;
+    if (Buffer.isBuffer(anyReq.body) || anyReq.body instanceof Uint8Array) {
+      try {
+        const text = Buffer.from(anyReq.body).toString("utf-8").trim();
+        return text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error("Invalid JSON");
+      }
     }
     if (typeof anyReq.body === "string") {
       try {
@@ -55816,6 +55859,9 @@ async function parseJsonBody(req) {
       } catch {
         throw new Error("Invalid JSON");
       }
+    }
+    if (typeof anyReq.body === "object") {
+      return anyReq.body;
     }
   }
   if (anyReq.readableEnded) {
@@ -56016,11 +56062,11 @@ async function handleApiRequest(req, res, explicitRoute) {
         sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
         return true;
       }
-      const pin = typeof body.pin === "string" ? body.pin.trim() : "";
-      const email = typeof body.email === "string" ? body.email.trim() : "";
-      const password = typeof body.password === "string" ? body.password : "";
+      const pin = body && body.pin !== void 0 && body.pin !== null ? String(body.pin).trim() : "";
+      const email = body && typeof body.email === "string" ? body.email.trim() : "";
+      const password = body && typeof body.password === "string" ? body.password : "";
       let user = null;
-      if (pin) {
+      if (pin.length > 0) {
         user = authenticateAdminPin(pin);
       } else if (email || password) {
         user = authenticateAdmin(email, password);
