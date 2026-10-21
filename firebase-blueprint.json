@@ -14,6 +14,8 @@
         "fileSizeFormatted": { "type": "string" },
         "sha256": { "type": "string" },
         "storageKey": { "type": "string" },
+        "storagePath": { "type": "string" },
+        "chunkCount": { "type": "number" },
         "downloadUrl": { "type": "string" },
         "releaseDate": { "type": "string" },
         "releaseNotes": { "type": "string" },
@@ -24,12 +26,29 @@
         "publishedAt": { "type": "string" }
       },
       "required": ["id", "fileName", "storageKey", "createdAt"]
+    },
+    "ApkChunk": {
+      "title": "ApkChunk",
+      "description": "Persistent binary chunk of an uploaded APK stored in Firestore",
+      "type": "object",
+      "properties": {
+        "storageKey": { "type": "string" },
+        "index": { "type": "number" },
+        "totalChunks": { "type": "number" },
+        "size": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["storageKey", "index", "totalChunks", "size"]
     }
   },
   "firestore": {
     "/releases/{releaseId}": {
       "schema": "Release",
       "description": "Stores Zoya APK release records and drafts"
+    },
+    "/apk_chunks/{chunkId}": {
+      "schema": "ApkChunk",
+      "description": "Stores persistent binary chunks for uploaded APK files"
     }
   }
 }

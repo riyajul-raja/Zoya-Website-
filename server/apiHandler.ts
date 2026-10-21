@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import fs from 'fs';
 import path from 'path';
 import {
   getAllReleases,
@@ -8,8 +7,12 @@ import {
   saveRelease,
   deleteRelease,
   storeApkBuffer,
+  storeApkChunk,
+  verifyStoredChunks,
+  hasApkBinary,
   getApkBuffer,
-  getApkFilePath,
+  formatBytes,
+  isValidApkHeader,
   ReleaseMetadata,
   ReleaseManifest,
 } from './storage';
@@ -70,7 +73,6 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
     let body = '';
     let done = false;
 
-    // Safety timeout: never hang forever if stream was already consumed
     const timer = setTimeout(() => {
       if (!done) {
         done = true;
@@ -86,7 +88,6 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
     req.on('data', (chunk) => {
       body += chunk;
       if (body.length > 5 * 1024 * 1024) {
-        // 5MB limit for JSON bodies
         done = true;
         clearTimeout(timer);
         reject(new Error('Request body too large (max 5MB)'));
@@ -100,7 +101,7 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
         try {
           const parsed = body.trim() ? JSON.parse(body) : {};
           resolve(parsed as T);
-        } catch (err) {
+        } catch {
           reject(new Error('Invalid JSON'));
         }
       }
@@ -119,9 +120,12 @@ async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
 async function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
   const anyReq = req as any;
 
-  // If already parsed into Buffer by Vercel or middleware
+  // 1. Check if Vercel/Express already buffered the body
   if (Buffer.isBuffer(anyReq.body)) {
     return anyReq.body;
+  }
+  if (anyReq.body instanceof Uint8Array) {
+    return Buffer.from(anyReq.body);
   }
   if (anyReq.rawBody && Buffer.isBuffer(anyReq.rawBody)) {
     return anyReq.rawBody;
@@ -134,10 +138,11 @@ async function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
     return Buffer.alloc(0);
   }
 
+  // 2. Stream binary chunks with safety timeout
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
-    const MAX_SIZE = 150 * 1024 * 1024; // 150MB APK limit
+    const MAX_SIZE = 150 * 1024 * 1024; // 150MB max APK size
     let done = false;
 
     const timer = setTimeout(() => {
@@ -155,7 +160,7 @@ async function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
         reject(new Error('File exceeds maximum allowable size (150MB)'));
         return;
       }
-      chunks.push(chunk);
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
 
     req.on('end', () => {
@@ -221,9 +226,14 @@ export async function handleApiRequest(
         return true;
       }
 
+      const binaryVerified = await hasApkBinary(latest);
+
       sendJson(res, 200, {
         published: true,
-        release: latest,
+        release: {
+          ...latest,
+          binaryVerified,
+        },
       });
       return true;
     }
@@ -274,19 +284,32 @@ export async function handleApiRequest(
         return true;
       }
 
-      const apkBuffer = await getApkBuffer(targetRelease.storageKey, targetRelease.storagePath);
-      if (!apkBuffer || apkBuffer.length === 0) {
-        sendError(res, 404, 'APK file binary missing from persistent storage.');
+      const apkBuffer = await getApkBuffer(
+        targetRelease.storageKey,
+        targetRelease.storagePath,
+        targetRelease.chunkCount
+      );
+
+      if (!apkBuffer || !isValidApkHeader(apkBuffer)) {
+        sendError(
+          res,
+          404,
+          'APK file binary missing from persistent cloud storage. Please re-upload and publish the APK in the Admin Portal.'
+        );
         return true;
       }
 
-      const outputFilename = `zoya-${targetRelease.versionName || 'assistant'}.apk`;
+      const cleanVersion = (targetRelease.versionName || 'latest')
+        .trim()
+        .replace(/[^a-zA-Z0-9._-]/g, '-');
+      const outputFilename = `zoya-assistant-${cleanVersion}.apk`;
 
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
       res.setHeader('Content-Disposition', `attachment; filename="${outputFilename}"`);
-      res.setHeader('Content-Length', apkBuffer.length);
+      res.setHeader('Content-Length', String(apkBuffer.length));
       res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
 
       if (method === 'HEAD') {
         res.end();
@@ -379,10 +402,8 @@ export async function handleApiRequest(
     }
 
     // ----------------------------------------------------
-    // PROTECTED ADMIN RELEASE MANAGEMENT ENDPOINTS
+    // PROTECTED ADMIN ENDPOINTS (Require Valid Token)
     // ----------------------------------------------------
-
-    // Auth gate for all /api/admin/ endpoints (except login & session)
     if (pathname.startsWith('/api/admin/')) {
       const token = extractAuthToken(req.headers);
       const user = verifyToken(token);
@@ -395,16 +416,113 @@ export async function handleApiRequest(
       // GET /api/admin/releases
       if (pathname === '/api/admin/releases' && method === 'GET') {
         const releases = await getAllReleases();
-        // Return sorted by creation date descending
         releases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        sendJson(res, 200, { success: true, releases });
+
+        const enriched = await Promise.all(
+          releases.map(async (r) => ({
+            ...r,
+            binaryVerified: await hasApkBinary(r),
+          }))
+        );
+
+        sendJson(res, 200, { success: true, releases: enriched });
         return true;
       }
 
       // POST /api/admin/upload
       if (pathname === '/api/admin/upload' && method === 'POST') {
+        const phase = parsedUrl.searchParams.get('phase');
+
+        // Mode 1: Chunked binary upload (for reliable serverless uploads of any size)
+        if (phase === 'chunk') {
+          const storageKey = (parsedUrl.searchParams.get('storageKey') || '').trim();
+          const index = Number(parsedUrl.searchParams.get('index'));
+          const totalChunks = Number(parsedUrl.searchParams.get('totalChunks'));
+
+          if (!storageKey || isNaN(index) || index < 0 || isNaN(totalChunks) || totalChunks <= 0) {
+            sendError(res, 400, 'Invalid chunk parameters.');
+            return true;
+          }
+
+          const chunkBuffer = await readBinaryBody(req);
+          if (!chunkBuffer || chunkBuffer.length === 0) {
+            sendError(res, 400, 'Empty chunk payload.');
+            return true;
+          }
+
+          await storeApkChunk(storageKey, index, totalChunks, chunkBuffer);
+          sendJson(res, 200, { success: true, index, size: chunkBuffer.length });
+          return true;
+        }
+
+        // Mode 2: Finalize chunked upload and create draft record
+        if (phase === 'finalize') {
+          const body = await parseJsonBody<{
+            storageKey: string;
+            fileName: string;
+            fileSize: number;
+            totalChunks: number;
+            sha256: string;
+          }>(req);
+
+          const storageKey = (body.storageKey || '').trim();
+          const fileName = path.basename(body.fileName || 'zoya-assistant.apk');
+          const fileSize = Number(body.fileSize) || 0;
+          const totalChunks = Number(body.totalChunks) || 0;
+          const sha256 = (body.sha256 || '').trim().toLowerCase();
+
+          if (!storageKey || !fileName.toLowerCase().endsWith('.apk') || fileSize < 1024 || totalChunks <= 0 || !sha256) {
+            sendError(res, 400, 'Invalid finalize parameters for APK upload.');
+            return true;
+          }
+
+          const verified = await verifyStoredChunks(storageKey, totalChunks);
+          if (!verified) {
+            sendError(res, 400, 'APK chunks failed verification in persistent cloud storage.');
+            return true;
+          }
+
+          const draftId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const downloadUrl = `/api/releases/download?id=${draftId}`;
+
+          const newDraft: ReleaseMetadata = {
+            id: draftId,
+            versionName: '',
+            versionCode: 0,
+            applicationId: 'com.riyajul.zoya',
+            fileName,
+            fileSize,
+            fileSizeFormatted: formatBytes(fileSize),
+            sha256,
+            storageKey,
+            storagePath: `apk_chunks/${storageKey}`,
+            chunkCount: totalChunks,
+            binaryVerified: true,
+            downloadUrl,
+            releaseDate: new Date().toISOString().split('T')[0],
+            releaseNotes: '',
+            minAndroidVersion: 'Android 8.0 (API 26)+',
+            isPublished: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          await saveRelease(newDraft);
+
+          sendJson(res, 201, {
+            success: true,
+            message: 'APK uploaded and verified in persistent storage. Ready for release publication.',
+            draft: newDraft,
+          });
+          return true;
+        }
+
+        // Mode 3: Standard single-request binary upload
         const filenameHeader = req.headers['x-filename'];
-        const filename = typeof filenameHeader === 'string' ? decodeURIComponent(filenameHeader) : 'zoya-assistant.apk';
+        const filename =
+          typeof filenameHeader === 'string'
+            ? decodeURIComponent(filenameHeader)
+            : 'zoya-assistant.apk';
 
         if (!filename.toLowerCase().endsWith('.apk')) {
           sendError(res, 400, 'Invalid file: Must have a .apk extension.');
@@ -417,13 +535,10 @@ export async function handleApiRequest(
           return true;
         }
 
-        // Store file and calculate genuine SHA-256 and exact size
         const stored = await storeApkBuffer(buffer, filename);
-
         const draftId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const downloadUrl = `/api/releases/download?id=${draftId}`;
 
-        // Create initial draft record (unpublished)
         const newDraft: ReleaseMetadata = {
           id: draftId,
           versionName: '',
@@ -435,6 +550,8 @@ export async function handleApiRequest(
           sha256: stored.sha256,
           storageKey: stored.storageKey,
           storagePath: stored.storagePath,
+          chunkCount: stored.chunkCount,
+          binaryVerified: true,
           downloadUrl,
           releaseDate: new Date().toISOString().split('T')[0],
           releaseNotes: '',
@@ -448,7 +565,7 @@ export async function handleApiRequest(
 
         sendJson(res, 201, {
           success: true,
-          message: 'APK uploaded and verified successfully. Ready for release publication.',
+          message: 'APK uploaded and verified in persistent storage. Ready for release publication.',
           draft: newDraft,
         });
         return true;
@@ -477,6 +594,16 @@ export async function handleApiRequest(
           return true;
         }
 
+        const binaryExists = await hasApkBinary(draft);
+        if (!binaryExists) {
+          sendError(
+            res,
+            400,
+            'Cannot publish release: APK binary is missing from persistent cloud storage. Please re-upload the APK file.'
+          );
+          return true;
+        }
+
         const cleanVersionName = (body.versionName || '').trim();
         const versionCode = Number(body.versionCode);
 
@@ -484,13 +611,11 @@ export async function handleApiRequest(
           sendError(res, 400, 'Version name (e.g. v1.0.0) is required.');
           return true;
         }
-
         if (!versionCode || isNaN(versionCode) || versionCode <= 0) {
           sendError(res, 400, 'Android versionCode must be a positive integer.');
           return true;
         }
 
-        // Check if versionCode exceeds latest published release
         const latestPublished = await getLatestPublishedRelease();
         let compatibilityWarning: string | null = null;
 
@@ -509,6 +634,7 @@ export async function handleApiRequest(
           minAndroidVersion: body.minAndroidVersion || 'Android 8.0 (API 26)+',
           releaseDate: body.releaseDate || new Date().toISOString().split('T')[0],
           isPublished: true,
+          binaryVerified: true,
           publishedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -524,10 +650,13 @@ export async function handleApiRequest(
         return true;
       }
 
-      // DELETE /api/admin/releases/:id or DELETE /api/admin/releases?id=...
+      // DELETE /api/admin/releases/:id or /api/admin/releases?id=...
       if ((pathname.startsWith('/api/admin/releases/') || pathname === '/api/admin/releases') && method === 'DELETE') {
-        const queryId = (req as any).query?.id || parsedUrl.searchParams.get('id');
-        const pathId = pathname.startsWith('/api/admin/releases/') ? pathname.substring('/api/admin/releases/'.length) : '';
+        const anyReq = req as any;
+        const queryId = anyReq.query?.id || parsedUrl.searchParams.get('id');
+        const pathId = pathname.startsWith('/api/admin/releases/')
+          ? pathname.substring('/api/admin/releases/'.length)
+          : '';
         const id = (queryId || pathId || '').trim();
 
         if (!id) {

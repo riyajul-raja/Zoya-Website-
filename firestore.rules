@@ -4,5 +4,8 @@ service cloud.firestore {
     match /releases/{releaseId} {
       allow read, write: if true;
     }
+    match /apk_chunks/{chunkId} {
+      allow read, write: if true;
+    }
   }
 }

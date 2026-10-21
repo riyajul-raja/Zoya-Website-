@@ -83,8 +83,8 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     ? [...publishedReleases].sort((a, b) => b.versionCode - a.versionCode)[0]
     : null;
 
-  // Real upload using XMLHttpRequest to stream bytes and observe actual upload progress
-  const handleUploadApk = () => {
+  // Chunked binary upload so APKs of any size persist reliably across Vercel serverless invocations
+  const handleUploadApk = async () => {
     if (!selectedFile) return;
 
     if (!selectedFile.name.toLowerCase().endsWith('.apk')) {
@@ -98,50 +98,121 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     setUploadedDraft(null);
     setPublishMessage(null);
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/admin/upload', true);
-    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    xhr.setRequestHeader('x-filename', encodeURIComponent(selectedFile.name));
-    xhr.setRequestHeader('Content-Type', 'application/vnd.android.package-archive');
+    try {
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(percentComplete);
+      if (
+        uint8.length < 1024 ||
+        uint8[0] !== 0x50 ||
+        uint8[1] !== 0x4b ||
+        uint8[2] !== 0x03 ||
+        uint8[3] !== 0x04
+      ) {
+        throw new Error('Invalid APK file: Header does not match Android Package / ZIP format (PK\\x03\\x04).');
       }
-    };
 
-    xhr.onload = () => {
-      setUploading(false);
-      try {
-        const response = JSON.parse(xhr.responseText);
-        if (xhr.status >= 200 && xhr.status < 300 && response.success) {
-          setUploadedDraft(response.draft);
-          // Suggest initial version name from filename if matches format like zoya-v1.0.0.apk
-          const match = selectedFile.name.match(/v?(\d+\.\d+(\.\d+)?)/i);
-          if (match && !versionName) {
-            setVersionName(match[0].startsWith('v') ? match[0] : `v${match[0]}`);
-          }
-          if (latestPublished && (!versionCode || versionCode <= latestPublished.versionCode)) {
-            setVersionCode(latestPublished.versionCode + 1);
-          } else if (!versionCode) {
-            setVersionCode(1);
-          }
-          fetchReleases();
-        } else {
-          setUploadError(response.error || 'Upload failed on server.');
+      // Compute genuine SHA-256 hash
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const sha256 = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+      const CHUNK_SIZE = 524288; // 512 KB per chunk
+      const totalChunks = Math.ceil(uint8.length / CHUNK_SIZE);
+      const safeBase = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageKey = `${Date.now()}-${safeBase}`;
+
+      let completedChunks = 0;
+
+      // Upload chunks in small batches of 2 to avoid serverless timeouts and payload limits
+      for (let i = 0; i < totalChunks; i += 2) {
+        const batchIndices: number[] = [];
+        for (let j = i; j < Math.min(i + 2, totalChunks); j++) {
+          batchIndices.push(j);
         }
-      } catch (err) {
-        setUploadError('Unexpected server response during upload.');
+
+        await Promise.all(
+          batchIndices.map(async (chunkIndex) => {
+            const start = chunkIndex * CHUNK_SIZE;
+            const end = Math.min(start + CHUNK_SIZE, uint8.length);
+            const chunkSlice = uint8.subarray(start, end);
+
+            const chunkRes = await fetch(
+              `/api/admin/upload?phase=chunk&storageKey=${encodeURIComponent(storageKey)}&index=${chunkIndex}&totalChunks=${totalChunks}`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/octet-stream',
+                },
+                body: chunkSlice,
+              }
+            );
+
+            const chunkText = await chunkRes.text();
+            let chunkData: any = {};
+            try {
+              chunkData = chunkText ? JSON.parse(chunkText) : {};
+            } catch {
+              // Ignore
+            }
+
+            if (!chunkRes.ok || !chunkData.success) {
+              throw new Error(chunkData.error || `Failed to upload chunk ${chunkIndex + 1}/${totalChunks}`);
+            }
+
+            completedChunks += 1;
+            setUploadProgress(Math.min(95, Math.round((completedChunks / totalChunks) * 95)));
+          })
+        );
       }
-    };
 
-    xhr.onerror = () => {
+      // Finalize upload and create draft record
+      const finalizeRes = await fetch('/api/admin/upload?phase=finalize', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          storageKey,
+          fileName: selectedFile.name,
+          fileSize: uint8.length,
+          totalChunks,
+          sha256,
+        }),
+      });
+
+      const finalizeText = await finalizeRes.text();
+      let finalizeData: any = {};
+      try {
+        finalizeData = finalizeText ? JSON.parse(finalizeText) : {};
+      } catch {
+        throw new Error('Unexpected server response when finalizing APK upload.');
+      }
+
+      if (!finalizeRes.ok || !finalizeData.success) {
+        throw new Error(finalizeData.error || 'Failed to finalize APK upload.');
+      }
+
+      setUploadProgress(100);
+      setUploadedDraft(finalizeData.draft);
+
+      const match = selectedFile.name.match(/v?(\d+\.\d+(\.\d+)?)/i);
+      if (match && !versionName) {
+        setVersionName(match[0].startsWith('v') ? match[0] : `v${match[0]}`);
+      }
+      if (latestPublished && (!versionCode || versionCode <= latestPublished.versionCode)) {
+        setVersionCode(latestPublished.versionCode + 1);
+      } else if (!versionCode) {
+        setVersionCode(1);
+      }
+      fetchReleases();
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'APK upload failed.');
+    } finally {
       setUploading(false);
-      setUploadError('Network error occurred during APK upload.');
-    };
-
-    xhr.send(selectedFile);
+    }
   };
 
   const handlePublish = async (e: React.FormEvent) => {
@@ -317,6 +388,20 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
               </div>
             )}
           </div>
+
+          {latestPublished && latestPublished.binaryVerified === false && (
+            <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs sm:text-sm flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block text-amber-300 mb-0.5">
+                  Action Required: Re-upload APK Binary for {latestPublished.versionName}
+                </strong>
+                <span>
+                  The metadata for <code>{latestPublished.fileName}</code> exists in Firestore, but its APK binary was uploaded before persistent Firestore chunk storage was enabled. Please select and upload <code>{latestPublished.fileName}</code> below and click Publish to make the download live across all Vercel instances.
+                </span>
+              </div>
+            </div>
+          )}
 
           {publishMessage && (
             <div

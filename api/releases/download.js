@@ -1271,19 +1271,19 @@ var require_uri_parser = __commonJS({
       };
     }
     var NUMBER_REGEX = /^\d+$/;
-    function splitHostPort(path2) {
-      if (path2.startsWith("[")) {
-        const hostEnd = path2.indexOf("]");
+    function splitHostPort(path3) {
+      if (path3.startsWith("[")) {
+        const hostEnd = path3.indexOf("]");
         if (hostEnd === -1) {
           return null;
         }
-        const host = path2.substring(1, hostEnd);
+        const host = path3.substring(1, hostEnd);
         if (host.indexOf(":") === -1) {
           return null;
         }
-        if (path2.length > hostEnd + 1) {
-          if (path2[hostEnd + 1] === ":") {
-            const portString = path2.substring(hostEnd + 2);
+        if (path3.length > hostEnd + 1) {
+          if (path3[hostEnd + 1] === ":") {
+            const portString = path3.substring(hostEnd + 2);
             if (NUMBER_REGEX.test(portString)) {
               return {
                 host,
@@ -1301,7 +1301,7 @@ var require_uri_parser = __commonJS({
           };
         }
       } else {
-        const splitPath = path2.split(":");
+        const splitPath = path3.split(":");
         if (splitPath.length === 2) {
           if (NUMBER_REGEX.test(splitPath[1])) {
             return {
@@ -1313,7 +1313,7 @@ var require_uri_parser = __commonJS({
           }
         } else {
           return {
-            host: path2
+            host: path3
           };
         }
       }
@@ -2456,14 +2456,14 @@ var require_client_interceptors = __commonJS({
       }
     };
     exports.InterceptingCall = InterceptingCall;
-    function getCall(channel, path2, options2) {
+    function getCall(channel, path3, options2) {
       var _a2, _b;
       const deadline = (_a2 = options2.deadline) !== null && _a2 !== void 0 ? _a2 : Infinity;
       const host = options2.host;
       const parent2 = (_b = options2.parent) !== null && _b !== void 0 ? _b : null;
       const propagateFlags = options2.propagate_flags;
       const credentials2 = options2.credentials;
-      const call = channel.createCall(path2, deadline, host, parent2, propagateFlags);
+      const call = channel.createCall(path3, deadline, host, parent2, propagateFlags);
       if (credentials2) {
         call.setCredentials(credentials2);
       }
@@ -3028,9 +3028,9 @@ var require_make_client = __commonJS({
       ServiceClientImpl.serviceName = serviceName;
       return ServiceClientImpl;
     }
-    function partial(fn, path2, serialize, deserialize) {
+    function partial(fn, path3, serialize, deserialize) {
       return function(...args) {
-        return fn.call(this, path2, serialize, deserialize, ...args);
+        return fn.call(this, path3, serialize, deserialize, ...args);
       };
     }
     function isProtobufTypeDefinition(obj) {
@@ -5039,7 +5039,7 @@ var require_minimal = __commonJS({
     function isInteger(value) {
       return typeof value === "number" && isFinite(value) && Math.floor(value) === value;
     };
-    util.isString = function isString3(value) {
+    util.isString = function isString2(value) {
       return typeof value === "string" || value instanceof String;
     };
     util.isObject = function isObject2(value) {
@@ -5981,15 +5981,15 @@ var require_fetch = __commonJS({
 var require_path = __commonJS({
   "node_modules/@protobufjs/path/index.js"(exports) {
     "use strict";
-    var path2 = exports;
+    var path3 = exports;
     var isAbsolute = (
       /**
        * Tests if the specified path is absolute.
        * @param {string} path Path to test
        * @returns {boolean} `true` if path is absolute
        */
-      path2.isAbsolute = function isAbsolute2(path3) {
-        return /^(?:\/|\w+:)/.test(path3);
+      path3.isAbsolute = function isAbsolute2(path4) {
+        return /^(?:\/|\w+:)/.test(path4);
       }
     );
     var normalize = (
@@ -5998,9 +5998,9 @@ var require_path = __commonJS({
        * @param {string} path Path to normalize
        * @returns {string} Normalized path
        */
-      path2.normalize = function normalize2(path3) {
-        path3 = path3.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-        var parts = path3.split("/"), absolute = isAbsolute(path3), prefix = "";
+      path3.normalize = function normalize2(path4) {
+        path4 = path4.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+        var parts = path4.split("/"), absolute = isAbsolute(path4), prefix = "";
         if (absolute)
           prefix = parts.shift() + "/";
         for (var i = 0; i < parts.length; ) {
@@ -6019,7 +6019,7 @@ var require_path = __commonJS({
         return prefix + parts.join("/");
       }
     );
-    path2.resolve = function resolve(originPath, includePath, alreadyNormalized) {
+    path3.resolve = function resolve(originPath, includePath, alreadyNormalized) {
       if (!alreadyNormalized)
         includePath = normalize(includePath);
       if (isAbsolute(includePath))
@@ -6203,18 +6203,18 @@ var require_namespace = __commonJS({
       object.onRemove(this);
       return clearCache(this);
     };
-    Namespace.prototype.define = function define2(path2, json) {
-      if (util.isString(path2))
-        path2 = path2.split(".");
-      else if (!Array.isArray(path2))
+    Namespace.prototype.define = function define2(path3, json) {
+      if (util.isString(path3))
+        path3 = path3.split(".");
+      else if (!Array.isArray(path3))
         throw TypeError("illegal path");
-      if (path2 && path2.length && path2[0] === "")
+      if (path3 && path3.length && path3[0] === "")
         throw Error("path must be relative");
-      if (path2.length > util.recursionLimit)
+      if (path3.length > util.recursionLimit)
         throw Error("max depth exceeded");
       var ptr = this;
-      while (path2.length > 0) {
-        var part = path2.shift();
+      while (path3.length > 0) {
+        var part = path3.shift();
         if (ptr.nested && ptr.nested[part]) {
           ptr = ptr.nested[part];
           if (!(ptr instanceof Namespace))
@@ -6249,26 +6249,26 @@ var require_namespace = __commonJS({
       });
       return this;
     };
-    Namespace.prototype.lookup = function lookup(path2, filterTypes, parentAlreadyChecked) {
+    Namespace.prototype.lookup = function lookup(path3, filterTypes, parentAlreadyChecked) {
       if (typeof filterTypes === "boolean") {
         parentAlreadyChecked = filterTypes;
         filterTypes = void 0;
       } else if (filterTypes && !Array.isArray(filterTypes))
         filterTypes = [filterTypes];
-      if (util.isString(path2) && path2.length) {
-        if (path2 === ".")
+      if (util.isString(path3) && path3.length) {
+        if (path3 === ".")
           return this.root;
-        path2 = path2.split(".");
-      } else if (!path2.length)
+        path3 = path3.split(".");
+      } else if (!path3.length)
         return this;
-      var flatPath = path2.join(".");
-      if (path2[0] === "")
-        return this.root.lookup(path2.slice(1), filterTypes);
+      var flatPath = path3.join(".");
+      if (path3[0] === "")
+        return this.root.lookup(path3.slice(1), filterTypes);
       var found = this.root._fullyQualifiedObjects && this.root._fullyQualifiedObjects["." + flatPath];
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
-      found = this._lookupImpl(path2, flatPath);
+      found = this._lookupImpl(path3, flatPath);
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
@@ -6276,7 +6276,7 @@ var require_namespace = __commonJS({
         return null;
       var current = this;
       while (current.parent) {
-        found = current.parent._lookupImpl(path2, flatPath);
+        found = current.parent._lookupImpl(path3, flatPath);
         if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
           return found;
         }
@@ -6284,22 +6284,22 @@ var require_namespace = __commonJS({
       }
       return null;
     };
-    Namespace.prototype._lookupImpl = function lookup(path2, flatPath) {
+    Namespace.prototype._lookupImpl = function lookup(path3, flatPath) {
       if (Object.prototype.hasOwnProperty.call(this._lookupCache, flatPath)) {
         return this._lookupCache[flatPath];
       }
-      var found = this.get(path2[0]);
+      var found = this.get(path3[0]);
       var exact = null;
       if (found) {
-        if (path2.length === 1) {
+        if (path3.length === 1) {
           exact = found;
         } else if (found instanceof Namespace) {
-          path2 = path2.slice(1);
-          exact = found._lookupImpl(path2, path2.join("."));
+          path3 = path3.slice(1);
+          exact = found._lookupImpl(path3, path3.join("."));
         }
       } else {
         for (var i = 0; i < this.nestedArray.length; ++i)
-          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path2, flatPath))) {
+          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path3, flatPath))) {
             exact = found;
             break;
           }
@@ -6307,28 +6307,28 @@ var require_namespace = __commonJS({
       this._lookupCache[flatPath] = exact;
       return exact;
     };
-    Namespace.prototype.lookupType = function lookupType(path2) {
-      var found = this.lookup(path2, [Type]);
+    Namespace.prototype.lookupType = function lookupType(path3) {
+      var found = this.lookup(path3, [Type]);
       if (!found)
-        throw Error("no such type: " + path2);
+        throw Error("no such type: " + path3);
       return found;
     };
-    Namespace.prototype.lookupEnum = function lookupEnum(path2) {
-      var found = this.lookup(path2, [Enum]);
+    Namespace.prototype.lookupEnum = function lookupEnum(path3) {
+      var found = this.lookup(path3, [Enum]);
       if (!found)
-        throw Error("no such Enum '" + path2 + "' in " + this);
+        throw Error("no such Enum '" + path3 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path2) {
-      var found = this.lookup(path2, [Type, Enum]);
+    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path3) {
+      var found = this.lookup(path3, [Type, Enum]);
       if (!found)
-        throw Error("no such Type or Enum '" + path2 + "' in " + this);
+        throw Error("no such Type or Enum '" + path3 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupService = function lookupService(path2) {
-      var found = this.lookup(path2, [Service]);
+    Namespace.prototype.lookupService = function lookupService(path3) {
+      var found = this.lookup(path3, [Service]);
       if (!found)
-        throw Error("no such Service '" + path2 + "' in " + this);
+        throw Error("no such Service '" + path3 + "' in " + this);
       return found;
     };
     Namespace._configure = function(Type_, Service_, Enum_) {
@@ -7745,13 +7745,13 @@ var require_util = __commonJS({
       Object.defineProperty(object, "$type", { value: enm, enumerable: false });
       return enm;
     };
-    util.setProperty = function setProperty(dst, path2, value, ifNotSet) {
-      function setProp(dst2, path3, value2) {
-        var part = path3.shift();
+    util.setProperty = function setProperty(dst, path3, value, ifNotSet) {
+      function setProp(dst2, path4, value2) {
+        var part = path4.shift();
         if (util.isUnsafeProperty(part))
           return dst2;
-        if (path3.length > 0) {
-          dst2[part] = setProp(dst2[part] || {}, path3, value2);
+        if (path4.length > 0) {
+          dst2[part] = setProp(dst2[part] || {}, path4, value2);
         } else {
           var prevValue = dst2[part];
           if (prevValue && ifNotSet)
@@ -7764,12 +7764,12 @@ var require_util = __commonJS({
       }
       if (typeof dst !== "object")
         throw TypeError("dst must be an object");
-      if (!path2)
+      if (!path3)
         throw TypeError("path must be specified");
-      path2 = path2.split(".");
-      if (path2.length > util.recursionLimit)
+      path3 = path3.split(".");
+      if (path3.length > util.recursionLimit)
         throw Error("max depth exceeded");
-      return setProp(dst, path2, value);
+      return setProp(dst, path3, value);
     };
     Object.defineProperty(util, "decorateRoot", {
       get: function() {
@@ -8315,12 +8315,12 @@ var require_object = __commonJS({
        */
       fullName: {
         get: function() {
-          var path2 = [this.name], ptr = this.parent;
+          var path3 = [this.name], ptr = this.parent;
           while (ptr) {
-            path2.unshift(ptr.name);
+            path3.unshift(ptr.name);
             ptr = ptr.parent;
           }
-          return path2.join(".");
+          return path3.join(".");
         }
       }
     });
@@ -12358,16 +12358,16 @@ var require_util2 = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.addCommonProtos = exports.loadProtosWithOptionsSync = exports.loadProtosWithOptions = void 0;
     var fs2 = __require("fs");
-    var path2 = __require("path");
+    var path3 = __require("path");
     var Protobuf = require_protobufjs();
     function addIncludePathResolver(root, includePaths) {
       const originalResolvePath = root.resolvePath;
       root.resolvePath = (origin, target) => {
-        if (path2.isAbsolute(target)) {
+        if (path3.isAbsolute(target)) {
           return target;
         }
         for (const directory of includePaths) {
-          const fullPath = path2.join(directory, target);
+          const fullPath = path3.join(directory, target);
           try {
             fs2.accessSync(fullPath, fs2.constants.R_OK);
             return fullPath;
@@ -18250,11 +18250,11 @@ var require_server = __commonJS({
         }
         return true;
       }
-      _retrieveHandler(path2) {
-        this.trace("Received call to method " + path2 + " at address " + this.serverAddressString);
-        const handler2 = this.handlers.get(path2);
+      _retrieveHandler(path3) {
+        this.trace("Received call to method " + path3 + " at address " + this.serverAddressString);
+        const handler2 = this.handlers.get(path3);
         if (handler2 === void 0) {
-          this.trace("No handler registered for method " + path2 + ". Sending UNIMPLEMENTED status.");
+          this.trace("No handler registered for method " + path3 + ". Sending UNIMPLEMENTED status.");
           return null;
         }
         return handler2;
@@ -18281,10 +18281,10 @@ var require_server = __commonJS({
           channelzSessionInfo === null || channelzSessionInfo === void 0 ? void 0 : channelzSessionInfo.streamTracker.addCallFailed();
           return;
         }
-        const path2 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path2);
+        const path3 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path3);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path2), stream, channelzSessionInfo);
+          this._respondWithError(getUnimplementedStatusResponse(path3), stream, channelzSessionInfo);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -18327,10 +18327,10 @@ var require_server = __commonJS({
         if (this._verifyContentType(stream, headers) !== true) {
           return;
         }
-        const path2 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path2);
+        const path3 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path3);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path2), stream, null);
+          this._respondWithError(getUnimplementedStatusResponse(path3), stream, null);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -19224,13 +19224,13 @@ var require_resolver_uds = __commonJS({
         this.listener = listener;
         this.addresses = [];
         this.hasReturnedResult = false;
-        let path2;
+        let path3;
         if (target.authority === "") {
-          path2 = "/" + target.path;
+          path3 = "/" + target.path;
         } else {
-          path2 = target.path;
+          path3 = target.path;
         }
-        this.addresses = [{ path: path2 }];
+        this.addresses = [{ path: path3 }];
       }
       updateResolution() {
         if (!this.hasReturnedResult) {
@@ -19287,12 +19287,12 @@ var require_resolver_ip = __commonJS({
           return;
         }
         const pathList = target.path.split(",");
-        for (const path2 of pathList) {
-          const hostPort = (0, uri_parser_1.splitHostPort)(path2);
+        for (const path3 of pathList) {
+          const hostPort = (0, uri_parser_1.splitHostPort)(path3);
           if (hostPort === null) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path2}`,
+              details: `Failed to parse ${target.scheme} address ${path3}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19300,7 +19300,7 @@ var require_resolver_ip = __commonJS({
           if (target.scheme === IPV4_SCHEME && !(0, net_1.isIPv4)(hostPort.host) || target.scheme === IPV6_SCHEME && !(0, net_1.isIPv6)(hostPort.host)) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path2}`,
+              details: `Failed to parse ${target.scheme} address ${path3}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19958,6 +19958,9 @@ var require_src3 = __commonJS({
     })();
   }
 });
+
+// server/apiHandler.ts
+import path2 from "path";
 
 // server/storage.ts
 import crypto2 from "crypto";
@@ -29768,11 +29771,11 @@ var ResourcePath = class _ResourcePath extends BasePath {
    */
   static fromString(...pathComponents) {
     const segments = [];
-    for (const path2 of pathComponents) {
-      if (path2.indexOf("//") >= 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path2}). Paths must not contain // in them.`);
+    for (const path3 of pathComponents) {
+      if (path3.indexOf("//") >= 0) {
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path3}). Paths must not contain // in them.`);
       }
-      segments.push(...path2.split("/").filter((segment) => segment.length > 0));
+      segments.push(...path3.split("/").filter((segment) => segment.length > 0));
     }
     return new _ResourcePath(segments);
   }
@@ -29826,27 +29829,27 @@ var FieldPath$1 = class FieldPath extends BasePath {
    * TODO(b/37244157): we should make this more strict. Right now, it allows
    * non-identifier path components, even if they aren't escaped.
    */
-  static fromServerFormat(path2) {
+  static fromServerFormat(path3) {
     const segments = [];
     let current = "";
     let i = 0;
     const addCurrentSegment = () => {
       if (current.length === 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path2}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
       }
       segments.push(current);
       current = "";
     };
     let inBackticks = false;
-    while (i < path2.length) {
-      const c = path2[i];
+    while (i < path3.length) {
+      const c = path3[i];
       if (c === "\\") {
-        if (i + 1 === path2.length) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path2);
+        if (i + 1 === path3.length) {
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path3);
         }
-        const next = path2[i + 1];
+        const next = path3[i + 1];
         if (!(next === "\\" || next === "." || next === "`")) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path2);
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path3);
         }
         current += next;
         i += 2;
@@ -29863,7 +29866,7 @@ var FieldPath$1 = class FieldPath extends BasePath {
     }
     addCurrentSegment();
     if (inBackticks) {
-      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path2);
+      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path3);
     }
     return new FieldPath(segments);
   }
@@ -29945,11 +29948,11 @@ function isEmpty(obj) {
   return true;
 }
 var DocumentKey = class _DocumentKey {
-  constructor(path2) {
-    this.path = path2;
+  constructor(path3) {
+    this.path = path3;
   }
-  static fromPath(path2) {
-    return new _DocumentKey(ResourcePath.fromString(path2));
+  static fromPath(path3) {
+    return new _DocumentKey(ResourcePath.fromString(path3));
   }
   static fromName(name5) {
     return new _DocumentKey(ResourcePath.fromString(name5).popFirst(5));
@@ -29981,8 +29984,8 @@ var DocumentKey = class _DocumentKey {
   static comparator(k1, k2) {
     return ResourcePath.comparator(k1.path, k2.path);
   }
-  static isDocumentKey(path2) {
-    return path2.length % 2 === 0;
+  static isDocumentKey(path3) {
+    return path3.length % 2 === 0;
   }
   /**
    * Creates and returns a new document key with the given segments.
@@ -30004,14 +30007,14 @@ function validateIsNotUsedTogether(optionName1, argument1, optionName2, argument
     throw new FirestoreError(Code.INVALID_ARGUMENT, `${optionName1} and ${optionName2} cannot be used together.`);
   }
 }
-function validateDocumentPath(path2) {
-  if (!DocumentKey.isDocumentKey(path2)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path2} has ${path2.length}.`);
+function validateDocumentPath(path3) {
+  if (!DocumentKey.isDocumentKey(path3)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path3} has ${path3.length}.`);
   }
 }
-function validateCollectionPath(path2) {
-  if (DocumentKey.isDocumentKey(path2)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path2} has ${path2.length}.`);
+function validateCollectionPath(path3) {
+  if (DocumentKey.isDocumentKey(path3)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path3} has ${path3.length}.`);
   }
 }
 function isPlainObject(input) {
@@ -32420,18 +32423,18 @@ var ObjectValue = class _ObjectValue {
    * @param path - the path to search
    * @returns The value at the path or null if the path is not set.
    */
-  field(path2) {
-    if (path2.isEmpty()) {
+  field(path3) {
+    if (path3.isEmpty()) {
       return this.value;
     } else {
       let currentLevel = this.value;
-      for (let i = 0; i < path2.length - 1; ++i) {
-        currentLevel = (currentLevel.mapValue.fields || {})[path2.get(i)];
+      for (let i = 0; i < path3.length - 1; ++i) {
+        currentLevel = (currentLevel.mapValue.fields || {})[path3.get(i)];
         if (!isMapValue(currentLevel)) {
           return null;
         }
       }
-      currentLevel = (currentLevel.mapValue.fields || {})[path2.lastSegment()];
+      currentLevel = (currentLevel.mapValue.fields || {})[path3.lastSegment()];
       return currentLevel || null;
     }
   }
@@ -32441,9 +32444,9 @@ var ObjectValue = class _ObjectValue {
    * @param path - The field path to set.
    * @param value - The value to set.
    */
-  set(path2, value) {
-    const fieldsMap = this.getFieldsMap(path2.popLast());
-    fieldsMap[path2.lastSegment()] = deepClone(value);
+  set(path3, value) {
+    const fieldsMap = this.getFieldsMap(path3.popLast());
+    fieldsMap[path3.lastSegment()] = deepClone(value);
   }
   /**
    * Sets the provided fields to the provided values.
@@ -32454,18 +32457,18 @@ var ObjectValue = class _ObjectValue {
     let parent2 = FieldPath$1.emptyPath();
     let upserts = {};
     let deletes = [];
-    data.forEach((value, path2) => {
-      if (!parent2.isImmediateParentOf(path2)) {
+    data.forEach((value, path3) => {
+      if (!parent2.isImmediateParentOf(path3)) {
         const fieldsMap2 = this.getFieldsMap(parent2);
         this.applyChanges(fieldsMap2, upserts, deletes);
         upserts = {};
         deletes = [];
-        parent2 = path2.popLast();
+        parent2 = path3.popLast();
       }
       if (value) {
-        upserts[path2.lastSegment()] = deepClone(value);
+        upserts[path3.lastSegment()] = deepClone(value);
       } else {
-        deletes.push(path2.lastSegment());
+        deletes.push(path3.lastSegment());
       }
     });
     const fieldsMap = this.getFieldsMap(parent2);
@@ -32477,10 +32480,10 @@ var ObjectValue = class _ObjectValue {
    *
    * @param path - The field path to remove.
    */
-  delete(path2) {
-    const nestedValue = this.field(path2.popLast());
+  delete(path3) {
+    const nestedValue = this.field(path3.popLast());
     if (isMapValue(nestedValue) && nestedValue.mapValue.fields) {
-      delete nestedValue.mapValue.fields[path2.lastSegment()];
+      delete nestedValue.mapValue.fields[path3.lastSegment()];
     }
   }
   isEqual(other) {
@@ -32490,16 +32493,16 @@ var ObjectValue = class _ObjectValue {
    * Returns the map that contains the leaf element of `path`. If the parent
    * entry does not yet exist, or if it is not a map, a new map will be created.
    */
-  getFieldsMap(path2) {
+  getFieldsMap(path3) {
     let current = this.value;
     if (!current.mapValue.fields) {
       current.mapValue = { fields: {} };
     }
-    for (let i = 0; i < path2.length; ++i) {
-      let next = current.mapValue.fields[path2.get(i)];
+    for (let i = 0; i < path3.length; ++i) {
+      let next = current.mapValue.fields[path3.get(i)];
       if (!isMapValue(next) || !next.mapValue.fields) {
         next = { mapValue: { fields: {} } };
-        current.mapValue.fields[path2.get(i)] = next;
+        current.mapValue.fields[path3.get(i)] = next;
       }
       current = next;
     }
@@ -32797,19 +32800,19 @@ function calculateOverlayMutation(doc3, mask) {
     const docValue = doc3.data;
     const patchValue = ObjectValue.empty();
     let maskSet = new SortedSet(FieldPath$1.comparator);
-    for (let path2 of mask.fields) {
-      if (!maskSet.has(path2)) {
-        let value = docValue.field(path2);
-        if (value === null && path2.length > 1) {
-          path2 = path2.popLast();
-          value = docValue.field(path2);
+    for (let path3 of mask.fields) {
+      if (!maskSet.has(path3)) {
+        let value = docValue.field(path3);
+        if (value === null && path3.length > 1) {
+          path3 = path3.popLast();
+          value = docValue.field(path3);
         }
         if (value === null) {
-          patchValue.delete(path2);
+          patchValue.delete(path3);
         } else {
-          patchValue.set(path2, value);
+          patchValue.set(path3, value);
         }
-        maskSet = maskSet.add(path2);
+        maskSet = maskSet.add(path3);
       }
     }
     return new PatchMutation(doc3.key, patchValue, new FieldMask(maskSet.toArray()), Precondition.none());
@@ -33566,8 +33569,8 @@ function indexOffsetComparator(left, right) {
   return primitiveComparator(left.largestBatchId, right.largestBatchId);
 }
 var TargetImpl = class {
-  constructor(path2, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-    this.path = path2;
+  constructor(path3, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
+    this.path = path3;
     this.collectionGroup = collectionGroup2;
     this.orderBy = orderBy;
     this.filters = filters;
@@ -33577,8 +33580,8 @@ var TargetImpl = class {
     this.memoizedCanonicalId = null;
   }
 };
-function newTarget(path2, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-  return new TargetImpl(path2, collectionGroup2, orderBy, filters, limit, startAt, endAt);
+function newTarget(path3, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
+  return new TargetImpl(path3, collectionGroup2, orderBy, filters, limit, startAt, endAt);
 }
 function canonifyTarget(target) {
   const targetImpl = debugCast(target);
@@ -33677,8 +33680,8 @@ var QueryImpl = class {
    * Initializes a Query with a path and optional additional query constraints.
    * Path must currently be empty if this is a collection group query.
    */
-  constructor(path2, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit = null, limitType = "F", startAt = null, endAt = null) {
-    this.path = path2;
+  constructor(path3, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit = null, limitType = "F", startAt = null, endAt = null) {
+    this.path = path3;
     this.collectionGroup = collectionGroup2;
     this.explicitOrderBy = explicitOrderBy;
     this.filters = filters;
@@ -33693,15 +33696,15 @@ var QueryImpl = class {
     if (this.endAt) ;
   }
 };
-function newQuery(path2, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt) {
-  return new QueryImpl(path2, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt);
+function newQuery(path3, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt) {
+  return new QueryImpl(path3, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt);
 }
-function newQueryForPath(path2) {
-  return new QueryImpl(path2);
+function newQueryForPath(path3) {
+  return new QueryImpl(path3);
 }
-function asCollectionQueryAtPath(query, path2) {
+function asCollectionQueryAtPath(query, path3) {
   return new QueryImpl(
-    path2,
+    path3,
     /*collectionGroup=*/
     null,
     query.explicitOrderBy.slice(),
@@ -34564,8 +34567,8 @@ var WatchChangeAggregator = class {
       const targetData = this.targetDataForActiveTarget(targetId);
       if (targetData) {
         if (targetState.current && this.isSingleDocumentTarget(targetData.target)) {
-          const path2 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
-          const key = new DocumentKey(path2);
+          const path3 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
+          const key = new DocumentKey(path3);
           if (!this.ensureDocumentUpdateByTarget(key).has(targetId) && !this.targetContainsDocument(targetId, key)) {
             this.removeDocumentFromTarget(targetId, key, MutableDocument.newNoDocument(key, snapshotVersion));
           }
@@ -34912,12 +34915,12 @@ function fromVersion(version6) {
   hardAssert(!!version6, 49232);
   return SnapshotVersion.fromTimestamp(fromTimestamp(version6));
 }
-function toResourceName(databaseId, path2) {
-  return toResourcePath(databaseId, path2).canonicalString();
+function toResourceName(databaseId, path3) {
+  return toResourcePath(databaseId, path3).canonicalString();
 }
-function toResourcePath(databaseId, path2) {
+function toResourcePath(databaseId, path3) {
   const resourcePath = fullyQualifiedPrefixPath(databaseId).child("documents");
-  return path2 === void 0 ? resourcePath : resourcePath.child(path2);
+  return path3 === void 0 ? resourcePath : resourcePath.child(path3);
 }
 function fromResourceName(name5) {
   const resource = ResourcePath.fromString(name5);
@@ -34937,8 +34940,8 @@ function fromName(serializer, name5) {
   }
   return new DocumentKey(extractLocalPathFromResourceName(resource));
 }
-function toQueryPath(serializer, path2) {
-  return toResourceName(serializer.databaseId, path2);
+function toQueryPath(serializer, path3) {
+  return toResourceName(serializer.databaseId, path3);
 }
 function fromQueryPath(name5) {
   const resourceName = fromResourceName(name5);
@@ -34948,13 +34951,13 @@ function fromQueryPath(name5) {
   return extractLocalPathFromResourceName(resourceName);
 }
 function getEncodedDatabaseId(serializer) {
-  const path2 = new ResourcePath([
+  const path3 = new ResourcePath([
     "projects",
     serializer.databaseId.projectId,
     "databases",
     serializer.databaseId.database
   ]);
-  return path2.canonicalString();
+  return path3.canonicalString();
 }
 function fullyQualifiedPrefixPath(databaseId) {
   return new ResourcePath([
@@ -35160,10 +35163,10 @@ function toDocumentsTarget(serializer, target) {
 }
 function toQueryTarget(serializer, target) {
   const queryTarget = { structuredQuery: {} };
-  const path2 = target.path;
+  const path3 = target.path;
   let parent2;
   if (target.collectionGroup !== null) {
-    parent2 = path2;
+    parent2 = path3;
     queryTarget.structuredQuery.from = [
       {
         collectionId: target.collectionGroup,
@@ -35171,8 +35174,8 @@ function toQueryTarget(serializer, target) {
       }
     ];
   } else {
-    parent2 = path2.popLast();
-    queryTarget.structuredQuery.from = [{ collectionId: path2.lastSegment() }];
+    parent2 = path3.popLast();
+    queryTarget.structuredQuery.from = [{ collectionId: path3.lastSegment() }];
   }
   queryTarget.parent = toQueryPath(serializer, parent2);
   const where = toFilters(target.filters);
@@ -35196,7 +35199,7 @@ function toQueryTarget(serializer, target) {
   return { queryTarget, parent: parent2 };
 }
 function convertQueryTargetToQuery(target) {
-  let path2 = fromQueryPath(target.parent);
+  let path3 = fromQueryPath(target.parent);
   const query = target.structuredQuery;
   const fromCount = query.from ? query.from.length : 0;
   let collectionGroup2 = null;
@@ -35206,7 +35209,7 @@ function convertQueryTargetToQuery(target) {
     if (from.allDescendants) {
       collectionGroup2 = from.collectionId;
     } else {
-      path2 = path2.child(from.collectionId);
+      path3 = path3.child(from.collectionId);
     }
   }
   let filterBy = [];
@@ -35229,7 +35232,7 @@ function convertQueryTargetToQuery(target) {
   if (query.endAt) {
     endAt = fromEndAtCursor(query.endAt);
   }
-  return newQuery(path2, collectionGroup2, orderBy, filterBy, limit, "F", startAt, endAt);
+  return newQuery(path3, collectionGroup2, orderBy, filterBy, limit, "F", startAt, endAt);
 }
 function toListenRequestLabels(serializer, targetData) {
   const value = toLabel(targetData.purpose);
@@ -35408,8 +35411,8 @@ function fromCompositeOperatorName(op) {
       return fail(1026);
   }
 }
-function toFieldPathReference(path2) {
-  return { fieldPath: path2.canonicalString() };
+function toFieldPathReference(path3) {
+  return { fieldPath: path3.canonicalString() };
 }
 function fromFieldPathReference(fieldReference) {
   return FieldPath$1.fromServerFormat(fieldReference.fieldPath);
@@ -35527,8 +35530,8 @@ function toDocumentMask(fieldMask) {
     fieldPaths: canonicalFields
   };
 }
-function isValidResourceName(path2) {
-  return path2.length >= 4 && path2.get(0) === "projects" && path2.get(2) === "databases";
+function isValidResourceName(path3) {
+  return path3.length >= 4 && path3.get(0) === "projects" && path3.get(2) === "databases";
 }
 function isProtoValueSerializable(value) {
   return !!value && typeof value._toProto === "function" && value._protoValueType === "ProtoValue";
@@ -36322,7 +36325,7 @@ var GrpcConnection = class {
     }
     return this.cachedStub;
   }
-  invokeRPC(rpcName, path2, request, authToken, appCheckToken) {
+  invokeRPC(rpcName, path3, request, authToken, appCheckToken) {
     const streamId = generateUniqueDebugId();
     const stub = this.ensureActiveStub();
     const metadata = createMetadata(this.databasePath, authToken, appCheckToken, this.databaseInfo.appId, this.databaseInfo.apiKey, this.databaseInfo._customHeaders);
@@ -36340,7 +36343,7 @@ var GrpcConnection = class {
       });
     });
   }
-  invokeStreamingRPC(rpcName, path2, request, authToken, appCheckToken, expectedResponseCount) {
+  invokeStreamingRPC(rpcName, path3, request, authToken, appCheckToken, expectedResponseCount) {
     const streamId = generateUniqueDebugId();
     const results = [];
     const responseDeferred = new Deferred2();
@@ -42262,11 +42265,11 @@ var CollectionReference = class _CollectionReference extends Query {
     return new _CollectionReference(this.firestore, converter, this._path);
   }
 };
-function collection(parent2, path2, ...pathSegments) {
+function collection(parent2, path3, ...pathSegments) {
   parent2 = getModularInstance(parent2);
-  validateNonEmptyArgument("collection", "path", path2);
+  validateNonEmptyArgument("collection", "path", path3);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path2, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2,
@@ -42278,7 +42281,7 @@ function collection(parent2, path2, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path2, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2.firestore,
@@ -42288,14 +42291,14 @@ function collection(parent2, path2, ...pathSegments) {
     );
   }
 }
-function doc(parent2, path2, ...pathSegments) {
+function doc(parent2, path3, ...pathSegments) {
   parent2 = getModularInstance(parent2);
   if (arguments.length === 1) {
-    path2 = AutoId.newId();
+    path3 = AutoId.newId();
   }
-  validateNonEmptyArgument("doc", "path", path2);
+  validateNonEmptyArgument("doc", "path", path3);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path2, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
     validateDocumentPath(absolutePath);
     return new DocumentReference(
       parent2,
@@ -42307,7 +42310,7 @@ function doc(parent2, path2, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to doc() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path2, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
     validateDocumentPath(absolutePath);
     return new DocumentReference(parent2.firestore, parent2 instanceof CollectionReference ? parent2.converter : null, new DocumentKey(absolutePath));
   }
@@ -42834,12 +42837,12 @@ function validatePlainObject(message, context, input) {
     }
   }
 }
-function fieldPathFromArgument(methodName, path2, targetDoc) {
-  path2 = getModularInstance(path2);
-  if (path2 instanceof FieldPath2) {
-    return path2._internalPath;
-  } else if (typeof path2 === "string") {
-    return fieldPathFromDotSeparatedString(methodName, path2);
+function fieldPathFromArgument(methodName, path3, targetDoc) {
+  path3 = getModularInstance(path3);
+  if (path3 instanceof FieldPath2) {
+    return path3._internalPath;
+  } else if (typeof path3 === "string") {
+    return fieldPathFromDotSeparatedString(methodName, path3);
   } else {
     const message = "Field path arguments must be of type string or ";
     throw createError(
@@ -42854,11 +42857,11 @@ function fieldPathFromArgument(methodName, path2, targetDoc) {
   }
 }
 var FIELD_PATH_RESERVED = new RegExp("[~\\*/\\[\\]]");
-function fieldPathFromDotSeparatedString(methodName, path2, targetDoc) {
-  const found = path2.search(FIELD_PATH_RESERVED);
+function fieldPathFromDotSeparatedString(methodName, path3, targetDoc) {
+  const found = path3.search(FIELD_PATH_RESERVED);
   if (found >= 0) {
     throw createError(
-      `Invalid field path (${path2}). Paths must not contain '~', '*', '/', '[', or ']'`,
+      `Invalid field path (${path3}). Paths must not contain '~', '*', '/', '[', or ']'`,
       methodName,
       /* hasConverter= */
       false,
@@ -42868,10 +42871,10 @@ function fieldPathFromDotSeparatedString(methodName, path2, targetDoc) {
     );
   }
   try {
-    return new FieldPath2(...path2.split("."))._internalPath;
+    return new FieldPath2(...path3.split("."))._internalPath;
   } catch (e) {
     throw createError(
-      `Invalid field path (${path2}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
+      `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
       methodName,
       /* hasConverter= */
       false,
@@ -42881,8 +42884,8 @@ function fieldPathFromDotSeparatedString(methodName, path2, targetDoc) {
     );
   }
 }
-function createError(reason, methodName, hasConverter, path2, targetDoc) {
-  const hasPath = path2 && !path2.isEmpty();
+function createError(reason, methodName, hasConverter, path3, targetDoc) {
+  const hasPath = path3 && !path3.isEmpty();
   const hasDocument = targetDoc !== void 0;
   let message = `Function ${methodName}() called with invalid data`;
   if (hasConverter) {
@@ -42893,7 +42896,7 @@ function createError(reason, methodName, hasConverter, path2, targetDoc) {
   if (hasPath || hasDocument) {
     description += " (found";
     if (hasPath) {
-      description += ` in field ${path2}`;
+      description += ` in field ${path3}`;
     }
     if (hasDocument) {
       description += ` in document ${targetDoc}`;
@@ -45172,7 +45175,7 @@ var DocumentsSource = class extends Stage {
     if (!docPaths || docPaths.length === 0) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Empty document paths are not allowed in DocumentsSource");
     }
-    const paths = docPaths.map((path2) => path2.startsWith("/") ? path2 : "/" + path2);
+    const paths = docPaths.map((path3) => path3.startsWith("/") ? path3 : "/" + path3);
     const uniqueDocPaths = new Set(paths);
     if (uniqueDocPaths.size !== paths.length) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Duplicate document paths are not allowed in DocumentsSource");
@@ -47602,10 +47605,10 @@ function canonifyPipeline(p) {
 function pipelineEq(left, right) {
   return canonifyPipeline(left) === canonifyPipeline(right);
 }
-function asCollectionPipelineAtPath(pipeline, path2) {
+function asCollectionPipelineAtPath(pipeline, path3) {
   const newStages = pipeline.stages.map((s) => {
     if (s instanceof CollectionGroupSource) {
-      return new CollectionSource(path2.canonicalString(), {});
+      return new CollectionSource(path3.canonicalString(), {});
     }
     return s;
   });
@@ -47868,13 +47871,13 @@ var escapeChar = "";
 var encodedSeparatorChar = "";
 var encodedNul = "";
 var encodedEscape = "";
-function encodeResourcePath(path2) {
+function encodeResourcePath(path3) {
   let result = "";
-  for (let i = 0; i < path2.length; i++) {
+  for (let i = 0; i < path3.length; i++) {
     if (result.length > 0) {
       result = encodeSeparator(result);
     }
-    result = encodeSegment(path2.get(i), result);
+    result = encodeSegment(path3.get(i), result);
   }
   return encodeSeparator(result);
 }
@@ -48228,8 +48231,8 @@ var FirestoreIndexValueWriter = class {
   writeIndexEntityRef(referenceValue, encoder2) {
     this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE);
     const segments = referenceValue.split("/").filter((segment) => segment.length > 0);
-    const path2 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
-    path2.forEach((segment) => {
+    const path3 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
+    path3.forEach((segment) => {
       this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE_SEGMENT);
       this.writeUnlabeledIndexString(segment, encoder2);
     });
@@ -49648,8 +49651,8 @@ var MemoryEagerDelegate = class _MemoryEagerDelegate {
   onTransactionCommitted(txn) {
     const cache = this.persistence.getRemoteDocumentCache();
     const changeBuffer = cache.newChangeBuffer();
-    return PersistencePromise.forEach(this.orphanedDocuments, (path2) => {
-      const key = DocumentKey.fromPath(path2);
+    return PersistencePromise.forEach(this.orphanedDocuments, (path3) => {
+      const key = DocumentKey.fromPath(path3);
       return this.isReferenced(txn, key).next((isReferenced) => {
         if (!isReferenced) {
           changeBuffer.removeEntry(key, SnapshotVersion.min());
@@ -53563,9 +53566,9 @@ var BundleBuilder = class {
     return bundleString;
   }
 };
-function buildDocumentSnapshotJsonBundle(db, document2, docData, path2) {
+function buildDocumentSnapshotJsonBundle(db, document2, docData, path3) {
   const builder = new BundleBuilder(db, AutoId.newId());
-  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path2, docData, document2));
+  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path3, docData, document2));
   return builder.build();
 }
 function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, docs, documentData) {
@@ -53583,11 +53586,11 @@ function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, doc
   builder.addBundleQuery(bundleData);
   return builder.build();
 }
-function documentToDocumentSnapshotBundleData(path2, documentData, document2) {
+function documentToDocumentSnapshotBundleData(path3, documentData, document2) {
   return {
     documentData,
     documentKey: document2.mutableCopy().key,
-    documentPath: path2,
+    documentPath: path3,
     documentExists: true,
     createdTime: document2.createTime.toTimestamp(),
     readTime: document2.readTime.toTimestamp(),
@@ -54000,8 +54003,8 @@ function unknown() {
   const message = "An unknown error occurred, please check the error payload for server response.";
   return new StorageError(StorageErrorCode.UNKNOWN, message);
 }
-function objectNotFound(path2) {
-  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path2 + "' does not exist.");
+function objectNotFound(path3) {
+  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path3 + "' does not exist.");
 }
 function quotaExceeded(bucket) {
   return new StorageError(StorageErrorCode.QUOTA_EXCEEDED, "Quota for bucket '" + bucket + "' exceeded, please view quota on https://firebase.google.com/pricing/.");
@@ -54013,8 +54016,8 @@ function unauthenticated() {
 function unauthorizedApp() {
   return new StorageError(StorageErrorCode.UNAUTHORIZED_APP, "This app does not have permission to access Firebase Storage on this project.");
 }
-function unauthorized(path2) {
-  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path2 + "'.");
+function unauthorized(path3) {
+  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path3 + "'.");
 }
 function retryLimitExceeded() {
   return new StorageError(StorageErrorCode.RETRY_LIMIT_EXCEEDED, "Max retry time for operation exceeded, please try again.");
@@ -54031,9 +54034,6 @@ function invalidDefaultBucket(bucket) {
 function noDefaultBucket() {
   return new StorageError(StorageErrorCode.NO_DEFAULT_BUCKET, "No default bucket found. Did you set the '" + CONFIG_STORAGE_BUCKET_KEY + "' property when initializing the app?");
 }
-function cannotSliceBlob() {
-  return new StorageError(StorageErrorCode.CANNOT_SLICE_BLOB, "Cannot slice blob for upload. Please retry the upload.");
-}
 function invalidArgument(message) {
   return new StorageError(StorageErrorCode.INVALID_ARGUMENT, message);
 }
@@ -54043,16 +54043,13 @@ function appDeleted() {
 function invalidRootOperation(name5) {
   return new StorageError(StorageErrorCode.INVALID_ROOT_OPERATION, "The operation '" + name5 + "' cannot be performed on a root reference, create a non-root reference using child, such as .child('file.png').");
 }
-function invalidFormat(format, message) {
-  return new StorageError(StorageErrorCode.INVALID_FORMAT, "String does not match format '" + format + "': " + message);
-}
 function internalError(message) {
   throw new StorageError(StorageErrorCode.INTERNAL_ERROR, "Internal error: " + message);
 }
 var Location = class _Location {
-  constructor(bucket, path2) {
+  constructor(bucket, path3) {
     this.bucket = bucket;
-    this.path_ = path2;
+    this.path_ = path3;
   }
   get path() {
     return this.path_;
@@ -54238,18 +54235,6 @@ function stop(id) {
 }
 function isJustDef(p) {
   return p !== void 0;
-}
-function isNonArrayObject(p) {
-  return typeof p === "object" && !Array.isArray(p);
-}
-function isString2(p) {
-  return typeof p === "string" || p instanceof String;
-}
-function isNativeBlob(p) {
-  return isNativeBlobDefined() && p instanceof Blob;
-}
-function isNativeBlobDefined() {
-  return typeof Blob !== "undefined";
 }
 function validateNumber(argument, minValue, maxValue, value) {
   if (value < minValue) {
@@ -54450,429 +54435,32 @@ function makeRequest(requestInfo, appId, authToken, appCheckToken, requestFactor
   addAppCheckHeader_(headers, appCheckToken);
   return new NetworkRequest(url, requestInfo.method, headers, requestInfo.body, requestInfo.successCodes, requestInfo.additionalRetryCodes, requestInfo.handler, requestInfo.errorHandler, requestInfo.timeout, requestInfo.progressCallback, requestFactory, retry, isUsingEmulator);
 }
-function getBlobBuilder() {
-  if (typeof BlobBuilder !== "undefined") {
-    return BlobBuilder;
-  } else if (typeof WebKitBlobBuilder !== "undefined") {
-    return WebKitBlobBuilder;
-  } else {
-    return void 0;
-  }
-}
-function getBlob$1(...args) {
-  const BlobBuilder2 = getBlobBuilder();
-  if (BlobBuilder2 !== void 0) {
-    const bb = new BlobBuilder2();
-    for (let i = 0; i < args.length; i++) {
-      bb.append(args[i]);
-    }
-    return bb.getBlob();
-  } else {
-    if (isNativeBlobDefined()) {
-      return new Blob(args);
-    } else {
-      throw new StorageError(StorageErrorCode.UNSUPPORTED_ENVIRONMENT, "This browser doesn't seem to support creating Blobs");
-    }
-  }
-}
-function sliceBlob(blob, start2, end) {
-  if (blob.webkitSlice) {
-    return blob.webkitSlice(start2, end);
-  } else if (blob.mozSlice) {
-    return blob.mozSlice(start2, end);
-  } else if (blob.slice) {
-    return blob.slice(start2, end);
-  }
-  return null;
-}
-function decodeBase642(encoded) {
-  if (/[^-A-Za-z0-9+/=]/.test(encoded)) {
-    throw invalidFormat("base64", "Invalid character found");
-  }
-  return Buffer.from(encoded, "base64").toString("binary");
-}
-var StringFormat = {
-  /**
-   * Indicates the string should be interpreted "raw", that is, as normal text.
-   * The string will be interpreted as UTF-16, then uploaded as a UTF-8 byte
-   * sequence.
-   * Example: The string 'Hello! \\ud83d\\ude0a' becomes the byte sequence
-   * 48 65 6c 6c 6f 21 20 f0 9f 98 8a
-   */
-  RAW: "raw",
-  /**
-   * Indicates the string should be interpreted as base64-encoded data.
-   * Padding characters (trailing '='s) are optional.
-   * Example: The string 'rWmO++E6t7/rlw==' becomes the byte sequence
-   * ad 69 8e fb e1 3a b7 bf eb 97
-   */
-  BASE64: "base64",
-  /**
-   * Indicates the string should be interpreted as base64url-encoded data.
-   * Padding characters (trailing '='s) are optional.
-   * Example: The string 'rWmO--E6t7_rlw==' becomes the byte sequence
-   * ad 69 8e fb e1 3a b7 bf eb 97
-   */
-  BASE64URL: "base64url",
-  /**
-   * Indicates the string is a data URL, such as one obtained from
-   * canvas.toDataURL().
-   * Example: the string 'data:application/octet-stream;base64,aaaa'
-   * becomes the byte sequence
-   * 69 a6 9a
-   * (the content-type "application/octet-stream" is also applied, but can
-   * be overridden in the metadata object).
-   */
-  DATA_URL: "data_url"
-};
-var StringData = class {
-  constructor(data, contentType) {
-    this.data = data;
-    this.contentType = contentType || null;
-  }
-};
-function dataFromString(format, stringData) {
-  switch (format) {
-    case StringFormat.RAW:
-      return new StringData(utf8Bytes_(stringData));
-    case StringFormat.BASE64:
-    case StringFormat.BASE64URL:
-      return new StringData(base64Bytes_(format, stringData));
-    case StringFormat.DATA_URL:
-      return new StringData(dataURLBytes_(stringData), dataURLContentType_(stringData));
-  }
-  throw unknown();
-}
-function utf8Bytes_(value) {
-  const b = [];
-  for (let i = 0; i < value.length; i++) {
-    let c = value.charCodeAt(i);
-    if (c <= 127) {
-      b.push(c);
-    } else {
-      if (c <= 2047) {
-        b.push(192 | c >> 6, 128 | c & 63);
-      } else {
-        if ((c & 64512) === 55296) {
-          const valid = i < value.length - 1 && (value.charCodeAt(i + 1) & 64512) === 56320;
-          if (!valid) {
-            b.push(239, 191, 189);
-          } else {
-            const hi = c;
-            const lo = value.charCodeAt(++i);
-            c = 65536 | (hi & 1023) << 10 | lo & 1023;
-            b.push(240 | c >> 18, 128 | c >> 12 & 63, 128 | c >> 6 & 63, 128 | c & 63);
-          }
-        } else {
-          if ((c & 64512) === 56320) {
-            b.push(239, 191, 189);
-          } else {
-            b.push(224 | c >> 12, 128 | c >> 6 & 63, 128 | c & 63);
-          }
-        }
-      }
-    }
-  }
-  return new Uint8Array(b);
-}
-function percentEncodedBytes_(value) {
-  let decoded;
-  try {
-    decoded = decodeURIComponent(value);
-  } catch (e) {
-    throw invalidFormat(StringFormat.DATA_URL, "Malformed data URL.");
-  }
-  return utf8Bytes_(decoded);
-}
-function base64Bytes_(format, value) {
-  switch (format) {
-    case StringFormat.BASE64: {
-      const hasMinus = value.indexOf("-") !== -1;
-      const hasUnder = value.indexOf("_") !== -1;
-      if (hasMinus || hasUnder) {
-        const invalidChar = hasMinus ? "-" : "_";
-        throw invalidFormat(format, "Invalid character '" + invalidChar + "' found: is it base64url encoded?");
-      }
-      break;
-    }
-    case StringFormat.BASE64URL: {
-      const hasPlus = value.indexOf("+") !== -1;
-      const hasSlash = value.indexOf("/") !== -1;
-      if (hasPlus || hasSlash) {
-        const invalidChar = hasPlus ? "+" : "/";
-        throw invalidFormat(format, "Invalid character '" + invalidChar + "' found: is it base64 encoded?");
-      }
-      value = value.replace(/-/g, "+").replace(/_/g, "/");
-      break;
-    }
-  }
-  let bytes;
-  try {
-    bytes = decodeBase642(value);
-  } catch (e) {
-    if (e.message.includes("polyfill")) {
-      throw e;
-    }
-    throw invalidFormat(format, "Invalid character found");
-  }
-  const array2 = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) {
-    array2[i] = bytes.charCodeAt(i);
-  }
-  return array2;
-}
-var DataURLParts = class {
-  constructor(dataURL) {
-    this.base64 = false;
-    this.contentType = null;
-    const matches = dataURL.match(/^data:([^,]+)?,/);
-    if (matches === null) {
-      throw invalidFormat(StringFormat.DATA_URL, "Must be formatted 'data:[<mediatype>][;base64],<data>");
-    }
-    const middle = matches[1] || null;
-    if (middle != null) {
-      this.base64 = endsWith(middle, ";base64");
-      this.contentType = this.base64 ? middle.substring(0, middle.length - ";base64".length) : middle;
-    }
-    this.rest = dataURL.substring(dataURL.indexOf(",") + 1);
-  }
-};
-function dataURLBytes_(dataUrl) {
-  const parts = new DataURLParts(dataUrl);
-  if (parts.base64) {
-    return base64Bytes_(StringFormat.BASE64, parts.rest);
-  } else {
-    return percentEncodedBytes_(parts.rest);
-  }
-}
-function dataURLContentType_(dataUrl) {
-  const parts = new DataURLParts(dataUrl);
-  return parts.contentType;
-}
-function endsWith(s, end) {
-  const longEnough = s.length >= end.length;
-  if (!longEnough) {
-    return false;
-  }
-  return s.substring(s.length - end.length) === end;
-}
-var FbsBlob = class _FbsBlob {
-  constructor(data, elideCopy) {
-    let size = 0;
-    let blobType = "";
-    if (isNativeBlob(data)) {
-      this.data_ = data;
-      size = data.size;
-      blobType = data.type;
-    } else if (data instanceof ArrayBuffer) {
-      if (elideCopy) {
-        this.data_ = new Uint8Array(data);
-      } else {
-        this.data_ = new Uint8Array(data.byteLength);
-        this.data_.set(new Uint8Array(data));
-      }
-      size = this.data_.length;
-    } else if (data instanceof Uint8Array) {
-      if (elideCopy) {
-        this.data_ = data;
-      } else {
-        this.data_ = new Uint8Array(data.length);
-        this.data_.set(data);
-      }
-      size = data.length;
-    }
-    this.size_ = size;
-    this.type_ = blobType;
-  }
-  size() {
-    return this.size_;
-  }
-  type() {
-    return this.type_;
-  }
-  slice(startByte, endByte) {
-    if (isNativeBlob(this.data_)) {
-      const realBlob = this.data_;
-      const sliced = sliceBlob(realBlob, startByte, endByte);
-      if (sliced === null) {
-        return null;
-      }
-      return new _FbsBlob(sliced);
-    } else {
-      const slice = new Uint8Array(this.data_.buffer, startByte, endByte - startByte);
-      return new _FbsBlob(slice, true);
-    }
-  }
-  static getBlob(...args) {
-    if (isNativeBlobDefined()) {
-      const blobby = args.map((val) => {
-        if (val instanceof _FbsBlob) {
-          return val.data_;
-        } else {
-          return val;
-        }
-      });
-      return new _FbsBlob(getBlob$1.apply(null, blobby));
-    } else {
-      const uint8Arrays = args.map((val) => {
-        if (isString2(val)) {
-          return dataFromString(StringFormat.RAW, val).data;
-        } else {
-          return val.data_;
-        }
-      });
-      let finalLength = 0;
-      uint8Arrays.forEach((array2) => {
-        finalLength += array2.byteLength;
-      });
-      const merged = new Uint8Array(finalLength);
-      let index = 0;
-      uint8Arrays.forEach((array2) => {
-        for (let i = 0; i < array2.length; i++) {
-          merged[index++] = array2[i];
-        }
-      });
-      return new _FbsBlob(merged, true);
-    }
-  }
-  uploadData() {
-    return this.data_;
-  }
-};
-function jsonObjectOrNull(s) {
-  let obj;
-  try {
-    obj = JSON.parse(s);
-  } catch (e) {
+function parent(path3) {
+  if (path3.length === 0) {
     return null;
   }
-  if (isNonArrayObject(obj)) {
-    return obj;
-  } else {
-    return null;
-  }
-}
-function parent(path2) {
-  if (path2.length === 0) {
-    return null;
-  }
-  const index = path2.lastIndexOf("/");
+  const index = path3.lastIndexOf("/");
   if (index === -1) {
     return "";
   }
-  const newPath = path2.slice(0, index);
+  const newPath = path3.slice(0, index);
   return newPath;
 }
-function child(path2, childPath) {
+function child(path3, childPath) {
   const canonicalChildPath = childPath.split("/").filter((component) => component.length > 0).join("/");
-  if (path2.length === 0) {
+  if (path3.length === 0) {
     return canonicalChildPath;
   } else {
-    return path2 + "/" + canonicalChildPath;
+    return path3 + "/" + canonicalChildPath;
   }
 }
-function lastComponent(path2) {
-  const index = path2.lastIndexOf("/", path2.length - 2);
+function lastComponent(path3) {
+  const index = path3.lastIndexOf("/", path3.length - 2);
   if (index === -1) {
-    return path2;
+    return path3;
   } else {
-    return path2.slice(index + 1);
+    return path3.slice(index + 1);
   }
-}
-function noXform_(metadata, value) {
-  return value;
-}
-var Mapping = class {
-  constructor(server, local, writable, xform) {
-    this.server = server;
-    this.local = local || server;
-    this.writable = !!writable;
-    this.xform = xform || noXform_;
-  }
-};
-var mappings_ = null;
-function xformPath(fullPath) {
-  if (!isString2(fullPath) || fullPath.length < 2) {
-    return fullPath;
-  } else {
-    return lastComponent(fullPath);
-  }
-}
-function getMappings() {
-  if (mappings_) {
-    return mappings_;
-  }
-  const mappings = [];
-  mappings.push(new Mapping("bucket"));
-  mappings.push(new Mapping("generation"));
-  mappings.push(new Mapping("metageneration"));
-  mappings.push(new Mapping("name", "fullPath", true));
-  function mappingsXformPath(_metadata, fullPath) {
-    return xformPath(fullPath);
-  }
-  const nameMapping = new Mapping("name");
-  nameMapping.xform = mappingsXformPath;
-  mappings.push(nameMapping);
-  function xformSize(_metadata, size) {
-    if (size !== void 0) {
-      return Number(size);
-    } else {
-      return size;
-    }
-  }
-  const sizeMapping = new Mapping("size");
-  sizeMapping.xform = xformSize;
-  mappings.push(sizeMapping);
-  mappings.push(new Mapping("timeCreated"));
-  mappings.push(new Mapping("updated"));
-  mappings.push(new Mapping("md5Hash", null, true));
-  mappings.push(new Mapping("cacheControl", null, true));
-  mappings.push(new Mapping("contentDisposition", null, true));
-  mappings.push(new Mapping("contentEncoding", null, true));
-  mappings.push(new Mapping("contentLanguage", null, true));
-  mappings.push(new Mapping("contentType", null, true));
-  mappings.push(new Mapping("metadata", "customMetadata", true));
-  mappings_ = mappings;
-  return mappings_;
-}
-function addRef(metadata, service) {
-  function generateRef() {
-    const bucket = metadata["bucket"];
-    const path2 = metadata["fullPath"];
-    const loc = new Location(bucket, path2);
-    return service._makeStorageReference(loc);
-  }
-  Object.defineProperty(metadata, "ref", { get: generateRef });
-}
-function fromResource(service, resource, mappings) {
-  const metadata = {};
-  metadata["type"] = "file";
-  const len = mappings.length;
-  for (let i = 0; i < len; i++) {
-    const mapping = mappings[i];
-    metadata[mapping.local] = mapping.xform(metadata, resource[mapping.server]);
-  }
-  addRef(metadata, service);
-  return metadata;
-}
-function fromResourceString(service, resourceString, mappings) {
-  const obj = jsonObjectOrNull(resourceString);
-  if (obj === null) {
-    return null;
-  }
-  const resource = obj;
-  return fromResource(service, resource, mappings);
-}
-function toResourceString(metadata, mappings) {
-  const resource = {};
-  const len = mappings.length;
-  for (let i = 0; i < len; i++) {
-    const mapping = mappings[i];
-    if (mapping.writable) {
-      resource[mapping.server] = metadata[mapping.local];
-    }
-  }
-  return JSON.stringify(resource);
 }
 var RequestInfo = class {
   constructor(url, method, handler2, timeout) {
@@ -54889,19 +54477,6 @@ var RequestInfo = class {
     this.additionalRetryCodes = [];
   }
 };
-function handlerCheck(cndn) {
-  if (!cndn) {
-    throw unknown();
-  }
-}
-function metadataHandler(service, mappings) {
-  function handler2(xhr, text) {
-    const metadata = fromResourceString(service, text, mappings);
-    handlerCheck(metadata !== null);
-    return metadata;
-  }
-  return handler2;
-}
 function sharedErrorHandler(location) {
   function errorHandler(xhr, err) {
     let newErr;
@@ -54971,51 +54546,6 @@ function deleteObject$2(service, location) {
   const requestInfo = new RequestInfo(url, method, handler2, timeout);
   requestInfo.successCodes = [200, 204];
   requestInfo.errorHandler = objectErrorHandler(location);
-  return requestInfo;
-}
-function determineContentType_(metadata, blob) {
-  return metadata && metadata["contentType"] || blob && blob.type() || "application/octet-stream";
-}
-function metadataForUpload_(location, blob, metadata) {
-  const metadataClone = Object.assign({}, metadata);
-  metadataClone["fullPath"] = location.path;
-  metadataClone["size"] = blob.size();
-  if (!metadataClone["contentType"]) {
-    metadataClone["contentType"] = determineContentType_(null, blob);
-  }
-  return metadataClone;
-}
-function multipartUpload(service, location, mappings, blob, metadata) {
-  const urlPart = location.bucketOnlyServerUrl();
-  const headers = {
-    "X-Goog-Upload-Protocol": "multipart"
-  };
-  function genBoundary() {
-    let str = "";
-    for (let i = 0; i < 2; i++) {
-      str = str + Math.random().toString().slice(2);
-    }
-    return str;
-  }
-  const boundary = genBoundary();
-  headers["Content-Type"] = "multipart/related; boundary=" + boundary;
-  const metadata_ = metadataForUpload_(location, blob, metadata);
-  const metadataString = toResourceString(metadata_, mappings);
-  const preBlobPart = "--" + boundary + "\r\nContent-Type: application/json; charset=utf-8\r\n\r\n" + metadataString + "\r\n--" + boundary + "\r\nContent-Type: " + metadata_["contentType"] + "\r\n\r\n";
-  const postBlobPart = "\r\n--" + boundary + "--";
-  const body = FbsBlob.getBlob(preBlobPart, blob, postBlobPart);
-  if (body === null) {
-    throw cannotSliceBlob();
-  }
-  const urlParams = { name: metadata_["fullPath"] };
-  const url = makeUrl(urlPart, service.host, service._protocol);
-  const method = "POST";
-  const timeout = service.maxUploadRetryTime;
-  const requestInfo = new RequestInfo(url, method, metadataHandler(service, mappings), timeout);
-  requestInfo.urlParams = urlParams;
-  requestInfo.headers = headers;
-  requestInfo.body = body.uploadData();
-  requestInfo.errorHandler = sharedErrorHandler(location);
   return requestInfo;
 }
 var RESUMABLE_UPLOAD_CHUNK_SIZE = 256 * 1024;
@@ -55184,16 +54714,6 @@ function getBytesInternal(ref2, maxDownloadSizeBytes) {
     bytes.slice(0, maxDownloadSizeBytes)
   ) : bytes);
 }
-function uploadBytes$1(ref2, data, metadata) {
-  ref2._throwIfRoot("uploadBytes");
-  const requestInfo = multipartUpload(ref2.storage, ref2._location, getMappings(), new FbsBlob(data, true), metadata);
-  return ref2.storage.makeRequestWithTokens(requestInfo, newTextConnection).then((finalMetadata) => {
-    return {
-      metadata: finalMetadata,
-      ref: ref2
-    };
-  });
-}
 function deleteObject$1(ref2) {
   ref2._throwIfRoot("deleteObject");
   const requestInfo = deleteObject$2(ref2.storage, ref2._location);
@@ -55204,27 +54724,27 @@ function _getChild$1(ref2, childPath) {
   const location = new Location(ref2._location.bucket, newPath);
   return new Reference(ref2.storage, location);
 }
-function isUrl(path2) {
-  return /^[A-Za-z]+:\/\//.test(path2);
+function isUrl(path3) {
+  return /^[A-Za-z]+:\/\//.test(path3);
 }
 function refFromURL(service, url) {
   return new Reference(service, url);
 }
-function refFromPath(ref2, path2) {
+function refFromPath(ref2, path3) {
   if (ref2 instanceof FirebaseStorageImpl) {
     const service = ref2;
     if (service._bucket == null) {
       throw noDefaultBucket();
     }
     const reference = new Reference(service, service._bucket);
-    if (path2 != null) {
-      return refFromPath(reference, path2);
+    if (path3 != null) {
+      return refFromPath(reference, path3);
     } else {
       return reference;
     }
   } else {
-    if (path2 !== void 0) {
-      return _getChild$1(ref2, path2);
+    if (path3 !== void 0) {
+      return _getChild$1(ref2, path3);
     } else {
       return ref2;
     }
@@ -55405,10 +54925,6 @@ function getBytes(ref2, maxDownloadSizeBytes) {
   ref2 = getModularInstance(ref2);
   return getBytesInternal(ref2, maxDownloadSizeBytes);
 }
-function uploadBytes(ref2, data, metadata) {
-  ref2 = getModularInstance(ref2);
-  return uploadBytes$1(ref2, data, metadata);
-}
 function deleteObject(ref2) {
   ref2 = getModularInstance(ref2);
   return deleteObject$1(ref2);
@@ -55490,6 +55006,7 @@ function getStorageInstance() {
 }
 
 // server/storage.ts
+var APK_CHUNK_SIZE = 524288;
 var IS_SERVERLESS = Boolean(
   process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
 );
@@ -55528,6 +55045,9 @@ function formatBytes(bytes) {
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+function isValidApkHeader(buffer) {
+  return buffer.length >= 4 && buffer[0] === 80 && buffer[1] === 75 && buffer[2] === 3 && buffer[3] === 4;
 }
 async function getAllReleases() {
   try {
@@ -55587,13 +55107,9 @@ async function saveRelease(release) {
     ...release,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  try {
-    const db = getDb();
-    const docRef = doc(db, "releases", updatedRelease.id);
-    await setDoc(docRef, updatedRelease);
-  } catch (err) {
-    console.error("Firestore saveRelease error:", err);
-  }
+  const db = getDb();
+  const docRef = doc(db, "releases", updatedRelease.id);
+  await setDoc(docRef, updatedRelease);
   try {
     ensureDataDirs();
     const { releasesFile } = getStoragePaths();
@@ -55613,31 +55129,51 @@ async function deleteRelease(id) {
   if (!id) return false;
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
+  const db = getDb();
   try {
-    const db = getDb();
-    const docRef = doc(db, "releases", id);
-    await deleteDoc(docRef);
+    await deleteDoc(doc(db, "releases", id));
   } catch (err) {
     console.error("Firestore deleteRelease error:", err);
   }
   if (existingRecord.storageKey) {
-    const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
     try {
-      const storage = getStorageInstance();
-      const storageRef = ref(storage, storageObjectPath);
-      await deleteObject(storageRef);
+      let totalChunks = existingRecord.chunkCount || 0;
+      if (!totalChunks) {
+        const chunk0 = await getDoc(doc(db, "apk_chunks", `${existingRecord.storageKey}_chunk_0`));
+        if (chunk0.exists()) {
+          totalChunks = Number(chunk0.data()?.totalChunks) || 1;
+        }
+      }
+      if (totalChunks > 0) {
+        const delPromises = [];
+        for (let i = 0; i < totalChunks; i++) {
+          delPromises.push(deleteDoc(doc(db, "apk_chunks", `${existingRecord.storageKey}_chunk_${i}`)));
+        }
+        await Promise.allSettled(delPromises);
+      }
     } catch (err) {
-      console.warn("Firebase Cloud Storage delete notice:", err);
+      console.warn("Firestore apk_chunks cleanup notice:", err);
+    }
+    const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
+    if (storageObjectPath.startsWith("apks/")) {
+      try {
+        const storage = getStorageInstance();
+        const storageRef = ref(storage, storageObjectPath);
+        await deleteObject(storageRef);
+      } catch {
+      }
     }
   }
   ensureDataDirs();
   const { apksDir, releasesFile } = getStoragePaths();
-  const filePath = path.join(apksDir, existingRecord.storageKey);
-  if (fs.existsSync(filePath)) {
-    try {
-      fs.unlinkSync(filePath);
-    } catch (e) {
-      console.warn("Could not delete local APK file:", e);
+  if (existingRecord.storageKey) {
+    const filePath = path.join(apksDir, existingRecord.storageKey);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {
+        console.warn("Could not delete local APK file:", e);
+      }
     }
   }
   try {
@@ -55649,8 +55185,84 @@ async function deleteRelease(id) {
   }
   return true;
 }
+async function storeApkChunk(storageKey, index, totalChunks, chunkBuffer) {
+  if (!storageKey) {
+    throw new Error("storageKey is required for chunk storage.");
+  }
+  if (index === 0 && !isValidApkHeader(chunkBuffer)) {
+    throw new Error("Invalid APK file: Header does not match Android Package / ZIP format (magic bytes PK\\x03\\x04).");
+  }
+  if (chunkBuffer.length > 9e5) {
+    throw new Error(`Chunk size (${chunkBuffer.length} bytes) exceeds safe Firestore document limit.`);
+  }
+  const db = getDb();
+  const uint8 = new Uint8Array(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
+  await setDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${index}`), {
+    storageKey,
+    index,
+    totalChunks,
+    size: chunkBuffer.length,
+    data: Bytes.fromUint8Array(uint8),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  });
+}
+async function verifyStoredChunks(storageKey, totalChunks) {
+  if (!storageKey || totalChunks <= 0) return false;
+  try {
+    const db = getDb();
+    const firstSnap = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_0`));
+    if (!firstSnap.exists()) return false;
+    const firstData = firstSnap.data();
+    if (!firstData || !firstData.data) return false;
+    const firstBytes = firstData.data.toUint8Array();
+    if (!isValidApkHeader(firstBytes)) return false;
+    if (totalChunks > 1) {
+      const lastSnap = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${totalChunks - 1}`));
+      if (!lastSnap.exists()) return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Error verifying stored APK chunks:", err);
+    return false;
+  }
+}
+async function hasApkBinary(release) {
+  if (!release || !release.storageKey) return false;
+  try {
+    const db = getDb();
+    const chunk0Snap = await getDoc(doc(db, "apk_chunks", `${release.storageKey}_chunk_0`));
+    if (chunk0Snap.exists()) {
+      const d = chunk0Snap.data();
+      if (d && d.data && typeof d.data.toUint8Array === "function") {
+        const bytes = d.data.toUint8Array();
+        if (isValidApkHeader(bytes)) {
+          return true;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("hasApkBinary Firestore check error:", err);
+  }
+  const bundledFile = path.resolve(process.cwd(), ".data", "apks", release.storageKey);
+  if (fs.existsSync(bundledFile)) {
+    return true;
+  }
+  const objectPath = release.storagePath || `apks/${release.storageKey}`;
+  if (objectPath.startsWith("apks/")) {
+    try {
+      const storage = getStorageInstance();
+      const storageRef = ref(storage, objectPath);
+      const bytes = await getBytes(storageRef, 16);
+      if (bytes && bytes.byteLength >= 4) {
+        return true;
+      }
+    } catch {
+    }
+  }
+  return false;
+}
 async function storeApkBuffer(buffer, originalFilename) {
-  if (buffer.length < 4 || buffer[0] !== 80 || buffer[1] !== 75 || buffer[2] !== 3 || buffer[3] !== 4) {
+  if (!isValidApkHeader(buffer)) {
     throw new Error("Invalid APK file: Header does not match Android Package / ZIP format (magic bytes PK\\x03\\x04).");
   }
   const sha256 = crypto2.createHash("sha256").update(buffer).digest("hex");
@@ -55658,21 +55270,15 @@ async function storeApkBuffer(buffer, originalFilename) {
   const fileSizeFormatted = formatBytes(fileSize);
   const safeBase = path.basename(originalFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
   const storageKey = `${Date.now()}-${safeBase}`;
-  const storagePath = `apks/${storageKey}`;
-  try {
-    const storage = getStorageInstance();
-    const storageRef = ref(storage, storagePath);
-    const uint8Array = new Uint8Array(buffer);
-    await uploadBytes(storageRef, uint8Array, {
-      contentType: "application/vnd.android.package-archive",
-      customMetadata: {
-        originalFilename,
-        sha256,
-        uploadedAt: (/* @__PURE__ */ new Date()).toISOString()
-      }
-    });
-  } catch (err) {
-    console.error("Firebase Cloud Storage upload error:", err);
+  const storagePath = `apk_chunks/${storageKey}`;
+  const totalChunks = Math.ceil(buffer.length / APK_CHUNK_SIZE);
+  for (let i = 0; i < totalChunks; i += 3) {
+    const batchPromises = [];
+    for (let j = i; j < Math.min(i + 3, totalChunks); j++) {
+      const slice = buffer.subarray(j * APK_CHUNK_SIZE, Math.min((j + 1) * APK_CHUNK_SIZE, buffer.length));
+      batchPromises.push(storeApkChunk(storageKey, j, totalChunks, slice));
+    }
+    await Promise.all(batchPromises);
   }
   try {
     ensureDataDirs();
@@ -55685,19 +55291,23 @@ async function storeApkBuffer(buffer, originalFilename) {
   return {
     storageKey,
     storagePath,
+    chunkCount: totalChunks,
     fileSize,
     fileSizeFormatted,
     sha256
   };
 }
-async function getApkBuffer(storageKey, storagePath) {
+async function getApkBuffer(storageKey, storagePath, chunkCount) {
   if (!storageKey) return null;
   ensureDataDirs();
   const { apksDir } = getStoragePaths();
   const localPath = path.join(apksDir, storageKey);
   if (fs.existsSync(localPath)) {
     try {
-      return fs.readFileSync(localPath);
+      const cached = fs.readFileSync(localPath);
+      if (isValidApkHeader(cached)) {
+        return cached;
+      }
     } catch (e) {
       console.warn("Local APK cache read error:", e);
     }
@@ -55705,26 +55315,90 @@ async function getApkBuffer(storageKey, storagePath) {
   const bundledFile = path.resolve(process.cwd(), ".data", "apks", storageKey);
   if (fs.existsSync(bundledFile)) {
     try {
-      return fs.readFileSync(bundledFile);
+      const bundled = fs.readFileSync(bundledFile);
+      if (isValidApkHeader(bundled)) {
+        return bundled;
+      }
     } catch (e) {
       console.warn("Bundled APK read error:", e);
     }
   }
-  const objectPath = storagePath || `apks/${storageKey}`;
+  try {
+    const db = getDb();
+    let total = chunkCount && chunkCount > 0 ? chunkCount : 0;
+    let chunk0Buffer = null;
+    if (!total) {
+      const snap0 = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_0`));
+      if (snap0.exists()) {
+        const data0 = snap0.data();
+        if (data0 && data0.data && typeof data0.data.toUint8Array === "function") {
+          total = Number(data0.totalChunks) || 1;
+          chunk0Buffer = Buffer.from(data0.data.toUint8Array());
+        }
+      }
+    }
+    if (total > 0) {
+      const chunkBuffers = new Array(total);
+      const startIndex = chunk0Buffer ? 1 : 0;
+      if (chunk0Buffer) {
+        chunkBuffers[0] = chunk0Buffer;
+      }
+      if (startIndex < total) {
+        const indices = Array.from({ length: total - startIndex }, (_, idx) => idx + startIndex);
+        const snaps = await Promise.all(
+          indices.map((idx) => getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${idx}`)))
+        );
+        let allFound = true;
+        for (let k = 0; k < snaps.length; k++) {
+          const snap = snaps[k];
+          if (!snap.exists()) {
+            allFound = false;
+            break;
+          }
+          const d = snap.data();
+          if (!d || !d.data || typeof d.data.toUint8Array !== "function") {
+            allFound = false;
+            break;
+          }
+          chunkBuffers[indices[k]] = Buffer.from(d.data.toUint8Array());
+        }
+        if (allFound) {
+          const fullBuffer = Buffer.concat(chunkBuffers);
+          if (isValidApkHeader(fullBuffer)) {
+            try {
+              fs.writeFileSync(localPath, fullBuffer);
+            } catch {
+            }
+            return fullBuffer;
+          }
+        }
+      } else if (chunk0Buffer && isValidApkHeader(chunk0Buffer)) {
+        try {
+          fs.writeFileSync(localPath, chunk0Buffer);
+        } catch {
+        }
+        return chunk0Buffer;
+      }
+    }
+  } catch (err) {
+    console.error(`Firestore apk_chunks download error for ${storageKey}:`, err);
+  }
+  const objectPath = storagePath && storagePath.startsWith("apks/") ? storagePath : `apks/${storageKey}`;
   try {
     const storage = getStorageInstance();
     const storageRef = ref(storage, objectPath);
     const arrayBuffer = await getBytes(storageRef);
     const buffer = Buffer.from(arrayBuffer);
-    try {
-      fs.writeFileSync(localPath, buffer);
-    } catch {
+    if (isValidApkHeader(buffer)) {
+      try {
+        fs.writeFileSync(localPath, buffer);
+      } catch {
+      }
+      return buffer;
     }
-    return buffer;
-  } catch (err) {
-    console.error(`Firebase Cloud Storage download error for path ${objectPath}:`, err);
-    return null;
+  } catch {
   }
+  return null;
 }
 
 // server/auth.ts
@@ -55896,7 +55570,7 @@ async function parseJsonBody(req) {
         try {
           const parsed = body.trim() ? JSON.parse(body) : {};
           resolve(parsed);
-        } catch (err) {
+        } catch {
           reject(new Error("Invalid JSON"));
         }
       }
@@ -55914,6 +55588,9 @@ async function readBinaryBody(req) {
   const anyReq = req;
   if (Buffer.isBuffer(anyReq.body)) {
     return anyReq.body;
+  }
+  if (anyReq.body instanceof Uint8Array) {
+    return Buffer.from(anyReq.body);
   }
   if (anyReq.rawBody && Buffer.isBuffer(anyReq.rawBody)) {
     return anyReq.rawBody;
@@ -55943,7 +55620,7 @@ async function readBinaryBody(req) {
         reject(new Error("File exceeds maximum allowable size (150MB)"));
         return;
       }
-      chunks.push(chunk);
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
     });
     req.on("end", () => {
       if (!done) {
@@ -55988,9 +55665,13 @@ async function handleApiRequest(req, res, explicitRoute) {
         });
         return true;
       }
+      const binaryVerified = await hasApkBinary(latest);
       sendJson(res, 200, {
         published: true,
-        release: latest
+        release: {
+          ...latest,
+          binaryVerified
+        }
       });
       return true;
     }
@@ -56032,17 +55713,27 @@ async function handleApiRequest(req, res, explicitRoute) {
         sendError(res, 404, "Release not found.");
         return true;
       }
-      const apkBuffer = await getApkBuffer(targetRelease.storageKey, targetRelease.storagePath);
-      if (!apkBuffer || apkBuffer.length === 0) {
-        sendError(res, 404, "APK file binary missing from persistent storage.");
+      const apkBuffer = await getApkBuffer(
+        targetRelease.storageKey,
+        targetRelease.storagePath,
+        targetRelease.chunkCount
+      );
+      if (!apkBuffer || !isValidApkHeader(apkBuffer)) {
+        sendError(
+          res,
+          404,
+          "APK file binary missing from persistent cloud storage. Please re-upload and publish the APK in the Admin Portal."
+        );
         return true;
       }
-      const outputFilename = `zoya-${targetRelease.versionName || "assistant"}.apk`;
+      const cleanVersion = (targetRelease.versionName || "latest").trim().replace(/[^a-zA-Z0-9._-]/g, "-");
+      const outputFilename = `zoya-assistant-${cleanVersion}.apk`;
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/vnd.android.package-archive");
       res.setHeader("Content-Disposition", `attachment; filename="${outputFilename}"`);
-      res.setHeader("Content-Length", apkBuffer.length);
+      res.setHeader("Content-Length", String(apkBuffer.length));
       res.setHeader("Cache-Control", "public, max-age=3600");
+      res.setHeader("X-Content-Type-Options", "nosniff");
       if (method === "HEAD") {
         res.end();
         return true;
@@ -56122,10 +55813,81 @@ async function handleApiRequest(req, res, explicitRoute) {
       if (pathname === "/api/admin/releases" && method === "GET") {
         const releases = await getAllReleases();
         releases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        sendJson(res, 200, { success: true, releases });
+        const enriched = await Promise.all(
+          releases.map(async (r) => ({
+            ...r,
+            binaryVerified: await hasApkBinary(r)
+          }))
+        );
+        sendJson(res, 200, { success: true, releases: enriched });
         return true;
       }
       if (pathname === "/api/admin/upload" && method === "POST") {
+        const phase = parsedUrl.searchParams.get("phase");
+        if (phase === "chunk") {
+          const storageKey = (parsedUrl.searchParams.get("storageKey") || "").trim();
+          const index = Number(parsedUrl.searchParams.get("index"));
+          const totalChunks = Number(parsedUrl.searchParams.get("totalChunks"));
+          if (!storageKey || isNaN(index) || index < 0 || isNaN(totalChunks) || totalChunks <= 0) {
+            sendError(res, 400, "Invalid chunk parameters.");
+            return true;
+          }
+          const chunkBuffer = await readBinaryBody(req);
+          if (!chunkBuffer || chunkBuffer.length === 0) {
+            sendError(res, 400, "Empty chunk payload.");
+            return true;
+          }
+          await storeApkChunk(storageKey, index, totalChunks, chunkBuffer);
+          sendJson(res, 200, { success: true, index, size: chunkBuffer.length });
+          return true;
+        }
+        if (phase === "finalize") {
+          const body = await parseJsonBody(req);
+          const storageKey = (body.storageKey || "").trim();
+          const fileName = path2.basename(body.fileName || "zoya-assistant.apk");
+          const fileSize = Number(body.fileSize) || 0;
+          const totalChunks = Number(body.totalChunks) || 0;
+          const sha256 = (body.sha256 || "").trim().toLowerCase();
+          if (!storageKey || !fileName.toLowerCase().endsWith(".apk") || fileSize < 1024 || totalChunks <= 0 || !sha256) {
+            sendError(res, 400, "Invalid finalize parameters for APK upload.");
+            return true;
+          }
+          const verified = await verifyStoredChunks(storageKey, totalChunks);
+          if (!verified) {
+            sendError(res, 400, "APK chunks failed verification in persistent cloud storage.");
+            return true;
+          }
+          const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
+          const newDraft2 = {
+            id: draftId2,
+            versionName: "",
+            versionCode: 0,
+            applicationId: "com.riyajul.zoya",
+            fileName,
+            fileSize,
+            fileSizeFormatted: formatBytes(fileSize),
+            sha256,
+            storageKey,
+            storagePath: `apk_chunks/${storageKey}`,
+            chunkCount: totalChunks,
+            binaryVerified: true,
+            downloadUrl: downloadUrl2,
+            releaseDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+            releaseNotes: "",
+            minAndroidVersion: "Android 8.0 (API 26)+",
+            isPublished: false,
+            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          await saveRelease(newDraft2);
+          sendJson(res, 201, {
+            success: true,
+            message: "APK uploaded and verified in persistent storage. Ready for release publication.",
+            draft: newDraft2
+          });
+          return true;
+        }
         const filenameHeader = req.headers["x-filename"];
         const filename = typeof filenameHeader === "string" ? decodeURIComponent(filenameHeader) : "zoya-assistant.apk";
         if (!filename.toLowerCase().endsWith(".apk")) {
@@ -56151,6 +55913,8 @@ async function handleApiRequest(req, res, explicitRoute) {
           sha256: stored.sha256,
           storageKey: stored.storageKey,
           storagePath: stored.storagePath,
+          chunkCount: stored.chunkCount,
+          binaryVerified: true,
           downloadUrl,
           releaseDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
           releaseNotes: "",
@@ -56162,7 +55926,7 @@ async function handleApiRequest(req, res, explicitRoute) {
         await saveRelease(newDraft);
         sendJson(res, 201, {
           success: true,
-          message: "APK uploaded and verified successfully. Ready for release publication.",
+          message: "APK uploaded and verified in persistent storage. Ready for release publication.",
           draft: newDraft
         });
         return true;
@@ -56176,6 +55940,15 @@ async function handleApiRequest(req, res, explicitRoute) {
         const draft = await getReleaseById(body.draftId);
         if (!draft) {
           sendError(res, 404, "Draft release record not found.");
+          return true;
+        }
+        const binaryExists = await hasApkBinary(draft);
+        if (!binaryExists) {
+          sendError(
+            res,
+            400,
+            "Cannot publish release: APK binary is missing from persistent cloud storage. Please re-upload the APK file."
+          );
           return true;
         }
         const cleanVersionName = (body.versionName || "").trim();
@@ -56204,6 +55977,7 @@ async function handleApiRequest(req, res, explicitRoute) {
           minAndroidVersion: body.minAndroidVersion || "Android 8.0 (API 26)+",
           releaseDate: body.releaseDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
           isPublished: true,
+          binaryVerified: true,
           publishedAt: (/* @__PURE__ */ new Date()).toISOString(),
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
@@ -56217,7 +55991,8 @@ async function handleApiRequest(req, res, explicitRoute) {
         return true;
       }
       if ((pathname.startsWith("/api/admin/releases/") || pathname === "/api/admin/releases") && method === "DELETE") {
-        const queryId = req.query?.id || parsedUrl.searchParams.get("id");
+        const anyReq = req;
+        const queryId = anyReq.query?.id || parsedUrl.searchParams.get("id");
         const pathId = pathname.startsWith("/api/admin/releases/") ? pathname.substring("/api/admin/releases/".length) : "";
         const id = (queryId || pathId || "").trim();
         if (!id) {
@@ -56353,6 +56128,10 @@ long/umd/index.js:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/index.node.mjs:
+@firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
@@ -57698,6 +57477,7 @@ re2js/build/index.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/storage/dist/node-esm/index.node.esm.js:
   (**
    * @license
    * Copyright 2021 Google LLC
@@ -57735,22 +57515,6 @@ re2js/build/index.js:
   (**
    * @license
    * Copyright 2022 Google LLC
-   *
-   * Licensed under the Apache License, Version 2.0 (the "License");
-   * you may not use this file except in compliance with the License.
-   * You may obtain a copy of the License at
-   *
-   *   http://www.apache.org/licenses/LICENSE-2.0
-   *
-   * Unless required by applicable law or agreed to in writing, software
-   * distributed under the License is distributed on an "AS IS" BASIS,
-   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   * See the License for the specific language governing permissions and
-   * limitations under the License.
-   *)
-  (**
-   * @license
-   * Copyright 2021 Google LLC
    *
    * Licensed under the Apache License, Version 2.0 (the "License");
    * you may not use this file except in compliance with the License.

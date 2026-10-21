@@ -29,7 +29,12 @@ export const ApkDownload: React.FC<ApkDownloadProps> = ({
     setTimeout(() => setCopiedHash(false), 2000);
   };
 
-  const isAvailable = Boolean(latestRelease && latestRelease.isPublished && latestRelease.downloadUrl);
+  const isAvailable = Boolean(
+    latestRelease &&
+    latestRelease.isPublished &&
+    latestRelease.downloadUrl &&
+    latestRelease.binaryVerified !== false
+  );
 
   return (
     <section id="download" aria-label="Download Zoya Android APK" className="py-16 sm:py-20 md:py-28 relative">
@@ -106,7 +111,6 @@ export const ApkDownload: React.FC<ApkDownloadProps> = ({
               <div className="w-full max-w-md flex flex-col items-center">
                 <a
                   href={latestRelease.downloadUrl}
-                  download={`zoya-assistant-${latestRelease.versionName || 'latest'}.apk`}
                   className="w-full inline-flex items-center justify-center gap-2.5 px-4 sm:px-8 py-3.5 sm:py-4 min-h-[48px] rounded-xl font-bold text-sm sm:text-base md:text-lg text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-[0_0_25px_rgba(45,212,191,0.35)] hover:shadow-[0_0_40px_rgba(45,212,191,0.5)] active:scale-98 cursor-pointer text-center focus-visible:outline-teal-400"
                 >
                   <Download className="w-5 h-5 text-slate-950 shrink-0" aria-hidden="true" />
