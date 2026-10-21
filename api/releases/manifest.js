@@ -55701,14 +55701,10 @@ async function getApkBuffer(storageKey, storagePath) {
 
 // server/auth.ts
 import crypto3 from "crypto";
-var DEFAULT_ADMIN_EMAIL = "riyajulansari113b@gmail.com";
-var DEFAULT_ADMIN_PASSWORD = "zoya-admin-2026";
+var DEFAULT_ADMIN_PIN = "8825316434";
 var DEFAULT_JWT_SECRET = "zoya-secret-jwt-key-release-mgr-2026";
-function getAdminEmail() {
-  return (process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
-}
-function getAdminPassword() {
-  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+function getAdminPin() {
+  return (process.env.ZOYA_ADMIN_PIN || DEFAULT_ADMIN_PIN).trim();
 }
 function getJwtSecret() {
   return process.env.ADMIN_JWT_SECRET || DEFAULT_JWT_SECRET;
@@ -55746,7 +55742,7 @@ function verifyToken(token) {
       return null;
     }
     return {
-      email: decoded.email,
+      email: decoded.email || "admin@zoya.ai",
       role: "admin",
       name: decoded.name || "Administrator"
     };
@@ -55754,13 +55750,23 @@ function verifyToken(token) {
     return null;
   }
 }
-function authenticateAdmin(email, password) {
-  const cleanEmail = (email || "").trim().toLowerCase();
-  const targetEmail = getAdminEmail();
-  const targetPassword = getAdminPassword();
-  if (cleanEmail === targetEmail && password === targetPassword) {
+function authenticateAdminPin(pin) {
+  const cleanPin = (pin || "").trim();
+  const targetPin = getAdminPin();
+  if (cleanPin.length > 0 && cleanPin === targetPin) {
     return {
-      email: targetEmail,
+      email: "admin@zoya.ai",
+      role: "admin",
+      name: "Riyajul (Administrator)"
+    };
+  }
+  return null;
+}
+function authenticateAdmin(email, password) {
+  const targetPassword = process.env.ADMIN_PASSWORD || "zoya-admin-2026";
+  if (password && password === targetPassword || email && email.toLowerCase() === "riyajulansari113b@gmail.com" && password === targetPassword) {
+    return {
+      email: "riyajulansari113b@gmail.com",
       role: "admin",
       name: "Riyajul (Administrator)"
     };
@@ -56010,15 +56016,20 @@ async function handleApiRequest(req, res, explicitRoute) {
         sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
         return true;
       }
+      const pin = typeof body.pin === "string" ? body.pin.trim() : "";
       const email = typeof body.email === "string" ? body.email.trim() : "";
       const password = typeof body.password === "string" ? body.password : "";
-      if (!email || !password) {
-        sendError(res, 400, "Email and password are required.");
+      let user = null;
+      if (pin) {
+        user = authenticateAdminPin(pin);
+      } else if (email || password) {
+        user = authenticateAdmin(email, password);
+      } else {
+        sendError(res, 400, "Administrator PIN is required.");
         return true;
       }
-      const user = authenticateAdmin(email, password);
       if (!user) {
-        sendError(res, 401, "Invalid administrator email or password.");
+        sendError(res, 401, "Invalid administrator PIN.");
         return true;
       }
       const token = createToken(user);

@@ -1,15 +1,10 @@
 import crypto from 'crypto';
 
-const DEFAULT_ADMIN_EMAIL = 'riyajulansari113b@gmail.com';
-const DEFAULT_ADMIN_PASSWORD = 'zoya-admin-2026';
+const DEFAULT_ADMIN_PIN = '8825316434';
 const DEFAULT_JWT_SECRET = 'zoya-secret-jwt-key-release-mgr-2026';
 
-export function getAdminEmail(): string {
-  return (process.env.ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL).trim().toLowerCase();
-}
-
-export function getAdminPassword(): string {
-  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+export function getAdminPin(): string {
+  return (process.env.ZOYA_ADMIN_PIN || DEFAULT_ADMIN_PIN).trim();
 }
 
 export function getJwtSecret(): string {
@@ -75,7 +70,7 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
     }
 
     return {
-      email: decoded.email,
+      email: decoded.email || 'admin@zoya.ai',
       role: 'admin',
       name: decoded.name || 'Administrator',
     };
@@ -85,16 +80,31 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
 }
 
 /**
- * Authenticates login credentials
+ * Authenticates admin PIN input securely against ZOYA_ADMIN_PIN
+ */
+export function authenticateAdminPin(pin: string): AdminUser | null {
+  const cleanPin = (pin || '').trim();
+  const targetPin = getAdminPin();
+
+  if (cleanPin.length > 0 && cleanPin === targetPin) {
+    return {
+      email: 'admin@zoya.ai',
+      role: 'admin',
+      name: 'Riyajul (Administrator)',
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Legacy credential fallback
  */
 export function authenticateAdmin(email: string, password: string): AdminUser | null {
-  const cleanEmail = (email || '').trim().toLowerCase();
-  const targetEmail = getAdminEmail();
-  const targetPassword = getAdminPassword();
-
-  if (cleanEmail === targetEmail && password === targetPassword) {
+  const targetPassword = process.env.ADMIN_PASSWORD || 'zoya-admin-2026';
+  if ((password && password === targetPassword) || (email && email.toLowerCase() === 'riyajulansari113b@gmail.com' && password === targetPassword)) {
     return {
-      email: targetEmail,
+      email: 'riyajulansari113b@gmail.com',
       role: 'admin',
       name: 'Riyajul (Administrator)',
     };

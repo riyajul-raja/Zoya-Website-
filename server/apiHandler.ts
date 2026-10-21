@@ -15,6 +15,7 @@ import {
 } from './storage';
 import {
   authenticateAdmin,
+  authenticateAdminPin,
   createToken,
   verifyToken,
   extractAuthToken,
@@ -299,25 +300,30 @@ export async function handleApiRequest(
         return true;
       }
 
-      let body: { email?: string; password?: string } = {};
+      let body: { pin?: string; email?: string; password?: string } = {};
       try {
-        body = await parseJsonBody<{ email?: string; password?: string }>(req);
+        body = await parseJsonBody<{ pin?: string; email?: string; password?: string }>(req);
       } catch (err) {
         sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
         return true;
       }
 
+      const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
       const email = typeof body.email === 'string' ? body.email.trim() : '';
       const password = typeof body.password === 'string' ? body.password : '';
 
-      if (!email || !password) {
-        sendError(res, 400, 'Email and password are required.');
+      let user = null;
+      if (pin) {
+        user = authenticateAdminPin(pin);
+      } else if (email || password) {
+        user = authenticateAdmin(email, password);
+      } else {
+        sendError(res, 400, 'Administrator PIN is required.');
         return true;
       }
 
-      const user = authenticateAdmin(email, password);
       if (!user) {
-        sendError(res, 401, 'Invalid administrator email or password.');
+        sendError(res, 401, 'Invalid administrator PIN.');
         return true;
       }
 
