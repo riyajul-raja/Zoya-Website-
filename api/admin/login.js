@@ -55503,6 +55503,412 @@ function extractAuthToken(reqHeaders) {
   return null;
 }
 
+// server/fcm.ts
+import crypto4 from "crypto";
+var DEFAULT_FCM_TOPIC = "zoya_releases";
+var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-opal.vercel.app";
+var cachedAccessToken = null;
+function getPublicSiteOrigin() {
+  const envUrl = (process.env.PUBLIC_SITE_URL || DEFAULT_PRODUCTION_SITE_URL).trim();
+  if (envUrl.startsWith("http://") || envUrl.startsWith("https://")) {
+    return envUrl.replace(/\/+$/, "");
+  }
+  return DEFAULT_PRODUCTION_SITE_URL;
+}
+function getFcmTopic() {
+  const custom = (process.env.FCM_RELEASE_TOPIC || "").trim();
+  return custom || DEFAULT_FCM_TOPIC;
+}
+function getServiceAccountCredentials() {
+  const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (rawJson) {
+    try {
+      const decoded = rawJson.startsWith("{") ? rawJson : Buffer.from(rawJson, "base64").toString("utf-8");
+      const parsed = JSON.parse(decoded);
+      const projectId2 = String(parsed.project_id || firebase_applet_config_default.projectId || "").trim();
+      const clientEmail2 = String(parsed.client_email || "").trim();
+      const privateKey2 = String(parsed.private_key || "").replace(/\\n/g, "\n").trim();
+      if (projectId2 && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
+        return { projectId: projectId2, clientEmail: clientEmail2, privateKey: privateKey2 };
+      }
+    } catch (err) {
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", err);
+    }
+  }
+  const projectId = String(
+    process.env.FIREBASE_PROJECT_ID || firebase_applet_config_default.projectId || ""
+  ).trim();
+  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || "").trim();
+  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  if (projectId && clientEmail && privateKey.includes("PRIVATE KEY")) {
+    return { projectId, clientEmail, privateKey };
+  }
+  return null;
+}
+async function getFcmAccessToken(creds) {
+  const nowSec = Math.floor(Date.now() / 1e3);
+  if (cachedAccessToken && cachedAccessToken.expiresAt - 300 > nowSec) {
+    return cachedAccessToken.token;
+  }
+  const header = Buffer.from(
+    JSON.stringify({ alg: "RS256", typ: "JWT" })
+  ).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: creds.clientEmail,
+      sub: creds.clientEmail,
+      aud: "https://oauth2.googleapis.com/token",
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      iat: nowSec,
+      exp: nowSec + 3600
+    })
+  ).toString("base64url");
+  const unsignedJwt = `${header}.${payload}`;
+  const signer = crypto4.createSign("RSA-SHA256");
+  signer.update(unsignedJwt);
+  signer.end();
+  const signature = signer.sign(creds.privateKey, "base64url");
+  const assertion = `${unsignedJwt}.${signature}`;
+  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion
+    }).toString()
+  });
+  const tokenText = await tokenRes.text();
+  let tokenData = {};
+  try {
+    tokenData = tokenText ? JSON.parse(tokenText) : {};
+  } catch {
+    throw new Error(`Invalid OAuth2 token response (${tokenRes.status})`);
+  }
+  if (!tokenRes.ok || !tokenData.access_token) {
+    throw new Error(
+      tokenData.error_description || tokenData.error || `Failed to obtain FCM OAuth2 access token (${tokenRes.status})`
+    );
+  }
+  cachedAccessToken = {
+    token: String(tokenData.access_token),
+    expiresAt: nowSec + (Number(tokenData.expires_in) || 3600)
+  };
+  return cachedAccessToken.token;
+}
+function buildReleaseNotificationContent(release) {
+  const siteOrigin = getPublicSiteOrigin();
+  const relativeDownload = release.downloadUrl.startsWith("/") ? release.downloadUrl : `/${release.downloadUrl}`;
+  const fullDownloadUrl = release.downloadUrl.startsWith("http") ? release.downloadUrl : `${siteOrigin}${relativeDownload}`;
+  const title = "Zoya Update Available";
+  const body = `Zoya ${release.versionName} is now available and ready to install.`;
+  const data = {
+    type: "apk_release",
+    action: "OPEN_APP_UPDATE",
+    releaseId: String(release.id),
+    versionName: String(release.versionName),
+    versionCode: String(release.versionCode),
+    applicationId: String(release.applicationId || "com.riyajul.zoya"),
+    downloadUrl: fullDownloadUrl,
+    manifestUrl: `${siteOrigin}/api/releases/manifest`,
+    sha256: String(release.sha256 || ""),
+    fileSize: String(release.fileSize || 0),
+    fileSizeFormatted: String(release.fileSizeFormatted || ""),
+    minAndroidVersion: String(release.minAndroidVersion || "Android 8.0 (API 26)+"),
+    releaseDate: String(release.releaseDate || ""),
+    releaseNotes: String(release.releaseNotes || ""),
+    publishedAt: String(release.publishedAt || (/* @__PURE__ */ new Date()).toISOString())
+  };
+  return { title, body, data };
+}
+async function sendFcmV1Request(projectId, accessToken, target, title, body, data, notificationTag) {
+  const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+  const fcmPayload = {
+    message: {
+      ...target,
+      notification: {
+        title,
+        body
+      },
+      data,
+      android: {
+        priority: "HIGH",
+        collapse_key: "zoya_release_update",
+        ttl: "604800s",
+        notification: {
+          title,
+          body,
+          channel_id: "zoya_updates",
+          tag: notificationTag,
+          click_action: "OPEN_APP_UPDATE",
+          default_sound: true,
+          default_vibrate_timings: true
+        }
+      }
+    }
+  };
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(fcmPayload)
+  });
+  const rawText = await res.text();
+  let parsed = {};
+  try {
+    parsed = rawText ? JSON.parse(rawText) : {};
+  } catch {
+  }
+  if (res.ok && parsed.name) {
+    return { ok: true, messageId: String(parsed.name) };
+  }
+  const errorCode = parsed?.error?.details?.[0]?.errorCode || parsed?.error?.status || String(res.status);
+  const errorMessage = parsed?.error?.message || `FCM HTTP v1 error (${res.status})`;
+  return { ok: false, errorCode, errorMessage };
+}
+async function registerFcmDeviceToken(params) {
+  const cleanToken = String(params.token || "").trim();
+  if (!cleanToken || cleanToken.length < 20) {
+    throw new Error("A valid FCM registration token is required.");
+  }
+  const deviceId = crypto4.createHash("sha256").update(cleanToken).digest("hex").substring(0, 40);
+  const db = getDb();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  await setDoc(
+    doc(db, "fcm_devices", deviceId),
+    {
+      token: cleanToken,
+      platform: String(params.platform || "android"),
+      applicationId: String(params.applicationId || "com.riyajul.zoya"),
+      appVersion: String(params.appVersion || ""),
+      versionCode: Number(params.versionCode) || 0,
+      updatedAt: now,
+      createdAt: now
+    },
+    { merge: true }
+  );
+  return { deviceId };
+}
+async function getFcmStatus() {
+  const creds = getServiceAccountCredentials();
+  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  const topic = getFcmTopic();
+  let registeredDevicesCount = 0;
+  try {
+    const db = getDb();
+    const snap = await getDocs(collection(db, "fcm_devices"));
+    registeredDevicesCount = snap.size;
+  } catch {
+  }
+  return {
+    configured: Boolean(creds),
+    projectId,
+    topic,
+    registeredDevicesCount
+  };
+}
+async function sendReleasePushNotification(release) {
+  const topic = getFcmTopic();
+  const idempotencyKey = `${release.id}_v${release.versionCode}`;
+  const { title, body, data } = buildReleaseNotificationContent(release);
+  const creds = getServiceAccountCredentials();
+  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  if (!release.isPublished || !release.id || !release.versionName || release.versionCode <= 0) {
+    return {
+      sent: false,
+      skipped: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: "Release is not published or has incomplete version metadata.",
+      title,
+      body,
+      data
+    };
+  }
+  const binaryValid = await hasApkBinary(release);
+  if (!binaryValid) {
+    return {
+      sent: false,
+      skipped: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: "APK binary is missing or invalid in persistent storage.",
+      title,
+      body,
+      data
+    };
+  }
+  const db = getDb();
+  const notifDocRef = doc(db, "fcm_notifications", idempotencyKey);
+  try {
+    const existingSnap = await getDoc(notifDocRef);
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      if (existingData && existingData.status === "sent") {
+        return {
+          sent: false,
+          alreadySent: true,
+          configured: Boolean(creds),
+          idempotencyKey,
+          topic,
+          projectId,
+          messageId: existingData.messageId,
+          sentAt: existingData.sentAt,
+          reason: "Push notification was already sent for this published release.",
+          title,
+          body,
+          data
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("FCM idempotency check warning:", err);
+  }
+  if (release.notificationSentAt && release.notificationMessageId) {
+    return {
+      sent: false,
+      alreadySent: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      messageId: release.notificationMessageId,
+      sentAt: release.notificationSentAt,
+      reason: "Push notification was already recorded on this release document.",
+      title,
+      body,
+      data
+    };
+  }
+  if (!creds) {
+    return {
+      sent: false,
+      skipped: true,
+      configured: false,
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: "FCM service account credentials (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY) are not configured on the server.",
+      title,
+      body,
+      data
+    };
+  }
+  try {
+    const accessToken = await getFcmAccessToken(creds);
+    const notificationTag = `zoya_release_${release.id}_v${release.versionCode}`;
+    const topicResult = await sendFcmV1Request(
+      creds.projectId,
+      accessToken,
+      { topic },
+      title,
+      body,
+      data,
+      notificationTag
+    );
+    let devicesTargeted = 0;
+    let devicesSucceeded = 0;
+    try {
+      const devicesSnap = await getDocs(collection(db, "fcm_devices"));
+      devicesTargeted = devicesSnap.size;
+      const staleDeviceIds = [];
+      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data();
+        const devToken = String(devData?.token || "").trim();
+        if (!devToken) return;
+        const res = await sendFcmV1Request(
+          creds.projectId,
+          accessToken,
+          { token: devToken },
+          title,
+          body,
+          data,
+          notificationTag
+        );
+        if (res.ok) {
+          devicesSucceeded += 1;
+        } else if (res.errorCode === "UNREGISTERED" || res.errorCode === "NOT_FOUND") {
+          staleDeviceIds.push(deviceDoc.id);
+        }
+      });
+      await Promise.allSettled(tokenPromises);
+      if (staleDeviceIds.length > 0) {
+        await Promise.allSettled(
+          staleDeviceIds.map((id) => deleteDoc(doc(db, "fcm_devices", id)))
+        );
+      }
+    } catch (devErr) {
+      console.warn("FCM registered devices broadcast notice:", devErr);
+    }
+    if (!topicResult.ok && devicesSucceeded === 0) {
+      return {
+        sent: false,
+        configured: true,
+        idempotencyKey,
+        topic,
+        projectId: creds.projectId,
+        devicesTargeted,
+        devicesSucceeded,
+        reason: topicResult.errorMessage || "FCM dispatch failed.",
+        title,
+        body,
+        data
+      };
+    }
+    const sentAt = (/* @__PURE__ */ new Date()).toISOString();
+    const messageId = topicResult.messageId || `devices:${devicesSucceeded}`;
+    try {
+      await setDoc(notifDocRef, {
+        idempotencyKey,
+        releaseId: release.id,
+        versionName: release.versionName,
+        versionCode: release.versionCode,
+        status: "sent",
+        messageId,
+        topic,
+        devicesNotified: devicesSucceeded,
+        sentAt
+      });
+    } catch (err) {
+      console.warn("Could not save FCM idempotency record:", err);
+    }
+    return {
+      sent: true,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      messageId,
+      devicesTargeted,
+      devicesSucceeded,
+      sentAt,
+      title,
+      body,
+      data
+    };
+  } catch (err) {
+    console.error("FCM sendReleasePushNotification error:", err);
+    return {
+      sent: false,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      reason: err instanceof Error ? err.message : "Failed to send FCM push notification.",
+      title,
+      body,
+      data
+    };
+  }
+}
+
 // server/apiHandler.ts
 function sendJson(res, status, data) {
   if (res.writableEnded || res.headersSent) {
@@ -55649,7 +56055,7 @@ async function handleApiRequest(req, res, explicitRoute) {
   const method = req.method?.toUpperCase() || "GET";
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-filename");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-filename, Accept, X-Requested-With");
   if (method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
@@ -55741,6 +56147,36 @@ async function handleApiRequest(req, res, explicitRoute) {
       res.end(apkBuffer);
       return true;
     }
+    if (pathname === "/api/devices/register") {
+      if (method !== "POST") {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+      let body = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
+        return true;
+      }
+      if (!body.token || typeof body.token !== "string" || body.token.trim().length < 20) {
+        sendError(res, 400, "Valid FCM registration token is required.");
+        return true;
+      }
+      const { deviceId } = await registerFcmDeviceToken({
+        token: body.token,
+        platform: body.platform || "android",
+        applicationId: body.applicationId || "com.riyajul.zoya",
+        appVersion: body.appVersion,
+        versionCode: body.versionCode
+      });
+      sendJson(res, 200, {
+        success: true,
+        deviceId,
+        message: "Android device registered for Zoya release notifications."
+      });
+      return true;
+    }
     if (pathname === "/api/admin/login") {
       if (method !== "POST") {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
@@ -55811,7 +56247,10 @@ async function handleApiRequest(req, res, explicitRoute) {
         return true;
       }
       if (pathname === "/api/admin/releases" && method === "GET") {
-        const releases = await getAllReleases();
+        const [releases, fcmStatus] = await Promise.all([
+          getAllReleases(),
+          getFcmStatus()
+        ]);
         releases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         const enriched = await Promise.all(
           releases.map(async (r) => ({
@@ -55819,7 +56258,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             binaryVerified: await hasApkBinary(r)
           }))
         );
-        sendJson(res, 200, { success: true, releases: enriched });
+        sendJson(res, 200, { success: true, releases: enriched, fcmStatus });
         return true;
       }
       if (pathname === "/api/admin/upload" && method === "POST") {
@@ -55968,6 +56407,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             compatibilityWarning = `Notice: VersionCode (${versionCode}) is not higher than the latest published release (${latestPublished.versionCode}). Android devices with version ${latestPublished.versionCode} installed will reject this update.`;
           }
         }
+        const nowIso = (/* @__PURE__ */ new Date()).toISOString();
         const updatedRelease = {
           ...draft,
           versionName: cleanVersionName,
@@ -55975,18 +56415,25 @@ async function handleApiRequest(req, res, explicitRoute) {
           applicationId: body.applicationId || "com.riyajul.zoya",
           releaseNotes: (body.releaseNotes || "").trim(),
           minAndroidVersion: body.minAndroidVersion || "Android 8.0 (API 26)+",
-          releaseDate: body.releaseDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          releaseDate: body.releaseDate || nowIso.split("T")[0],
           isPublished: true,
           binaryVerified: true,
-          publishedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          publishedAt: draft.publishedAt || nowIso,
+          updatedAt: nowIso
         };
         await saveRelease(updatedRelease);
+        const notificationResult = await sendReleasePushNotification(updatedRelease);
+        if (notificationResult.sent && notificationResult.sentAt) {
+          updatedRelease.notificationSentAt = notificationResult.sentAt;
+          updatedRelease.notificationMessageId = notificationResult.messageId;
+          await saveRelease(updatedRelease);
+        }
         sendJson(res, 200, {
           success: true,
           message: "Release published successfully.",
           release: updatedRelease,
-          warning: compatibilityWarning
+          warning: compatibilityWarning,
+          notification: notificationResult
         });
         return true;
       }

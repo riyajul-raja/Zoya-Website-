@@ -1,99 +1,87 @@
 import React from 'react';
-import { AiOrb } from './AiOrb';
-import { Download, Compass, Smartphone, ShieldCheck } from 'lucide-react';
+import { Download } from 'lucide-react';
+import { ZoyaLogo } from './ZoyaLogo';
 import { ReleaseMetadata } from '../../server/storage';
 
 interface HeroProps {
   latestRelease: ReleaseMetadata | null;
   onDownloadClick: () => void;
-  onExploreFeaturesClick: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({
   latestRelease,
   onDownloadClick,
-  onExploreFeaturesClick,
 }) => {
-  const isAvailable = Boolean(latestRelease && latestRelease.isPublished && latestRelease.downloadUrl);
+  const isAvailable = Boolean(
+    latestRelease &&
+    latestRelease.isPublished &&
+    latestRelease.downloadUrl &&
+    latestRelease.binaryVerified !== false
+  );
 
   return (
-    <section id="hero" className="relative pt-20 pb-14 sm:pt-28 md:pt-36 md:pb-24 overflow-hidden">
-      {/* Background ambient lighting */}
-      <div 
-        aria-hidden="true"
-        className="absolute top-1/4 left-1/2 -translate-x-1/2 w-full max-w-5xl h-96 bg-radial-glow pointer-events-none -z-10" 
-      />
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-          {/* Left Column: Value proposition and CTAs (col-span-7) */}
-          <div className="lg:col-span-7 flex flex-col items-start text-left">
-            {/* Technical Scope & Status Metadata */}
-            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 text-xs sm:text-sm font-medium mb-3 sm:mb-4 tracking-wide">
-              <span className="text-teal-400">Android Application</span>
-              <span aria-hidden="true" className="text-slate-600 select-none">·</span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-500/10 border border-teal-500/30 text-teal-300 shadow-[0_0_12px_rgba(20,184,166,0.12)]">
-                <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-teal-400" />
-                </span>
-                <span>Actively Evolving</span>
-              </span>
-            </div>
-
-            {/* Main Headline */}
-            <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-white text-balance leading-[1.18] sm:leading-[1.15]">
-              Meet Zoya —{' '}
-              <span className="bg-gradient-to-r from-teal-300 via-teal-400 to-cyan-300 bg-clip-text text-transparent">
-                Your AI Voice Assistant
-              </span>
-            </h1>
-
-            {/* Supporting Text */}
-            <p className="mt-3.5 sm:mt-5 text-sm sm:text-base lg:text-lg text-slate-300 max-w-2xl leading-relaxed text-pretty">
-              A smarter way to interact with AI through voice and conversation.
-            </p>
-
-            {/* Action buttons with minimum 44px touch targets */}
-            <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={onDownloadClick}
-                className="inline-flex items-center justify-center gap-2.5 px-5 sm:px-6 py-3.5 min-h-[48px] rounded-xl font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-[0_0_20px_rgba(45,212,191,0.25)] hover:shadow-[0_0_30px_rgba(45,212,191,0.45)] active:scale-98 cursor-pointer text-sm sm:text-base focus-visible:outline-teal-400"
-              >
-                <Download className="w-5 h-5 text-slate-950 shrink-0" aria-hidden="true" />
-                <span>Download for Android</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onExploreFeaturesClick}
-                className="inline-flex items-center justify-center gap-2 px-5 sm:px-6 py-3.5 min-h-[48px] rounded-xl font-semibold text-slate-200 bg-slate-900/80 hover:bg-slate-800/90 border border-slate-700/60 hover:border-teal-500/40 transition-all active:scale-98 cursor-pointer text-sm sm:text-base focus-visible:outline-teal-400"
-              >
-                <Compass className="w-5 h-5 text-teal-400 shrink-0" aria-hidden="true" />
-                <span>Explore Features</span>
-              </button>
-            </div>
-
-            {/* Verified device specifications strip */}
-            <div className="mt-7 sm:mt-10 pt-4 sm:pt-6 border-t border-slate-800/70 w-full flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-y-2 gap-x-6 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-teal-400 shrink-0" aria-hidden="true" />
-                <span>
-                  Format: Standalone Android APK {isAvailable && latestRelease?.fileSizeFormatted ? `(${latestRelease.fileSizeFormatted})` : ''}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" aria-hidden="true" />
-                <span>Direct installation · No Play Store account required</span>
-              </div>
+    <section
+      id="hero"
+      className="relative pt-24 pb-12 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20"
+    >
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="glass-panel rounded-3xl px-6 py-12 sm:px-12 sm:py-16 md:py-20 text-center flex flex-col items-center">
+          {/* Zoya Branding & Unboxed Kicker */}
+          <div className="flex flex-col items-center gap-3 mb-6">
+            <ZoyaLogo size="lg" showText={false} />
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-medium text-zinc-500 tabular-nums">
+              <span className="text-pink-600 font-semibold">Zoya AI Assistant</span>
+              <span aria-hidden="true" className="text-pink-300">·</span>
+              <span>Voice &amp; Conversational AI for Android</span>
             </div>
           </div>
 
-          {/* Right Column: Interactive AI Orb Visual (col-span-5) */}
-          <div className="lg:col-span-5 flex justify-center items-center mt-4 lg:mt-0">
-            <div className="relative w-full max-w-sm sm:max-w-md flex flex-col items-center">
-              <AiOrb />
+          {/* Clear, Confident Headline */}
+          <h1 className="text-3xl sm:text-5xl lg:text-[3.5rem] font-extrabold tracking-tight text-zinc-900 text-balance max-w-3xl leading-[1.14]">
+            Natural voice assistance, crafted for your{' '}
+            <span className="text-pink-600">Android</span> experience.
+          </h1>
+
+          {/* Concise Supporting Description */}
+          <p className="mt-4 sm:mt-5 text-base sm:text-lg text-zinc-600 max-w-2xl leading-relaxed">
+            Speak naturally, retain context across multi-turn conversations, and customize your assistant preferences in a clean, lightweight Android application.
+          </p>
+
+          {/* Single Prominent Download APK Button */}
+          <div className="mt-8 sm:mt-10 w-full sm:w-auto flex flex-col items-center">
+            {isAvailable && latestRelease ? (
+              <a
+                href={latestRelease.downloadUrl}
+                download={`zoya-assistant-${latestRelease.versionName || 'latest'}.apk`}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 min-h-[52px] rounded-2xl font-semibold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-500 transition-all duration-150 shadow-[0_8px_24px_rgba(219,39,119,0.24)] cursor-pointer text-base whitespace-nowrap shrink-0 focus-visible:outline-pink-600 tabular-nums"
+              >
+                <Download className="w-5 h-5 text-white shrink-0" aria-hidden="true" />
+                <span>
+                  Download APK {latestRelease.versionName ? `(${latestRelease.versionName})` : ''}
+                </span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={onDownloadClick}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 min-h-[52px] rounded-2xl font-semibold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-500 transition-all duration-150 shadow-[0_8px_24px_rgba(219,39,119,0.24)] cursor-pointer text-base whitespace-nowrap shrink-0 focus-visible:outline-pink-600"
+              >
+                <Download className="w-5 h-5 text-white shrink-0" aria-hidden="true" />
+                <span>Download APK</span>
+              </button>
+            )}
+
+            {/* Quiet Unboxed Release Metadata */}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-xs sm:text-sm text-zinc-500 tabular-nums">
+              <span>{latestRelease?.minAndroidVersion || 'Android 8.0+'}</span>
+              <span aria-hidden="true" className="text-pink-300">·</span>
+              <span>
+                {isAvailable && latestRelease?.fileSizeFormatted
+                  ? `${latestRelease.fileSizeFormatted} Standalone APK`
+                  : 'Standalone Android APK'}
+              </span>
+              <span aria-hidden="true" className="text-pink-300">·</span>
+              <span>Direct Installation</span>
             </div>
           </div>
         </div>

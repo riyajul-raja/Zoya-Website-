@@ -74,21 +74,10 @@ export default function App() {
     }
   };
 
-  const scrollToFeatures = () => {
-    const el = document.querySelector('#features');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#050a0e] text-slate-100 flex flex-col font-sans selection:bg-teal-500/20 selection:text-teal-300 relative bg-grid-pattern">
+    <div className="min-h-screen bg-pink-ambient text-zinc-900 flex flex-col font-sans selection:bg-pink-500/15 selection:text-pink-700 relative">
       {/* Top Navigation */}
-      <Navbar
-        latestRelease={latestRelease}
-        onDownloadClick={scrollToDownload}
-        onOpenAdmin={() => setAdminOpen(true)}
-      />
+      <Navbar onOpenAdmin={() => setAdminOpen(true)} />
 
       {/* Main Content Sections */}
       <main className="flex-1">
@@ -96,7 +85,6 @@ export default function App() {
         <Hero
           latestRelease={latestRelease}
           onDownloadClick={scrollToDownload}
-          onExploreFeaturesClick={scrollToFeatures}
         />
 
         {/* Features Section */}

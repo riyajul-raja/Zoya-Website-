@@ -262,11 +262,25 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         throw new Error(data.error || 'Failed to publish release');
       }
 
+      const notif = data.notification;
+      let notifSummary = '';
+      if (notif) {
+        if (notif.sent) {
+          notifSummary = ` FCM push notification ("${notif.title}") sent to topic "${notif.topic}".`;
+        } else if (notif.alreadySent) {
+          notifSummary = ` FCM push notification was already sent for this release version.`;
+        } else if (!notif.configured) {
+          notifSummary = ` (Note: Configure FIREBASE_SERVICE_ACCOUNT_JSON on Vercel to enable Android push notifications.)`;
+        } else if (notif.reason) {
+          notifSummary = ` (FCM notice: ${notif.reason})`;
+        }
+      }
+
       setPublishMessage({
         type: data.warning ? 'warning' : 'success',
         text: data.warning
-          ? `Release published successfully! ${data.warning}`
-          : `Release ${versionName} published successfully! The public download button and manifest are now updated live.`,
+          ? `Release published successfully! ${data.warning}${notifSummary}`
+          : `Release ${versionName} published successfully! The public download button and manifest are now updated live.${notifSummary}`,
       });
 
       // Reset upload state

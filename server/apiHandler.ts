@@ -23,6 +23,11 @@ import {
   verifyToken,
   extractAuthToken,
 } from './auth';
+import {
+  sendReleasePushNotification,
+  registerFcmDeviceToken,
+  getFcmStatus,
+} from './fcm';
 
 export function sendJson(res: ServerResponse, status: number, data: unknown) {
   if (res.writableEnded || res.headersSent) {
@@ -202,7 +207,7 @@ export async function handleApiRequest(
   // CORS headers for API safety
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename, Accept, X-Requested-With');
 
   if (method === 'OPTIONS') {
     res.statusCode = 204;
@@ -320,6 +325,48 @@ export async function handleApiRequest(
       return true;
     }
 
+    // 4. POST /api/devices/register (Public Android FCM token registration endpoint)
+    if (pathname === '/api/devices/register') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      let body: {
+        token?: string;
+        platform?: string;
+        applicationId?: string;
+        appVersion?: string;
+        versionCode?: number;
+      } = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+        return true;
+      }
+
+      if (!body.token || typeof body.token !== 'string' || body.token.trim().length < 20) {
+        sendError(res, 400, 'Valid FCM registration token is required.');
+        return true;
+      }
+
+      const { deviceId } = await registerFcmDeviceToken({
+        token: body.token,
+        platform: body.platform || 'android',
+        applicationId: body.applicationId || 'com.riyajul.zoya',
+        appVersion: body.appVersion,
+        versionCode: body.versionCode,
+      });
+
+      sendJson(res, 200, {
+        success: true,
+        deviceId,
+        message: 'Android device registered for Zoya release notifications.',
+      });
+      return true;
+    }
+
     // ----------------------------------------------------
     // ADMIN AUTHENTICATION ENDPOINTS
     // ----------------------------------------------------
@@ -415,7 +462,10 @@ export async function handleApiRequest(
 
       // GET /api/admin/releases
       if (pathname === '/api/admin/releases' && method === 'GET') {
-        const releases = await getAllReleases();
+        const [releases, fcmStatus] = await Promise.all([
+          getAllReleases(),
+          getFcmStatus(),
+        ]);
         releases.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
         const enriched = await Promise.all(
@@ -425,7 +475,7 @@ export async function handleApiRequest(
           }))
         );
 
-        sendJson(res, 200, { success: true, releases: enriched });
+        sendJson(res, 200, { success: true, releases: enriched, fcmStatus });
         return true;
       }
 
@@ -625,6 +675,7 @@ export async function handleApiRequest(
           }
         }
 
+        const nowIso = new Date().toISOString();
         const updatedRelease: ReleaseMetadata = {
           ...draft,
           versionName: cleanVersionName,
@@ -632,20 +683,30 @@ export async function handleApiRequest(
           applicationId: body.applicationId || 'com.riyajul.zoya',
           releaseNotes: (body.releaseNotes || '').trim(),
           minAndroidVersion: body.minAndroidVersion || 'Android 8.0 (API 26)+',
-          releaseDate: body.releaseDate || new Date().toISOString().split('T')[0],
+          releaseDate: body.releaseDate || nowIso.split('T')[0],
           isPublished: true,
           binaryVerified: true,
-          publishedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          publishedAt: draft.publishedAt || nowIso,
+          updatedAt: nowIso,
         };
 
         await saveRelease(updatedRelease);
+
+        // Trigger idempotent FCM push notification ONLY after release is published and verified
+        const notificationResult = await sendReleasePushNotification(updatedRelease);
+
+        if (notificationResult.sent && notificationResult.sentAt) {
+          updatedRelease.notificationSentAt = notificationResult.sentAt;
+          updatedRelease.notificationMessageId = notificationResult.messageId;
+          await saveRelease(updatedRelease);
+        }
 
         sendJson(res, 200, {
           success: true,
           message: 'Release published successfully.',
           release: updatedRelease,
           warning: compatibilityWarning,
+          notification: notificationResult,
         });
         return true;
       }

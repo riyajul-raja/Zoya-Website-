@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @layer base {
   html {
     font-family: var(--font-sans);
-    color-scheme: dark;
+    color-scheme: light;
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
   }
@@ -16,93 +16,44 @@
   body {
     overflow-x: hidden;
     min-width: 320px;
+    background-color: #fdf8fa;
+    color: #18181b;
   }
 
-  /* Universal accessible focus outline */
+  /* Accessible focus outline using Zoya pink accent */
   :focus-visible {
-    outline: 2px solid #2dd4bf;
+    outline: 2px solid #db2777;
     outline-offset: 2px;
   }
 }
 
-/* Custom glowing effects and animations for Zoya orb */
-@keyframes orb-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
-  }
+/* Soft ambient pink-blush canvas background */
+.bg-pink-ambient {
+  background-color: #fdf8fa;
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(244, 114, 182, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 85% 28%, rgba(251, 113, 133, 0.08) 0%, transparent 48%),
+    radial-gradient(circle at 50% 75%, rgba(244, 114, 182, 0.07) 0%, transparent 55%);
 }
 
-@keyframes orb-glow {
-  0%, 100% {
-    filter: drop-shadow(0 0 20px rgba(20, 184, 166, 0.4)) drop-shadow(0 0 40px rgba(6, 182, 212, 0.2));
-  }
-  50% {
-    filter: drop-shadow(0 0 32px rgba(20, 184, 166, 0.6)) drop-shadow(0 0 60px rgba(6, 182, 212, 0.35));
-  }
+/* Frosted pink glassmorphism surfaces */
+.glass-card {
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(244, 114, 182, 0.22);
+  box-shadow: 0 10px 30px -10px rgba(219, 39, 119, 0.06);
 }
 
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.glass-panel {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(244, 114, 182, 0.28);
+  box-shadow: 0 16px 40px -12px rgba(219, 39, 119, 0.08);
 }
 
-@keyframes spin-reverse-slow {
-  from {
-    transform: rotate(360deg);
-  }
-  to {
-    transform: rotate(0deg);
-  }
-}
-
-.animate-orb-pulse {
-  animation: orb-pulse 4s ease-in-out infinite;
-}
-
-.animate-orb-glow {
-  animation: orb-glow 3.5s ease-in-out infinite;
-}
-
-.animate-spin-slow {
-  animation: spin-slow 24s linear infinite;
-}
-
-.animate-spin-reverse-slow {
-  animation: spin-reverse-slow 32s linear infinite;
-}
-
-/* Respect user's reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto !important;
-  }
-  
-  *, *::before, *::after {
-    animation-duration: 0.001s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001s !important;
-  }
-
-  .animate-orb-pulse,
-  .animate-orb-glow,
-  .animate-spin-slow,
-  .animate-spin-reverse-slow,
-  .animate-drawer-slide,
-  .animate-overlay-fade {
-    animation: none !important;
-  }
-}
-
-/* Smooth mobile drawer animations */
+/* Smooth mobile drawer & modal transitions */
 @keyframes drawer-slide-in {
   from {
     transform: translateX(100%);
@@ -122,23 +73,29 @@
 }
 
 .animate-drawer-slide {
-  animation: drawer-slide-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: drawer-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-overlay-fade {
-  animation: overlay-fade-in 0.2s ease-out forwards;
+  animation: overlay-fade-in 0.18s ease-out forwards;
 }
 
-/* Subtle grid backdrop */
-.bg-grid-pattern {
-  background-size: 32px 32px;
-  background-image: 
-    linear-gradient(to right, rgba(20, 184, 166, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(20, 184, 166, 0.035) 1px, transparent 1px);
-}
+/* Respect user's reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
 
-.bg-radial-glow {
-  background: radial-gradient(circle at 50% 35%, rgba(15, 118, 110, 0.16) 0%, rgba(6, 182, 212, 0.06) 40%, transparent 70%);
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+
+  .animate-drawer-slide,
+  .animate-overlay-fade {
+    animation: none !important;
+  }
 }
 
 /* Mobile-first touch target compliance */

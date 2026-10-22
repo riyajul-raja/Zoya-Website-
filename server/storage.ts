@@ -40,6 +40,8 @@ export interface ReleaseMetadata {
   minAndroidVersion: string;
   isPublished: boolean;
   publishedAt?: string;
+  notificationSentAt?: string;
+  notificationMessageId?: string;
   createdAt: string;
   updatedAt: string;
 }

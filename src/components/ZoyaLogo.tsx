@@ -12,10 +12,10 @@ export const ZoyaLogo: React.FC<ZoyaLogoProps> = ({
   className = '',
 }) => {
   const sizeMap = {
-    sm: { icon: 26, text: 'text-base font-bold' },
+    sm: { icon: 28, text: 'text-base font-bold' },
     md: { icon: 34, text: 'text-lg font-bold' },
-    lg: { icon: 44, text: 'text-2xl font-extrabold' },
-    xl: { icon: 60, text: 'text-3xl font-extrabold' },
+    lg: { icon: 42, text: 'text-2xl font-bold' },
+    xl: { icon: 52, text: 'text-3xl font-bold' },
   };
 
   const current = sizeMap[size];
@@ -29,64 +29,42 @@ export const ZoyaLogo: React.FC<ZoyaLogoProps> = ({
           viewBox="0 0 40 40"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="relative z-10 transition-transform duration-300 hover:scale-105"
+          className="relative z-10"
         >
-          {/* Outer subtle orbital ring */}
-          <circle
-            cx="20"
-            cy="20"
-            r="18"
-            stroke="url(#zoya-outer-grad)"
+          <defs>
+            <linearGradient id="zoya-pink-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#db2777" />
+              <stop offset="100%" stopColor="#f43f5e" />
+            </linearGradient>
+          </defs>
+
+          {/* Frosted soft blush rounded container */}
+          <rect
+            x="2"
+            y="2"
+            width="36"
+            height="36"
+            rx="11"
+            fill="#fdf2f8"
+            stroke="#f9a8d4"
+            strokeOpacity="0.65"
             strokeWidth="1.5"
-            strokeDasharray="3 3"
-            strokeOpacity="0.75"
           />
 
-          {/* Glowing background pill */}
-          <circle cx="20" cy="20" r="14" fill="#07181d" stroke="#134e4a" strokeWidth="1" />
-
-          {/* Acoustic wave rings */}
-          <circle
-            cx="20"
-            cy="20"
-            r="10"
-            stroke="url(#zoya-cyan-grad)"
-            strokeWidth="1.5"
-            strokeOpacity="0.85"
-          />
-
-          {/* Stylized geometric Z waveform mark */}
+          {/* Crisp geometric Zoya mark in rose-pink */}
           <path
-            d="M15 14.5H25L15 25.5H25"
-            stroke="url(#zoya-cyan-grad)"
-            strokeWidth="2.2"
+            d="M14 14.5H26L14 25.5H26"
+            stroke="url(#zoya-pink-grad)"
+            strokeWidth="2.6"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-
-          {/* Center glowing micro-node */}
-          <circle cx="20" cy="20" r="2" fill="#22d3ee" />
-
-          <defs>
-            <linearGradient id="zoya-outer-grad" x1="2" y1="2" x2="38" y2="38" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#14b8a6" />
-              <stop offset="100%" stopColor="#0891b2" />
-            </linearGradient>
-            <linearGradient id="zoya-cyan-grad" x1="12" y1="12" x2="28" y2="28" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#2dd4bf" />
-              <stop offset="50%" stopColor="#06b6d4" />
-              <stop offset="100%" stopColor="#38bdf8" />
-            </linearGradient>
-          </defs>
         </svg>
-
-        {/* Soft background glow */}
-        <div className="absolute inset-0 bg-teal-500/20 blur-md rounded-full pointer-events-none" />
       </div>
 
       {showText && (
-        <span className={`tracking-tight text-white whitespace-nowrap ${current.text}`}>
-          Zoya <span className="text-teal-400 font-semibold">AI</span>
+        <span className={`tracking-tight text-zinc-900 whitespace-nowrap ${current.text}`}>
+          Zoya <span className="text-pink-600 font-semibold">AI</span>
         </span>
       )}
     </div>

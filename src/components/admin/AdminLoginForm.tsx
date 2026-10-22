@@ -65,31 +65,31 @@ export const AdminLoginForm: React.FC<AdminLoginFormProps> = ({ onSuccess }) => 
   };
 
   return (
-    <div className="max-w-sm mx-auto p-6 sm:p-8 bg-[#071319] border border-teal-500/30 rounded-2xl shadow-2xl text-left">
-      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-800">
-        <div className="w-10 h-10 rounded-xl bg-teal-950 border border-teal-500/40 flex items-center justify-center text-teal-400 shrink-0">
+    <div className="max-w-sm mx-auto p-6 sm:p-8 bg-pink-50/40 border border-pink-200/80 rounded-2xl text-left">
+      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-pink-200/60">
+        <div className="w-10 h-10 rounded-xl bg-white border border-pink-200 flex items-center justify-center text-pink-600 shrink-0">
           <ShieldCheck className="w-5 h-5" aria-hidden="true" />
         </div>
         <div>
-          <h3 className="text-lg font-bold text-white tracking-tight">Admin PIN Login</h3>
-          <p className="text-xs text-slate-400">Zoya Release Management Portal</p>
+          <h3 className="text-lg font-bold text-zinc-900 tracking-tight">Admin PIN Login</h3>
+          <p className="text-xs text-zinc-500">Zoya Release Management Portal</p>
         </div>
       </div>
 
       {error && (
-        <div className="mb-5 p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 flex items-start gap-2.5 text-xs text-red-300">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
+        <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-700">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
           <span>{error}</span>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label htmlFor="admin-pin" className="block text-xs font-medium text-slate-300 mb-1.5">
+          <label htmlFor="admin-pin" className="block text-xs font-medium text-zinc-700 mb-1.5">
             Secret Admin PIN
           </label>
           <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-pink-500">
               <KeyRound className="w-4 h-4" aria-hidden="true" />
             </div>
             <input
@@ -101,18 +101,18 @@ export const AdminLoginForm: React.FC<AdminLoginFormProps> = ({ onSuccess }) => 
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               placeholder="Enter PIN"
-              className="w-full pl-10 pr-3.5 py-3 bg-slate-900 border border-slate-700/80 rounded-xl text-base font-mono text-white placeholder-slate-500 focus-visible:outline-teal-400 min-h-[48px]"
+              className="w-full pl-10 pr-3.5 py-3 bg-white border border-pink-200 rounded-xl text-base font-mono text-zinc-900 placeholder-zinc-400 focus-visible:outline-pink-600 min-h-[48px]"
             />
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-            Configured on server via <code className="text-teal-400 font-mono">ZOYA_ADMIN_PIN</code> env variable.
+          <div className="mt-2 text-[11px] text-zinc-500 leading-relaxed">
+            Configured on server via <code className="text-pink-600 font-mono">ZOYA_ADMIN_PIN</code> env variable.
           </div>
         </div>
 
         <button
           type="submit"
           disabled={loading || !pin.trim()}
-          className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 min-h-[48px] rounded-xl text-sm font-bold text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-md active:scale-98 disabled:opacity-50 cursor-pointer focus-visible:outline-teal-400"
+          className="w-full inline-flex items-center justify-center gap-2 py-3 px-4 min-h-[48px] rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-500 transition-all shadow-[0_6px_20px_rgba(219,39,119,0.22)] disabled:opacity-50 cursor-pointer focus-visible:outline-pink-600"
         >
           {loading ? (
             <>

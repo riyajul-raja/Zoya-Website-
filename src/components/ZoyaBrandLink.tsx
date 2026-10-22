@@ -181,7 +181,7 @@ export const ZoyaBrandLink: React.FC<ZoyaBrandLinkProps> = ({
         e.preventDefault();
         return false;
       }}
-      className={`group relative flex items-center whitespace-nowrap shrink-0 rounded-md focus-visible:outline-teal-400 py-1 select-none transition-transform duration-200 cursor-pointer ${
+      className={`group relative flex items-center whitespace-nowrap shrink-0 rounded-md focus-visible:outline-pink-600 py-1 select-none transition-transform duration-150 cursor-pointer ${
         isPressing ? 'scale-[0.98]' : ''
       } ${className}`}
       style={{
@@ -196,9 +196,9 @@ export const ZoyaBrandLink: React.FC<ZoyaBrandLinkProps> = ({
 
       {/* Subtle feedback during hold (active only while pressing, invisible otherwise) */}
       {isPressing && (
-        <span 
+        <span
           aria-hidden="true"
-          className="absolute -inset-1 rounded-xl border border-teal-400/40 animate-pulse pointer-events-none"
+          className="absolute -inset-1.5 rounded-xl border border-pink-400/50 pointer-events-none"
         />
       )}
     </a>

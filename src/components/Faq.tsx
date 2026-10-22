@@ -26,7 +26,7 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
       id: 'how-to-download',
       question: 'How do I download Zoya?',
       answer:
-        'You can download the APK package directly from the official Download section on this website. When an official release build is published, tapping "Download APK" will directly save the verified installation package to your Android device.',
+        'You can download the APK package directly from the Hero or Download section on this website. When an official release build is published, tapping "Download APK" will directly save the verified installation package to your Android device.',
     },
     {
       id: 'how-to-install',
@@ -43,7 +43,7 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
       id: 'future-updates',
       question: 'How will I receive future updates?',
       answer:
-        'Future releases are published directly on this official website and the project release repository. When a new version is released, download the updated APK and install it directly over the existing version to upgrade while preserving your saved local preferences.',
+        'Future releases are published directly on this official website. When a new version is released, download the updated APK and install it directly over the existing version to upgrade while preserving your saved local preferences.',
     },
     {
       id: 'permissions-privacy',
@@ -58,17 +58,21 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
   };
 
   return (
-    <section id="faq" aria-label="Frequently Asked Questions" className="py-16 sm:py-20 md:py-28 relative">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section
+      id="faq"
+      aria-label="Frequently Asked Questions"
+      className="py-14 sm:py-20"
+    >
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10 sm:mb-12">
-          <div className="text-xs font-semibold tracking-wider uppercase text-teal-400 mb-2">
-            Frequently Asked Questions
+          <div className="text-xs font-semibold text-pink-600 mb-2">
+            FAQ
           </div>
-          <h2 className="text-2xl xs:text-3xl sm:text-4xl font-extrabold text-white tracking-tight text-balance">
-            Got questions about Zoya?
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-900 tracking-tight text-balance">
+            Common questions about Zoya
           </h2>
-          <p className="mt-3 sm:mt-4 text-sm sm:text-base text-slate-300 leading-relaxed text-balance">
-            Clear, honest answers about downloading, installing, and running Zoya on Android.
+          <p className="mt-3 text-sm sm:text-base text-zinc-600 leading-relaxed">
+            Clear answers about downloading, installing, and running Zoya AI Assistant on Android.
           </p>
         </div>
 
@@ -82,7 +86,9 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
             return (
               <div
                 key={faq.id}
-                className="rounded-2xl border transition-all duration-200 overflow-hidden bg-[#071319] border-teal-950/80 hover:border-teal-500/30"
+                className={`rounded-2xl transition-colors duration-150 overflow-hidden glass-card ${
+                  isOpen ? 'border-pink-300/90' : 'hover:border-pink-300/70'
+                }`}
               >
                 <h3>
                   <button
@@ -91,16 +97,16 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
                     aria-expanded={isOpen}
                     aria-controls={answerId}
                     onClick={() => toggleFaq(faq.id)}
-                    className="w-full py-3.5 sm:py-4.5 px-3.5 sm:px-6 text-left flex items-center justify-between gap-3 sm:gap-4 cursor-pointer focus-visible:outline-teal-400 min-h-[48px]"
+                    className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-pink-600 min-h-[52px]"
                   >
-                    <span className="text-sm sm:text-base md:text-lg font-bold text-white tracking-tight">
+                    <span className="text-sm sm:text-base font-semibold text-zinc-900 tracking-tight">
                       {faq.question}
                     </span>
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-200 ${
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-150 ${
                         isOpen
-                          ? 'rotate-180 bg-teal-500/20 text-teal-300'
-                          : 'bg-slate-800/60 text-slate-400'
+                          ? 'rotate-180 bg-pink-100 text-pink-600'
+                          : 'bg-pink-50/80 text-zinc-500'
                       }`}
                     >
                       <ChevronDown className="w-4 h-4" aria-hidden="true" />
@@ -109,11 +115,11 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
                 </h3>
 
                 {isOpen && (
-                  <div 
+                  <div
                     id={answerId}
                     role="region"
                     aria-labelledby={headerId}
-                    className="px-3.5 sm:px-6 pb-4 sm:pb-5 pt-1 text-xs sm:text-sm md:text-base text-slate-300 leading-relaxed border-t border-slate-800/50"
+                    className="px-5 sm:px-6 pb-5 pt-2 text-xs sm:text-sm text-zinc-600 leading-relaxed border-t border-pink-100"
                   >
                     <p>{faq.answer}</p>
                   </div>

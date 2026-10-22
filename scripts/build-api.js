@@ -12,6 +12,7 @@ const entryPoints = [
   'server/api/releases/latest.ts',
   'server/api/releases/manifest.ts',
   'server/api/releases/download.ts',
+  'server/api/devices/register.ts',
 ];
 
 async function build() {
@@ -20,9 +21,11 @@ async function build() {
   // Ensure output directories exist in api/
   fs.mkdirSync('api/admin/releases', { recursive: true });
   fs.mkdirSync('api/releases', { recursive: true });
+  fs.mkdirSync('api/devices', { recursive: true });
 
   await esbuild.build({
     entryPoints,
+    outbase: 'server/api',
     outdir: 'api',
     bundle: true,
     platform: 'node',

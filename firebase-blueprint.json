@@ -23,7 +23,9 @@
         "isPublished": { "type": "boolean" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" },
-        "publishedAt": { "type": "string" }
+        "publishedAt": { "type": "string" },
+        "notificationSentAt": { "type": "string" },
+        "notificationMessageId": { "type": "string" }
       },
       "required": ["id", "fileName", "storageKey", "createdAt"]
     },
@@ -39,6 +41,38 @@
         "createdAt": { "type": "string" }
       },
       "required": ["storageKey", "index", "totalChunks", "size"]
+    },
+    "FcmDevice": {
+      "title": "FcmDevice",
+      "description": "Registered Android FCM device token for Zoya update push notifications",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "platform": { "type": "string" },
+        "applicationId": { "type": "string" },
+        "appVersion": { "type": "string" },
+        "versionCode": { "type": "number" },
+        "updatedAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["token", "updatedAt"]
+    },
+    "FcmNotification": {
+      "title": "FcmNotification",
+      "description": "Idempotency record for sent release push notifications",
+      "type": "object",
+      "properties": {
+        "idempotencyKey": { "type": "string" },
+        "releaseId": { "type": "string" },
+        "versionName": { "type": "string" },
+        "versionCode": { "type": "number" },
+        "status": { "type": "string" },
+        "messageId": { "type": "string" },
+        "topic": { "type": "string" },
+        "devicesNotified": { "type": "number" },
+        "sentAt": { "type": "string" }
+      },
+      "required": ["idempotencyKey", "releaseId", "status", "sentAt"]
     }
   },
   "firestore": {
@@ -49,6 +83,14 @@
     "/apk_chunks/{chunkId}": {
       "schema": "ApkChunk",
       "description": "Stores persistent binary chunks for uploaded APK files"
+    },
+    "/fcm_devices/{deviceId}": {
+      "schema": "FcmDevice",
+      "description": "Stores registered Android FCM tokens for release update broadcasts"
+    },
+    "/fcm_notifications/{notificationId}": {
+      "schema": "FcmNotification",
+      "description": "Stores idempotency records for published release push notifications"
     }
   }
 }
