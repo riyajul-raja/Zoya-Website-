@@ -40,7 +40,7 @@ export const InstallationGuide: React.FC = () => {
             How to install Zoya on Android
           </h2>
           <p className="mt-3 text-sm sm:text-base text-zinc-600 leading-relaxed">
-            Installing the standalone APK takes less than a minute on any smartphone or tablet running Android 8.0 or newer.
+            Installing the standalone APK takes less than a minute on Android 8.0 or newer.
           </p>
         </div>
 

@@ -1,15 +1,19 @@
 import React from 'react';
-import { Download } from 'lucide-react';
+import { ArrowDown, Sparkles } from 'lucide-react';
 import { ZoyaLogo } from './ZoyaLogo';
 import { ReleaseMetadata } from '../../server/storage';
 
 interface HeroProps {
   latestRelease: ReleaseMetadata | null;
-  onDownloadClick: () => void;
+  onExploreDownloads?: () => void;
+  onExploreFeatures?: () => void;
+  onDownloadClick?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({
   latestRelease,
+  onExploreDownloads,
+  onExploreFeatures,
   onDownloadClick,
 }) => {
   const isAvailable = Boolean(
@@ -19,70 +23,90 @@ export const Hero: React.FC<HeroProps> = ({
     latestRelease.binaryVerified !== false
   );
 
+  const handleScrollToDownloads = () => {
+    if (onExploreDownloads) {
+      onExploreDownloads();
+    } else if (onDownloadClick) {
+      onDownloadClick();
+    } else {
+      const el = document.getElementById('download') || document.querySelector('#download');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  const handleScrollToFeatures = () => {
+    if (onExploreFeatures) {
+      onExploreFeatures();
+    } else {
+      const el = document.getElementById('features') || document.querySelector('#features');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
   return (
     <section
       id="hero"
-      className="relative pt-24 pb-12 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20"
+      aria-label="Zoya AI Assistant Overview"
+      className="relative pt-20 pb-10 sm:pt-32 sm:pb-16 lg:pt-36 lg:pb-20"
     >
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="glass-panel rounded-3xl px-6 py-12 sm:px-12 sm:py-16 md:py-20 text-center flex flex-col items-center">
-          {/* Zoya Branding & Unboxed Kicker */}
-          <div className="flex flex-col items-center gap-3 mb-6">
+      <div className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="glass-panel rounded-2xl sm:rounded-3xl px-4 py-8 sm:px-10 sm:py-14 md:py-18 text-center flex flex-col items-center">
+          {/* Original single Zoya Emblem */}
+          <div className="flex flex-col items-center gap-2.5 sm:gap-3 mb-4 sm:mb-6">
             <ZoyaLogo size="lg" showText={false} />
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm font-medium text-zinc-500 tabular-nums">
-              <span className="text-pink-600 font-semibold">Zoya AI Assistant</span>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold tracking-wide text-zinc-500 tabular-nums">
+              <span className="text-pink-600">Zoya AI Assistant</span>
               <span aria-hidden="true" className="text-pink-300">·</span>
-              <span>Voice &amp; Conversational AI for Android</span>
+              <span className="text-zinc-600">Android Edition</span>
             </div>
           </div>
 
-          {/* Clear, Confident Headline */}
-          <h1 className="text-3xl sm:text-5xl lg:text-[3.5rem] font-extrabold tracking-tight text-zinc-900 text-balance max-w-3xl leading-[1.14]">
-            Natural voice assistance, crafted for your{' '}
-            <span className="text-pink-600">Android</span> experience.
+          {/* Exact Headline */}
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-zinc-900 leading-tight sm:leading-tight max-w-2xl text-balance">
+            Meet Zoya — Your AI Voice Assistant
           </h1>
 
-          {/* Concise Supporting Description */}
-          <p className="mt-4 sm:mt-5 text-base sm:text-lg text-zinc-600 max-w-2xl leading-relaxed">
-            Speak naturally, retain context across multi-turn conversations, and customize your assistant preferences in a clean, lightweight Android application.
+          {/* Exact Description */}
+          <p className="mt-3.5 sm:mt-5 text-sm sm:text-base lg:text-lg text-zinc-600 max-w-xl leading-relaxed text-balance">
+            Talk to Zoya naturally using your voice. Get answers to your questions, enjoy hands-free conversations, and personalize your assistant to suit your needs—all in one lightweight Android app.
           </p>
 
-          {/* Single Prominent Download APK Button */}
-          <div className="mt-8 sm:mt-10 w-full sm:w-auto flex flex-col items-center">
-            {isAvailable && latestRelease ? (
-              <a
-                href={latestRelease.downloadUrl}
-                download={`zoya-assistant-${latestRelease.versionName || 'latest'}.apk`}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 min-h-[52px] rounded-2xl font-semibold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-500 transition-all duration-150 shadow-[0_8px_24px_rgba(219,39,119,0.24)] cursor-pointer text-base whitespace-nowrap shrink-0 focus-visible:outline-pink-600 tabular-nums"
-              >
-                <Download className="w-5 h-5 text-white shrink-0" aria-hidden="true" />
-                <span>
-                  Download APK {latestRelease.versionName ? `(${latestRelease.versionName})` : ''}
-                </span>
-              </a>
-            ) : (
-              <button
-                type="button"
-                onClick={onDownloadClick}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 min-h-[52px] rounded-2xl font-semibold text-white bg-gradient-to-r from-pink-600 to-rose-500 hover:from-pink-500 hover:to-rose-500 transition-all duration-150 shadow-[0_8px_24px_rgba(219,39,119,0.24)] cursor-pointer text-base whitespace-nowrap shrink-0 focus-visible:outline-pink-600"
-              >
-                <Download className="w-5 h-5 text-white shrink-0" aria-hidden="true" />
-                <span>Download APK</span>
-              </button>
-            )}
+          {/* Action Navigation Buttons */}
+          <div className="mt-6 sm:mt-8 w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+            <button
+              type="button"
+              onClick={handleScrollToDownloads}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] rounded-xl font-semibold text-white bg-pink-600 hover:bg-pink-700 active:bg-pink-800 transition-colors duration-150 shadow-sm cursor-pointer text-sm sm:text-base whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600"
+            >
+              <ArrowDown className="w-4 h-4 text-white shrink-0" aria-hidden="true" />
+              <span>Explore Downloads</span>
+            </button>
 
-            {/* Quiet Unboxed Release Metadata */}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-xs sm:text-sm text-zinc-500 tabular-nums">
-              <span>{latestRelease?.minAndroidVersion || 'Android 8.0+'}</span>
-              <span aria-hidden="true" className="text-pink-300">·</span>
-              <span>
-                {isAvailable && latestRelease?.fileSizeFormatted
-                  ? `${latestRelease.fileSizeFormatted} Standalone APK`
-                  : 'Standalone Android APK'}
-              </span>
-              <span aria-hidden="true" className="text-pink-300">·</span>
-              <span>Direct Installation</span>
-            </div>
+            <button
+              type="button"
+              onClick={handleScrollToFeatures}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] rounded-xl font-semibold text-zinc-800 hover:text-zinc-900 bg-white/95 hover:bg-white active:bg-zinc-50 border border-zinc-300 hover:border-pink-300 transition-all duration-150 shadow-xs cursor-pointer text-sm sm:text-base whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600"
+            >
+              <Sparkles className="w-4 h-4 text-pink-600 shrink-0" aria-hidden="true" />
+              <span>Explore Features</span>
+            </button>
+          </div>
+
+          {/* Quiet Release Compatibility Metadata */}
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-zinc-500 tabular-nums">
+            <span className="font-medium text-zinc-700">{latestRelease?.minAndroidVersion || 'Android 8.0+'}</span>
+            <span aria-hidden="true" className="text-pink-300">·</span>
+            <span>
+              {isAvailable && latestRelease?.versionName
+                ? `v${latestRelease.versionName} Available`
+                : 'Standalone Android APK'}
+            </span>
+            <span aria-hidden="true" className="text-pink-300">·</span>
+            <span>Direct Installation</span>
           </div>
         </div>
       </div>

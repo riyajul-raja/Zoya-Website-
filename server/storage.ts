@@ -38,6 +38,9 @@ export interface ReleaseMetadata {
   releaseDate: string;
   releaseNotes: string;
   minAndroidVersion: string;
+  minSdkVersion?: number | null;
+  targetSdkVersion?: number | null;
+  targetAndroidVersion?: string | null;
   isPublished: boolean;
   publishedAt?: string;
   notificationSentAt?: string;
@@ -56,6 +59,8 @@ export interface ReleaseManifest {
     fileSize: number;
     fileSizeFormatted: string;
     minAndroidVersion: string;
+    minSdkVersion?: number | null;
+    targetSdkVersion?: number | null;
     releaseDate: string;
     releaseNotes: string;
   };
@@ -185,10 +190,15 @@ export async function getReleaseById(id: string): Promise<ReleaseMetadata | null
 }
 
 export async function saveRelease(release: ReleaseMetadata): Promise<void> {
-  const updatedRelease: ReleaseMetadata = {
+  const rawRelease: ReleaseMetadata = {
     ...release,
     updatedAt: new Date().toISOString(),
   };
+
+  // Strip any undefined fields so Firestore setDoc never rejects the document
+  const updatedRelease = Object.fromEntries(
+    Object.entries(rawRelease).filter(([, v]) => v !== undefined)
+  ) as unknown as ReleaseMetadata;
 
   // 1. Persist permanently to Cloud Firestore
   const db = getDb();
@@ -209,6 +219,20 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
     fs.writeFileSync(releasesFile, JSON.stringify(all, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Local releases backup write notice:', err);
+  }
+}
+
+export async function deleteStoredChunks(storageKey: string, totalChunks: number): Promise<void> {
+  if (!storageKey || totalChunks <= 0) return;
+  try {
+    const db = getDb();
+    const delPromises: Promise<void>[] = [];
+    for (let i = 0; i < totalChunks; i++) {
+      delPromises.push(deleteDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${i}`)));
+    }
+    await Promise.allSettled(delPromises);
+  } catch (err) {
+    console.warn('Firestore apk_chunks cleanup notice:', err);
   }
 }
 

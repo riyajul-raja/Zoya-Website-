@@ -15068,7 +15068,7 @@ var require_compression_filter = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CompressionFilterFactory = exports.CompressionFilter = void 0;
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var compression_algorithms_1 = require_compression_algorithms();
     var constants_1 = require_constants();
     var filter_1 = require_filter();
@@ -15128,7 +15128,7 @@ var require_compression_filter = __commonJS({
       }
       compressMessage(message) {
         return new Promise((resolve, reject) => {
-          zlib.deflate(message, (err, output) => {
+          zlib2.deflate(message, (err, output) => {
             if (err) {
               reject(err);
             } else {
@@ -15141,7 +15141,7 @@ var require_compression_filter = __commonJS({
         return new Promise((resolve, reject) => {
           let totalLength = 0;
           const messageParts = [];
-          const decompresser = zlib.createInflate();
+          const decompresser = zlib2.createInflate();
           decompresser.on("error", (error) => {
             reject({
               code: constants_1.Status.INTERNAL,
@@ -15174,7 +15174,7 @@ var require_compression_filter = __commonJS({
       }
       compressMessage(message) {
         return new Promise((resolve, reject) => {
-          zlib.gzip(message, (err, output) => {
+          zlib2.gzip(message, (err, output) => {
             if (err) {
               reject(err);
             } else {
@@ -15187,7 +15187,7 @@ var require_compression_filter = __commonJS({
         return new Promise((resolve, reject) => {
           let totalLength = 0;
           const messageParts = [];
-          const decompresser = zlib.createGunzip();
+          const decompresser = zlib2.createGunzip();
           decompresser.on("error", (error) => {
             reject({
               code: constants_1.Status.INTERNAL,
@@ -17012,7 +17012,7 @@ var require_server_call = __commonJS({
     var events_1 = __require("events");
     var http2 = __require("http2");
     var stream_1 = __require("stream");
-    var zlib = __require("zlib");
+    var zlib2 = __require("zlib");
     var constants_1 = require_constants();
     var metadata_1 = require_metadata();
     var stream_decoder_1 = require_stream_decoder();
@@ -17257,9 +17257,9 @@ var require_server_call = __commonJS({
         } else if (encoding === "deflate" || encoding === "gzip") {
           let decompresser;
           if (encoding === "deflate") {
-            decompresser = zlib.createInflate();
+            decompresser = zlib2.createInflate();
           } else {
-            decompresser = zlib.createGunzip();
+            decompresser = zlib2.createGunzip();
           }
           return new Promise((resolve, reject) => {
             let totalLength = 0;
@@ -19960,6 +19960,7 @@ var require_src3 = __commonJS({
 });
 
 // server/apiHandler.ts
+import crypto5 from "crypto";
 import path2 from "path";
 
 // server/storage.ts
@@ -55103,10 +55104,13 @@ async function getReleaseById(id) {
   return all.find((r) => r.id === id) || null;
 }
 async function saveRelease(release) {
-  const updatedRelease = {
+  const rawRelease = {
     ...release,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+  const updatedRelease = Object.fromEntries(
+    Object.entries(rawRelease).filter(([, v]) => v !== void 0)
+  );
   const db = getDb();
   const docRef = doc(db, "releases", updatedRelease.id);
   await setDoc(docRef, updatedRelease);
@@ -55123,6 +55127,19 @@ async function saveRelease(release) {
     fs.writeFileSync(releasesFile, JSON.stringify(all, null, 2), "utf-8");
   } catch (err) {
     console.warn("Local releases backup write notice:", err);
+  }
+}
+async function deleteStoredChunks(storageKey, totalChunks) {
+  if (!storageKey || totalChunks <= 0) return;
+  try {
+    const db = getDb();
+    const delPromises = [];
+    for (let i = 0; i < totalChunks; i++) {
+      delPromises.push(deleteDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${i}`)));
+    }
+    await Promise.allSettled(delPromises);
+  } catch (err) {
+    console.warn("Firestore apk_chunks cleanup notice:", err);
   }
 }
 async function deleteRelease(id) {
@@ -55399,6 +55416,280 @@ async function getApkBuffer(storageKey, storagePath, chunkCount) {
   } catch {
   }
   return null;
+}
+
+// server/apkParser.ts
+import zlib from "zlib";
+var OFFICIAL_ZOYA_PACKAGE = "com.riyajul.zoya";
+function formatBytes2(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+function formatAndroidSdk(sdkVersion, isMin = true) {
+  if (!sdkVersion || isNaN(sdkVersion) || sdkVersion <= 0) {
+    return isMin ? "Not specified in APK" : "Not specified";
+  }
+  const sdkMap = {
+    21: "Android 5.0",
+    22: "Android 5.1",
+    23: "Android 6.0",
+    24: "Android 7.0",
+    25: "Android 7.1",
+    26: "Android 8.0",
+    27: "Android 8.1",
+    28: "Android 9.0",
+    29: "Android 10.0",
+    30: "Android 11.0",
+    31: "Android 12.0",
+    32: "Android 12L",
+    33: "Android 13.0",
+    34: "Android 14.0",
+    35: "Android 15.0"
+  };
+  const base = sdkMap[sdkVersion] || "Android";
+  return isMin ? `${base} (API ${sdkVersion})+` : `${base} (API ${sdkVersion})`;
+}
+function extractAndroidManifestBytes(zipBuffer) {
+  if (zipBuffer.length < 22 || zipBuffer[0] !== 80 || zipBuffer[1] !== 75 || zipBuffer[2] !== 3 || zipBuffer[3] !== 4) {
+    throw new Error("Invalid APK file: File is not a valid ZIP/APK archive.");
+  }
+  const maxCommentLength = 65535;
+  const searchStart = Math.max(0, zipBuffer.length - 22 - maxCommentLength);
+  let eocdOffset = -1;
+  for (let i = zipBuffer.length - 22; i >= searchStart; i--) {
+    if (zipBuffer.readUInt32LE(i) === 101010256) {
+      eocdOffset = i;
+      break;
+    }
+  }
+  if (eocdOffset !== -1) {
+    const cdSize = zipBuffer.readUInt32LE(eocdOffset + 12);
+    const cdOffset = zipBuffer.readUInt32LE(eocdOffset + 16);
+    if (cdOffset + cdSize <= zipBuffer.length) {
+      let ptr = cdOffset;
+      const cdEnd = cdOffset + cdSize;
+      while (ptr + 46 <= cdEnd) {
+        const sig = zipBuffer.readUInt32LE(ptr);
+        if (sig !== 33639237) break;
+        const compressionMethod = zipBuffer.readUInt16LE(ptr + 10);
+        const compressedSize = zipBuffer.readUInt32LE(ptr + 20);
+        const fileNameLen = zipBuffer.readUInt16LE(ptr + 28);
+        const extraLen = zipBuffer.readUInt16LE(ptr + 30);
+        const commentLen = zipBuffer.readUInt16LE(ptr + 32);
+        const localHeaderOffset = zipBuffer.readUInt32LE(ptr + 42);
+        const nameStart = ptr + 46;
+        if (nameStart + fileNameLen > zipBuffer.length) break;
+        const entryName = zipBuffer.subarray(nameStart, nameStart + fileNameLen).toString("utf8");
+        if (entryName === "AndroidManifest.xml") {
+          if (localHeaderOffset + 30 > zipBuffer.length) {
+            throw new Error("Corrupted APK: Invalid local header offset for AndroidManifest.xml.");
+          }
+          const localSig = zipBuffer.readUInt32LE(localHeaderOffset);
+          if (localSig !== 67324752) {
+            throw new Error("Corrupted APK: Invalid local file header signature for AndroidManifest.xml.");
+          }
+          const localNameLen = zipBuffer.readUInt16LE(localHeaderOffset + 26);
+          const localExtraLen = zipBuffer.readUInt16LE(localHeaderOffset + 28);
+          const dataStart = localHeaderOffset + 30 + localNameLen + localExtraLen;
+          const dataEnd = dataStart + compressedSize;
+          if (dataEnd > zipBuffer.length) {
+            throw new Error("Corrupted APK: AndroidManifest.xml data extends beyond file boundary.");
+          }
+          const rawSlice = zipBuffer.subarray(dataStart, dataEnd);
+          if (compressionMethod === 0) {
+            return rawSlice;
+          }
+          if (compressionMethod === 8) {
+            return zlib.inflateRawSync(rawSlice);
+          }
+          throw new Error(`Unsupported ZIP compression method (${compressionMethod}) for AndroidManifest.xml.`);
+        }
+        ptr = nameStart + fileNameLen + extraLen + commentLen;
+      }
+    }
+  }
+  let offset = 0;
+  while (offset + 30 <= zipBuffer.length) {
+    const sig = zipBuffer.readUInt32LE(offset);
+    if (sig !== 67324752) break;
+    const compressionMethod = zipBuffer.readUInt16LE(offset + 8);
+    const compressedSize = zipBuffer.readUInt32LE(offset + 18);
+    const fileNameLen = zipBuffer.readUInt16LE(offset + 26);
+    const extraLen = zipBuffer.readUInt16LE(offset + 28);
+    const nameStart = offset + 30;
+    if (nameStart + fileNameLen > zipBuffer.length) break;
+    const entryName = zipBuffer.subarray(nameStart, nameStart + fileNameLen).toString("utf8");
+    const dataStart = nameStart + fileNameLen + extraLen;
+    const dataEnd = dataStart + compressedSize;
+    if (entryName === "AndroidManifest.xml") {
+      if (dataEnd > zipBuffer.length || compressedSize === 0) {
+        throw new Error("Invalid APK: Cannot read AndroidManifest.xml payload.");
+      }
+      const rawSlice = zipBuffer.subarray(dataStart, dataEnd);
+      if (compressionMethod === 0) return rawSlice;
+      if (compressionMethod === 8) return zlib.inflateRawSync(rawSlice);
+      throw new Error(`Unsupported compression method (${compressionMethod}) for AndroidManifest.xml.`);
+    }
+    if (compressedSize === 0) break;
+    offset = dataEnd;
+  }
+  throw new Error("Invalid APK file: AndroidManifest.xml was not found inside the archive.");
+}
+function parseBinaryAndroidManifest(axml) {
+  if (axml.length < 8) {
+    throw new Error("Invalid AndroidManifest.xml: File is too small.");
+  }
+  const xmlChunkType = axml.readUInt16LE(0);
+  const xmlHeaderSize = axml.readUInt16LE(2);
+  if (xmlChunkType !== 3) {
+    throw new Error("Invalid AndroidManifest.xml: Not in compiled Android Binary XML (AXML) format.");
+  }
+  let strings = [];
+  let resourceIds = [];
+  let packageName = "";
+  let versionName = "";
+  let versionCode = 0;
+  let versionCodeMajor = 0;
+  let minSdkVersion = null;
+  let targetSdkVersion = null;
+  let offset = xmlHeaderSize;
+  while (offset + 8 <= axml.length) {
+    const chunkType = axml.readUInt16LE(offset);
+    const headerSize = axml.readUInt16LE(offset + 2);
+    const chunkSize = axml.readUInt32LE(offset + 4);
+    if (chunkSize < 8 || offset + chunkSize > axml.length) {
+      break;
+    }
+    if (chunkType === 1) {
+      const stringCount = axml.readUInt32LE(offset + 8);
+      const flags = axml.readUInt32LE(offset + 16);
+      const stringsStart = axml.readUInt32LE(offset + 20);
+      const isUtf8 = (flags & 256) !== 0;
+      const offsetsBase = offset + headerSize;
+      const poolDataBase = offset + stringsStart;
+      strings = new Array(stringCount);
+      for (let i = 0; i < stringCount; i++) {
+        if (offsetsBase + (i + 1) * 4 > offset + chunkSize) {
+          strings[i] = "";
+          continue;
+        }
+        const strOffset = poolDataBase + axml.readUInt32LE(offsetsBase + i * 4);
+        if (strOffset >= offset + chunkSize) {
+          strings[i] = "";
+          continue;
+        }
+        if (isUtf8) {
+          let p = strOffset;
+          const u16Len = axml[p++];
+          if ((u16Len & 128) !== 0) p++;
+          let u8Len = axml[p++];
+          if ((u8Len & 128) !== 0) {
+            u8Len = (u8Len & 127) << 8 | axml[p++];
+          }
+          strings[i] = axml.subarray(p, Math.min(p + u8Len, offset + chunkSize)).toString("utf8");
+        } else {
+          let p = strOffset;
+          let u16Len = axml.readUInt16LE(p);
+          p += 2;
+          if ((u16Len & 32768) !== 0) {
+            u16Len = (u16Len & 32767) << 16 | axml.readUInt16LE(p);
+            p += 2;
+          }
+          const byteLen = u16Len * 2;
+          strings[i] = axml.subarray(p, Math.min(p + byteLen, offset + chunkSize)).toString("utf16le");
+        }
+      }
+    } else if (chunkType === 384) {
+      const count = Math.floor((chunkSize - headerSize) / 4);
+      resourceIds = new Array(count);
+      for (let i = 0; i < count; i++) {
+        resourceIds[i] = axml.readUInt32LE(offset + headerSize + i * 4);
+      }
+    } else if (chunkType === 258) {
+      const nameIdx = axml.readInt32LE(offset + 20);
+      const attrStart = axml.readUInt16LE(offset + 24);
+      const attrSize = axml.readUInt16LE(offset + 26) || 20;
+      const attrCount = axml.readUInt16LE(offset + 28);
+      const elemName = nameIdx >= 0 && nameIdx < strings.length ? strings[nameIdx] : "";
+      const attrsBase = offset + 16 + attrStart;
+      for (let i = 0; i < attrCount; i++) {
+        const aOff = attrsBase + i * attrSize;
+        if (aOff + 20 > offset + chunkSize) break;
+        const attrNameIdx = axml.readInt32LE(aOff + 4);
+        const rawValueIdx = axml.readInt32LE(aOff + 8);
+        const dataType = axml[aOff + 15];
+        const dataValue = axml.readInt32LE(aOff + 16);
+        const attrName = attrNameIdx >= 0 && attrNameIdx < strings.length ? strings[attrNameIdx] : "";
+        const resId = attrNameIdx >= 0 && attrNameIdx < resourceIds.length ? resourceIds[attrNameIdx] : 0;
+        let strVal = "";
+        if (rawValueIdx >= 0 && rawValueIdx < strings.length) {
+          strVal = strings[rawValueIdx];
+        } else if (dataType === 3 && dataValue >= 0 && dataValue < strings.length) {
+          strVal = strings[dataValue];
+        } else {
+          strVal = String(dataValue);
+        }
+        const intVal = dataType === 16 || dataType === 17 ? dataValue : parseInt(strVal, 10);
+        if (elemName === "manifest") {
+          if (attrName === "package" && strVal) {
+            packageName = strVal.trim();
+          } else if (attrName === "versionCode" || resId === 16843291) {
+            if (!isNaN(intVal)) versionCode = intVal;
+          } else if (attrName === "versionCodeMajor" || resId === 16844150) {
+            if (!isNaN(intVal)) versionCodeMajor = intVal;
+          } else if (attrName === "versionName" || resId === 16843292) {
+            if (strVal) versionName = strVal.trim();
+          }
+        } else if (elemName === "uses-sdk") {
+          if (attrName === "minSdkVersion" || resId === 16843276) {
+            if (!isNaN(intVal) && intVal > 0) minSdkVersion = intVal;
+          } else if (attrName === "targetSdkVersion" || resId === 16843376) {
+            if (!isNaN(intVal) && intVal > 0) targetSdkVersion = intVal;
+          }
+        }
+      }
+    }
+    offset += chunkSize;
+  }
+  const finalVersionCode = versionCodeMajor > 0 ? versionCodeMajor * 4294967296 + (versionCode >>> 0) : versionCode;
+  return {
+    packageName,
+    versionName,
+    versionCode: finalVersionCode,
+    minSdkVersion,
+    targetSdkVersion
+  };
+}
+function parseApkBuffer(apkBuffer) {
+  if (!apkBuffer || apkBuffer.length < 64) {
+    throw new Error("Invalid APK file: File is empty or too small to be an Android APK.");
+  }
+  const manifestBytes = extractAndroidManifestBytes(apkBuffer);
+  const parsed = parseBinaryAndroidManifest(manifestBytes);
+  if (!parsed.packageName) {
+    throw new Error("Invalid APK file: Could not extract Android package name from AndroidManifest.xml.");
+  }
+  if (!parsed.versionName) {
+    throw new Error("Invalid APK file: Could not extract versionName from AndroidManifest.xml.");
+  }
+  if (!parsed.versionCode || parsed.versionCode <= 0 || !Number.isInteger(parsed.versionCode)) {
+    throw new Error("Invalid APK file: Could not extract a valid integer versionCode from AndroidManifest.xml.");
+  }
+  const fileSize = apkBuffer.length;
+  return {
+    packageName: parsed.packageName,
+    versionName: parsed.versionName,
+    versionCode: parsed.versionCode,
+    minSdkVersion: parsed.minSdkVersion,
+    targetSdkVersion: parsed.targetSdkVersion,
+    minAndroidVersion: formatAndroidSdk(parsed.minSdkVersion, true),
+    targetAndroidVersion: parsed.targetSdkVersion ? formatAndroidSdk(parsed.targetSdkVersion, false) : null,
+    fileSize,
+    fileSizeFormatted: formatBytes2(fileSize)
+  };
 }
 
 // server/auth.ts
@@ -56090,7 +56381,7 @@ async function handleApiRequest(req, res, explicitRoute) {
         return true;
       }
       const manifest = {
-        applicationId: latest.applicationId || "com.riyajul.zoya",
+        applicationId: latest.applicationId || OFFICIAL_ZOYA_PACKAGE,
         latestRelease: {
           versionName: latest.versionName,
           versionCode: latest.versionCode,
@@ -56099,6 +56390,8 @@ async function handleApiRequest(req, res, explicitRoute) {
           fileSize: latest.fileSize,
           fileSizeFormatted: latest.fileSizeFormatted,
           minAndroidVersion: latest.minAndroidVersion,
+          minSdkVersion: latest.minSdkVersion ?? null,
+          targetSdkVersion: latest.targetSdkVersion ?? null,
           releaseDate: latest.releaseDate,
           releaseNotes: latest.releaseNotes
         },
@@ -56284,10 +56577,8 @@ async function handleApiRequest(req, res, explicitRoute) {
           const body = await parseJsonBody(req);
           const storageKey = (body.storageKey || "").trim();
           const fileName = path2.basename(body.fileName || "zoya-assistant.apk");
-          const fileSize = Number(body.fileSize) || 0;
           const totalChunks = Number(body.totalChunks) || 0;
-          const sha256 = (body.sha256 || "").trim().toLowerCase();
-          if (!storageKey || !fileName.toLowerCase().endsWith(".apk") || fileSize < 1024 || totalChunks <= 0 || !sha256) {
+          if (!storageKey || !fileName.toLowerCase().endsWith(".apk") || totalChunks <= 0) {
             sendError(res, 400, "Invalid finalize parameters for APK upload.");
             return true;
           }
@@ -56296,33 +56587,71 @@ async function handleApiRequest(req, res, explicitRoute) {
             sendError(res, 400, "APK chunks failed verification in persistent cloud storage.");
             return true;
           }
+          const apkBuffer = await getApkBuffer(storageKey, `apk_chunks/${storageKey}`, totalChunks);
+          if (!apkBuffer || !isValidApkHeader(apkBuffer)) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(res, 400, "Invalid APK binary: Could not reassemble a valid Android package from uploaded chunks.");
+            return true;
+          }
+          let parsedApk2;
+          try {
+            parsedApk2 = parseApkBuffer(apkBuffer);
+          } catch (err) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(res, 400, err instanceof Error ? err.message : "Failed to parse AndroidManifest.xml from APK.");
+            return true;
+          }
+          if (parsedApk2.packageName !== OFFICIAL_ZOYA_PACKAGE) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(
+              res,
+              400,
+              `Invalid Android package name "${parsedApk2.packageName}". Only the official Zoya package ("${OFFICIAL_ZOYA_PACKAGE}") can be uploaded.`
+            );
+            return true;
+          }
+          const latestPublished2 = await getLatestPublishedRelease();
+          if (latestPublished2 && parsedApk2.versionCode <= latestPublished2.versionCode) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(
+              res,
+              400,
+              `Version conflict: Uploaded APK versionCode (${parsedApk2.versionCode}) must be strictly greater than the currently published release (${latestPublished2.versionName}, versionCode ${latestPublished2.versionCode}) to prevent duplicate or downgrade releases.`
+            );
+            return true;
+          }
+          const serverSha256 = crypto5.createHash("sha256").update(apkBuffer).digest("hex");
           const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
+          const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
           const newDraft2 = {
             id: draftId2,
-            versionName: "",
-            versionCode: 0,
-            applicationId: "com.riyajul.zoya",
+            versionName: parsedApk2.versionName,
+            versionCode: parsedApk2.versionCode,
+            applicationId: parsedApk2.packageName,
             fileName,
-            fileSize,
-            fileSizeFormatted: formatBytes(fileSize),
-            sha256,
+            fileSize: parsedApk2.fileSize,
+            fileSizeFormatted: parsedApk2.fileSizeFormatted,
+            sha256: serverSha256,
             storageKey,
             storagePath: `apk_chunks/${storageKey}`,
             chunkCount: totalChunks,
             binaryVerified: true,
             downloadUrl: downloadUrl2,
-            releaseDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+            releaseDate: "",
             releaseNotes: "",
-            minAndroidVersion: "Android 8.0 (API 26)+",
+            minAndroidVersion: parsedApk2.minAndroidVersion,
+            minSdkVersion: parsedApk2.minSdkVersion,
+            targetSdkVersion: parsedApk2.targetSdkVersion,
+            targetAndroidVersion: parsedApk2.targetAndroidVersion,
             isPublished: false,
-            createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+            createdAt: nowIso2,
+            updatedAt: nowIso2
           };
           await saveRelease(newDraft2);
           sendJson(res, 201, {
             success: true,
-            message: "APK uploaded and verified in persistent storage. Ready for release publication.",
+            message: "APK uploaded, inspected, and verified in persistent storage. Ready for release publication.",
             draft: newDraft2
           });
           return true;
@@ -56334,18 +56663,43 @@ async function handleApiRequest(req, res, explicitRoute) {
           return true;
         }
         const buffer = await readBinaryBody(req);
-        if (buffer.length < 1024) {
+        if (buffer.length < 64) {
           sendError(res, 400, "File is empty or too small to be a valid APK package.");
+          return true;
+        }
+        let parsedApk;
+        try {
+          parsedApk = parseApkBuffer(buffer);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : "Failed to parse AndroidManifest.xml from APK.");
+          return true;
+        }
+        if (parsedApk.packageName !== OFFICIAL_ZOYA_PACKAGE) {
+          sendError(
+            res,
+            400,
+            `Invalid Android package name "${parsedApk.packageName}". Only the official Zoya package ("${OFFICIAL_ZOYA_PACKAGE}") can be uploaded.`
+          );
+          return true;
+        }
+        const latestPublished = await getLatestPublishedRelease();
+        if (latestPublished && parsedApk.versionCode <= latestPublished.versionCode) {
+          sendError(
+            res,
+            400,
+            `Version conflict: Uploaded APK versionCode (${parsedApk.versionCode}) must be strictly greater than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}) to prevent duplicate or downgrade releases.`
+          );
           return true;
         }
         const stored = await storeApkBuffer(buffer, filename);
         const draftId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const downloadUrl = `/api/releases/download?id=${draftId}`;
+        const nowIso = (/* @__PURE__ */ new Date()).toISOString();
         const newDraft = {
           id: draftId,
-          versionName: "",
-          versionCode: 0,
-          applicationId: "com.riyajul.zoya",
+          versionName: parsedApk.versionName,
+          versionCode: parsedApk.versionCode,
+          applicationId: parsedApk.packageName,
           fileName: filename,
           fileSize: stored.fileSize,
           fileSizeFormatted: stored.fileSizeFormatted,
@@ -56355,17 +56709,20 @@ async function handleApiRequest(req, res, explicitRoute) {
           chunkCount: stored.chunkCount,
           binaryVerified: true,
           downloadUrl,
-          releaseDate: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          releaseDate: "",
           releaseNotes: "",
-          minAndroidVersion: "Android 8.0 (API 26)+",
+          minAndroidVersion: parsedApk.minAndroidVersion,
+          minSdkVersion: parsedApk.minSdkVersion,
+          targetSdkVersion: parsedApk.targetSdkVersion,
+          targetAndroidVersion: parsedApk.targetAndroidVersion,
           isPublished: false,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          createdAt: nowIso,
+          updatedAt: nowIso
         };
         await saveRelease(newDraft);
         sendJson(res, 201, {
           success: true,
-          message: "APK uploaded and verified in persistent storage. Ready for release publication.",
+          message: "APK uploaded, inspected, and verified in persistent storage. Ready for release publication.",
           draft: newDraft
         });
         return true;
@@ -56381,6 +56738,10 @@ async function handleApiRequest(req, res, explicitRoute) {
           sendError(res, 404, "Draft release record not found.");
           return true;
         }
+        if (draft.isPublished) {
+          sendError(res, 400, `Release ${draft.versionName} (versionCode ${draft.versionCode}) is already published.`);
+          return true;
+        }
         const binaryExists = await hasApkBinary(draft);
         if (!binaryExists) {
           sendError(
@@ -56390,35 +56751,82 @@ async function handleApiRequest(req, res, explicitRoute) {
           );
           return true;
         }
-        const cleanVersionName = (body.versionName || "").trim();
-        const versionCode = Number(body.versionCode);
-        if (!cleanVersionName) {
-          sendError(res, 400, "Version name (e.g. v1.0.0) is required.");
+        let versionName = (draft.versionName || "").trim();
+        let versionCode = Number(draft.versionCode);
+        let applicationId = (draft.applicationId || "").trim();
+        let minAndroidVersion = draft.minAndroidVersion;
+        let minSdkVersion = draft.minSdkVersion ?? null;
+        let targetSdkVersion = draft.targetSdkVersion ?? null;
+        let targetAndroidVersion = draft.targetAndroidVersion ?? null;
+        let fileSize = draft.fileSize;
+        let fileSizeFormatted = draft.fileSizeFormatted;
+        if (!versionName || !versionCode || !applicationId) {
+          const apkBuffer = await getApkBuffer(draft.storageKey, draft.storagePath, draft.chunkCount);
+          if (!apkBuffer) {
+            sendError(res, 400, "Cannot read APK binary to verify release metadata.");
+            return true;
+          }
+          try {
+            const parsed = parseApkBuffer(apkBuffer);
+            versionName = parsed.versionName;
+            versionCode = parsed.versionCode;
+            applicationId = parsed.packageName;
+            minAndroidVersion = parsed.minAndroidVersion;
+            minSdkVersion = parsed.minSdkVersion;
+            targetSdkVersion = parsed.targetSdkVersion;
+            targetAndroidVersion = parsed.targetAndroidVersion;
+            fileSize = parsed.fileSize;
+            fileSizeFormatted = parsed.fileSizeFormatted;
+          } catch (err) {
+            sendError(res, 400, err instanceof Error ? err.message : "Invalid APK binary.");
+            return true;
+          }
+        }
+        if (applicationId !== OFFICIAL_ZOYA_PACKAGE) {
+          sendError(
+            res,
+            400,
+            `Cannot publish release: APK package name "${applicationId}" does not match official Zoya package "${OFFICIAL_ZOYA_PACKAGE}".`
+          );
           return true;
         }
-        if (!versionCode || isNaN(versionCode) || versionCode <= 0) {
-          sendError(res, 400, "Android versionCode must be a positive integer.");
+        if (!versionName) {
+          sendError(res, 400, "Cannot publish release: APK versionName is missing.");
+          return true;
+        }
+        if (!versionCode || isNaN(versionCode) || versionCode <= 0 || !Number.isInteger(versionCode)) {
+          sendError(res, 400, "Cannot publish release: APK versionCode must be a positive integer.");
           return true;
         }
         const latestPublished = await getLatestPublishedRelease();
-        let compatibilityWarning = null;
         if (latestPublished && latestPublished.id !== draft.id) {
           if (versionCode <= latestPublished.versionCode) {
-            compatibilityWarning = `Notice: VersionCode (${versionCode}) is not higher than the latest published release (${latestPublished.versionCode}). Android devices with version ${latestPublished.versionCode} installed will reject this update.`;
+            sendError(
+              res,
+              400,
+              `Cannot publish release: APK versionCode (${versionCode}) must be strictly greater than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}) to prevent duplicate or downgrade releases.`
+            );
+            return true;
           }
         }
         const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+        const serverReleaseDate = nowIso.split("T")[0];
         const updatedRelease = {
           ...draft,
-          versionName: cleanVersionName,
+          versionName,
           versionCode,
-          applicationId: body.applicationId || "com.riyajul.zoya",
+          applicationId,
+          fileSize,
+          fileSizeFormatted,
           releaseNotes: (body.releaseNotes || "").trim(),
-          minAndroidVersion: body.minAndroidVersion || "Android 8.0 (API 26)+",
-          releaseDate: body.releaseDate || nowIso.split("T")[0],
+          minAndroidVersion,
+          minSdkVersion,
+          targetSdkVersion,
+          targetAndroidVersion,
+          releaseDate: serverReleaseDate,
           isPublished: true,
           binaryVerified: true,
-          publishedAt: draft.publishedAt || nowIso,
+          publishedAt: nowIso,
           updatedAt: nowIso
         };
         await saveRelease(updatedRelease);
@@ -56432,7 +56840,6 @@ async function handleApiRequest(req, res, explicitRoute) {
           success: true,
           message: "Release published successfully.",
           release: updatedRelease,
-          warning: compatibilityWarning,
           notification: notificationResult
         });
         return true;

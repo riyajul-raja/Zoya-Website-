@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http';
+import crypto from 'crypto';
 import path from 'path';
 import {
   getAllReleases,
@@ -6,6 +7,7 @@ import {
   getReleaseById,
   saveRelease,
   deleteRelease,
+  deleteStoredChunks,
   storeApkBuffer,
   storeApkChunk,
   verifyStoredChunks,
@@ -16,6 +18,10 @@ import {
   ReleaseMetadata,
   ReleaseManifest,
 } from './storage';
+import {
+  parseApkBuffer,
+  OFFICIAL_ZOYA_PACKAGE,
+} from './apkParser';
 import {
   authenticateAdmin,
   authenticateAdminPin,
@@ -254,7 +260,7 @@ export async function handleApiRequest(
       }
 
       const manifest: ReleaseManifest = {
-        applicationId: latest.applicationId || 'com.riyajul.zoya',
+        applicationId: latest.applicationId || OFFICIAL_ZOYA_PACKAGE,
         latestRelease: {
           versionName: latest.versionName,
           versionCode: latest.versionCode,
@@ -263,6 +269,8 @@ export async function handleApiRequest(
           fileSize: latest.fileSize,
           fileSizeFormatted: latest.fileSizeFormatted,
           minAndroidVersion: latest.minAndroidVersion,
+          minSdkVersion: latest.minSdkVersion ?? null,
+          targetSdkVersion: latest.targetSdkVersion ?? null,
           releaseDate: latest.releaseDate,
           releaseNotes: latest.releaseNotes,
         },
@@ -505,23 +513,21 @@ export async function handleApiRequest(
           return true;
         }
 
-        // Mode 2: Finalize chunked upload and create draft record
+        // Mode 2: Finalize chunked upload, inspect APK metadata, validate package & version, and create draft record
         if (phase === 'finalize') {
           const body = await parseJsonBody<{
             storageKey: string;
             fileName: string;
             fileSize: number;
             totalChunks: number;
-            sha256: string;
+            sha256?: string;
           }>(req);
 
           const storageKey = (body.storageKey || '').trim();
           const fileName = path.basename(body.fileName || 'zoya-assistant.apk');
-          const fileSize = Number(body.fileSize) || 0;
           const totalChunks = Number(body.totalChunks) || 0;
-          const sha256 = (body.sha256 || '').trim().toLowerCase();
 
-          if (!storageKey || !fileName.toLowerCase().endsWith('.apk') || fileSize < 1024 || totalChunks <= 0 || !sha256) {
+          if (!storageKey || !fileName.toLowerCase().endsWith('.apk') || totalChunks <= 0) {
             sendError(res, 400, 'Invalid finalize parameters for APK upload.');
             return true;
           }
@@ -532,36 +538,78 @@ export async function handleApiRequest(
             return true;
           }
 
+          const apkBuffer = await getApkBuffer(storageKey, `apk_chunks/${storageKey}`, totalChunks);
+          if (!apkBuffer || !isValidApkHeader(apkBuffer)) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(res, 400, 'Invalid APK binary: Could not reassemble a valid Android package from uploaded chunks.');
+            return true;
+          }
+
+          let parsedApk;
+          try {
+            parsedApk = parseApkBuffer(apkBuffer);
+          } catch (err) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(res, 400, err instanceof Error ? err.message : 'Failed to parse AndroidManifest.xml from APK.');
+            return true;
+          }
+
+          if (parsedApk.packageName !== OFFICIAL_ZOYA_PACKAGE) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(
+              res,
+              400,
+              `Invalid Android package name "${parsedApk.packageName}". Only the official Zoya package ("${OFFICIAL_ZOYA_PACKAGE}") can be uploaded.`
+            );
+            return true;
+          }
+
+          const latestPublished = await getLatestPublishedRelease();
+          if (latestPublished && parsedApk.versionCode <= latestPublished.versionCode) {
+            await deleteStoredChunks(storageKey, totalChunks);
+            sendError(
+              res,
+              400,
+              `Version conflict: Uploaded APK versionCode (${parsedApk.versionCode}) must be strictly greater than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}) to prevent duplicate or downgrade releases.`
+            );
+            return true;
+          }
+
+          const serverSha256 = crypto.createHash('sha256').update(apkBuffer).digest('hex');
           const draftId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl = `/api/releases/download?id=${draftId}`;
+          const nowIso = new Date().toISOString();
 
           const newDraft: ReleaseMetadata = {
             id: draftId,
-            versionName: '',
-            versionCode: 0,
-            applicationId: 'com.riyajul.zoya',
+            versionName: parsedApk.versionName,
+            versionCode: parsedApk.versionCode,
+            applicationId: parsedApk.packageName,
             fileName,
-            fileSize,
-            fileSizeFormatted: formatBytes(fileSize),
-            sha256,
+            fileSize: parsedApk.fileSize,
+            fileSizeFormatted: parsedApk.fileSizeFormatted,
+            sha256: serverSha256,
             storageKey,
             storagePath: `apk_chunks/${storageKey}`,
             chunkCount: totalChunks,
             binaryVerified: true,
             downloadUrl,
-            releaseDate: new Date().toISOString().split('T')[0],
+            releaseDate: '',
             releaseNotes: '',
-            minAndroidVersion: 'Android 8.0 (API 26)+',
+            minAndroidVersion: parsedApk.minAndroidVersion,
+            minSdkVersion: parsedApk.minSdkVersion,
+            targetSdkVersion: parsedApk.targetSdkVersion,
+            targetAndroidVersion: parsedApk.targetAndroidVersion,
             isPublished: false,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: nowIso,
+            updatedAt: nowIso,
           };
 
           await saveRelease(newDraft);
 
           sendJson(res, 201, {
             success: true,
-            message: 'APK uploaded and verified in persistent storage. Ready for release publication.',
+            message: 'APK uploaded, inspected, and verified in persistent storage. Ready for release publication.',
             draft: newDraft,
           });
           return true;
@@ -580,20 +628,48 @@ export async function handleApiRequest(
         }
 
         const buffer = await readBinaryBody(req);
-        if (buffer.length < 1024) {
+        if (buffer.length < 64) {
           sendError(res, 400, 'File is empty or too small to be a valid APK package.');
+          return true;
+        }
+
+        let parsedApk;
+        try {
+          parsedApk = parseApkBuffer(buffer);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : 'Failed to parse AndroidManifest.xml from APK.');
+          return true;
+        }
+
+        if (parsedApk.packageName !== OFFICIAL_ZOYA_PACKAGE) {
+          sendError(
+            res,
+            400,
+            `Invalid Android package name "${parsedApk.packageName}". Only the official Zoya package ("${OFFICIAL_ZOYA_PACKAGE}") can be uploaded.`
+          );
+          return true;
+        }
+
+        const latestPublished = await getLatestPublishedRelease();
+        if (latestPublished && parsedApk.versionCode <= latestPublished.versionCode) {
+          sendError(
+            res,
+            400,
+            `Version conflict: Uploaded APK versionCode (${parsedApk.versionCode}) must be strictly greater than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}) to prevent duplicate or downgrade releases.`
+          );
           return true;
         }
 
         const stored = await storeApkBuffer(buffer, filename);
         const draftId = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const downloadUrl = `/api/releases/download?id=${draftId}`;
+        const nowIso = new Date().toISOString();
 
         const newDraft: ReleaseMetadata = {
           id: draftId,
-          versionName: '',
-          versionCode: 0,
-          applicationId: 'com.riyajul.zoya',
+          versionName: parsedApk.versionName,
+          versionCode: parsedApk.versionCode,
+          applicationId: parsedApk.packageName,
           fileName: filename,
           fileSize: stored.fileSize,
           fileSizeFormatted: stored.fileSizeFormatted,
@@ -603,19 +679,22 @@ export async function handleApiRequest(
           chunkCount: stored.chunkCount,
           binaryVerified: true,
           downloadUrl,
-          releaseDate: new Date().toISOString().split('T')[0],
+          releaseDate: '',
           releaseNotes: '',
-          minAndroidVersion: 'Android 8.0 (API 26)+',
+          minAndroidVersion: parsedApk.minAndroidVersion,
+          minSdkVersion: parsedApk.minSdkVersion,
+          targetSdkVersion: parsedApk.targetSdkVersion,
+          targetAndroidVersion: parsedApk.targetAndroidVersion,
           isPublished: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: nowIso,
+          updatedAt: nowIso,
         };
 
         await saveRelease(newDraft);
 
         sendJson(res, 201, {
           success: true,
-          message: 'APK uploaded and verified in persistent storage. Ready for release publication.',
+          message: 'APK uploaded, inspected, and verified in persistent storage. Ready for release publication.',
           draft: newDraft,
         });
         return true;
@@ -625,12 +704,7 @@ export async function handleApiRequest(
       if (pathname === '/api/admin/publish' && method === 'POST') {
         const body = await parseJsonBody<{
           draftId: string;
-          versionName: string;
-          versionCode: number;
-          applicationId?: string;
-          releaseNotes: string;
-          minAndroidVersion?: string;
-          releaseDate?: string;
+          releaseNotes?: string;
         }>(req);
 
         if (!body.draftId) {
@@ -644,6 +718,11 @@ export async function handleApiRequest(
           return true;
         }
 
+        if (draft.isPublished) {
+          sendError(res, 400, `Release ${draft.versionName} (versionCode ${draft.versionCode}) is already published.`);
+          return true;
+        }
+
         const binaryExists = await hasApkBinary(draft);
         if (!binaryExists) {
           sendError(
@@ -654,39 +733,91 @@ export async function handleApiRequest(
           return true;
         }
 
-        const cleanVersionName = (body.versionName || '').trim();
-        const versionCode = Number(body.versionCode);
+        // Ensure metadata was genuinely extracted from the APK binary
+        let versionName = (draft.versionName || '').trim();
+        let versionCode = Number(draft.versionCode);
+        let applicationId = (draft.applicationId || '').trim();
+        let minAndroidVersion = draft.minAndroidVersion;
+        let minSdkVersion = draft.minSdkVersion ?? null;
+        let targetSdkVersion = draft.targetSdkVersion ?? null;
+        let targetAndroidVersion = draft.targetAndroidVersion ?? null;
+        let fileSize = draft.fileSize;
+        let fileSizeFormatted = draft.fileSizeFormatted;
 
-        if (!cleanVersionName) {
-          sendError(res, 400, 'Version name (e.g. v1.0.0) is required.');
+        if (!versionName || !versionCode || !applicationId) {
+          const apkBuffer = await getApkBuffer(draft.storageKey, draft.storagePath, draft.chunkCount);
+          if (!apkBuffer) {
+            sendError(res, 400, 'Cannot read APK binary to verify release metadata.');
+            return true;
+          }
+          try {
+            const parsed = parseApkBuffer(apkBuffer);
+            versionName = parsed.versionName;
+            versionCode = parsed.versionCode;
+            applicationId = parsed.packageName;
+            minAndroidVersion = parsed.minAndroidVersion;
+            minSdkVersion = parsed.minSdkVersion;
+            targetSdkVersion = parsed.targetSdkVersion;
+            targetAndroidVersion = parsed.targetAndroidVersion;
+            fileSize = parsed.fileSize;
+            fileSizeFormatted = parsed.fileSizeFormatted;
+          } catch (err) {
+            sendError(res, 400, err instanceof Error ? err.message : 'Invalid APK binary.');
+            return true;
+          }
+        }
+
+        if (applicationId !== OFFICIAL_ZOYA_PACKAGE) {
+          sendError(
+            res,
+            400,
+            `Cannot publish release: APK package name "${applicationId}" does not match official Zoya package "${OFFICIAL_ZOYA_PACKAGE}".`
+          );
           return true;
         }
-        if (!versionCode || isNaN(versionCode) || versionCode <= 0) {
-          sendError(res, 400, 'Android versionCode must be a positive integer.');
+
+        if (!versionName) {
+          sendError(res, 400, 'Cannot publish release: APK versionName is missing.');
+          return true;
+        }
+
+        if (!versionCode || isNaN(versionCode) || versionCode <= 0 || !Number.isInteger(versionCode)) {
+          sendError(res, 400, 'Cannot publish release: APK versionCode must be a positive integer.');
           return true;
         }
 
         const latestPublished = await getLatestPublishedRelease();
-        let compatibilityWarning: string | null = null;
-
         if (latestPublished && latestPublished.id !== draft.id) {
           if (versionCode <= latestPublished.versionCode) {
-            compatibilityWarning = `Notice: VersionCode (${versionCode}) is not higher than the latest published release (${latestPublished.versionCode}). Android devices with version ${latestPublished.versionCode} installed will reject this update.`;
+            sendError(
+              res,
+              400,
+              `Cannot publish release: APK versionCode (${versionCode}) must be strictly greater than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}) to prevent duplicate or downgrade releases.`
+            );
+            return true;
           }
         }
 
+        // Automatically set the release date and publication timestamp from the server's clock
         const nowIso = new Date().toISOString();
+        const serverReleaseDate = nowIso.split('T')[0];
+
         const updatedRelease: ReleaseMetadata = {
           ...draft,
-          versionName: cleanVersionName,
+          versionName,
           versionCode,
-          applicationId: body.applicationId || 'com.riyajul.zoya',
+          applicationId,
+          fileSize,
+          fileSizeFormatted,
           releaseNotes: (body.releaseNotes || '').trim(),
-          minAndroidVersion: body.minAndroidVersion || 'Android 8.0 (API 26)+',
-          releaseDate: body.releaseDate || nowIso.split('T')[0],
+          minAndroidVersion,
+          minSdkVersion,
+          targetSdkVersion,
+          targetAndroidVersion,
+          releaseDate: serverReleaseDate,
           isPublished: true,
           binaryVerified: true,
-          publishedAt: draft.publishedAt || nowIso,
+          publishedAt: nowIso,
           updatedAt: nowIso,
         };
 
@@ -705,7 +836,6 @@ export async function handleApiRequest(
           success: true,
           message: 'Release published successfully.',
           release: updatedRelease,
-          warning: compatibilityWarning,
           notification: notificationResult,
         });
         return true;

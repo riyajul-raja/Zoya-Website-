@@ -47,9 +47,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
 
   const navLinks = [
     { label: 'Features', href: '#features' },
+    { label: 'Installation', href: '#installation' },
     { label: 'About', href: '#about' },
     { label: 'Download', href: '#download' },
-    { label: 'Installation', href: '#installation' },
     { label: 'FAQ', href: '#faq' },
   ];
 

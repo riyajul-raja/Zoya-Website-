@@ -3,10 +3,7 @@ import {
   Upload,
   CheckCircle2,
   AlertTriangle,
-  FileCode,
-  Calendar,
   Layers,
-  HardDrive,
   Trash2,
   RefreshCw,
   ExternalLink,
@@ -14,10 +11,17 @@ import {
   Server,
   Download,
   AlertCircle,
+  Loader2,
+  Cpu,
+  PackageCheck,
   Clock,
-  Sparkles
 } from 'lucide-react';
 import { ReleaseMetadata } from '../../../server/storage';
+import {
+  inspectApkFile,
+  ClientApkMetadata,
+  OFFICIAL_ZOYA_PACKAGE,
+} from '../../utils/apkParser';
 
 interface ReleaseManagerProps {
   token: string;
@@ -29,22 +33,26 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
   const [loadingReleases, setLoadingReleases] = useState(true);
   const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'storage-config'>('upload');
 
-  // Upload State
+  // APK Inspection & Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inspectingApk, setInspectingApk] = useState<boolean>(false);
+  const [extractedApk, setExtractedApk] = useState<ClientApkMetadata | null>(null);
+  const [cachedBuffer, setCachedBuffer] = useState<ArrayBuffer | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedDraft, setUploadedDraft] = useState<ReleaseMetadata | null>(null);
 
-  // Publish Form State
-  const [versionName, setVersionName] = useState('');
-  const [versionCode, setVersionCode] = useState<number | ''>('');
-  const [applicationId, setApplicationId] = useState('com.riyajul.zoya');
-  const [minAndroidVersion, setMinAndroidVersion] = useState('Android 8.0 (API 26)+');
-  const [releaseDate, setReleaseDate] = useState(new Date().toISOString().split('T')[0]);
+  // Publish Form State (Only Release Notes is manual; all APK metadata & server date are automatic)
   const [releaseNotes, setReleaseNotes] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
+
+  // Delete confirmation state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,20 +85,64 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     fetchReleases();
   }, [token]);
 
-  // Identify latest published release for version code comparison
+  // Identify latest published release for version code validation
   const publishedReleases = releases.filter((r) => r.isPublished);
-  const latestPublished = publishedReleases.length > 0
-    ? [...publishedReleases].sort((a, b) => b.versionCode - a.versionCode)[0]
-    : null;
+  const latestPublished =
+    publishedReleases.length > 0
+      ? [...publishedReleases].sort((a, b) => b.versionCode - a.versionCode)[0]
+      : null;
+
+  // Automatically inspect the selected APK file and validate embedded metadata
+  const handleFileSelection = async (file: File | null) => {
+    setSelectedFile(file);
+    setExtractedApk(null);
+    setCachedBuffer(null);
+    setValidationError(null);
+    setUploadError(null);
+    setUploadedDraft(null);
+    setPublishMessage(null);
+    setUploadProgress(0);
+
+    if (!file) return;
+
+    setInspectingApk(true);
+    try {
+      const { metadata, arrayBuffer } = await inspectApkFile(file);
+
+      // 1. Validate official Zoya package name
+      if (metadata.packageName !== OFFICIAL_ZOYA_PACKAGE) {
+        setExtractedApk(metadata);
+        setValidationError(
+          `Package name mismatch: This APK has package name "${metadata.packageName}", but the official Zoya Android package must be "${OFFICIAL_ZOYA_PACKAGE}".`
+        );
+        return;
+      }
+
+      // 2. Validate versionCode against the latest published release
+      if (latestPublished && metadata.versionCode <= latestPublished.versionCode) {
+        setExtractedApk(metadata);
+        setValidationError(
+          `Version code conflict: This APK has versionCode ${metadata.versionCode} (version ${metadata.versionName}), which is not higher than the currently published release (${latestPublished.versionName}, versionCode ${latestPublished.versionCode}). Please upload a newer build with versionCode > ${latestPublished.versionCode}.`
+        );
+        return;
+      }
+
+      setExtractedApk(metadata);
+      setCachedBuffer(arrayBuffer);
+    } catch (err: unknown) {
+      setValidationError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to read APK metadata. Please ensure the file is a valid, uncorrupted Android APK.'
+      );
+    } finally {
+      setInspectingApk(false);
+    }
+  };
 
   // Chunked binary upload so APKs of any size persist reliably across Vercel serverless invocations
   const handleUploadApk = async () => {
-    if (!selectedFile) return;
-
-    if (!selectedFile.name.toLowerCase().endsWith('.apk')) {
-      setUploadError('Invalid file: File must have a .apk extension.');
-      return;
-    }
+    if (!selectedFile || !extractedApk || !cachedBuffer || validationError) return;
 
     setUploadError(null);
     setUploadProgress(0);
@@ -99,23 +151,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     setPublishMessage(null);
 
     try {
-      const arrayBuffer = await selectedFile.arrayBuffer();
-      const uint8 = new Uint8Array(arrayBuffer);
-
-      if (
-        uint8.length < 1024 ||
-        uint8[0] !== 0x50 ||
-        uint8[1] !== 0x4b ||
-        uint8[2] !== 0x03 ||
-        uint8[3] !== 0x04
-      ) {
-        throw new Error('Invalid APK file: Header does not match Android Package / ZIP format (PK\\x03\\x04).');
-      }
-
-      // Compute genuine SHA-256 hash
-      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const sha256 = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+      const uint8 = new Uint8Array(cachedBuffer);
 
       const CHUNK_SIZE = 524288; // 512 KB per chunk
       const totalChunks = Math.ceil(uint8.length / CHUNK_SIZE);
@@ -167,7 +203,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         );
       }
 
-      // Finalize upload and create draft record
+      // Finalize upload: server independently parses AndroidManifest.xml and saves the verified draft
       const finalizeRes = await fetch('/api/admin/upload?phase=finalize', {
         method: 'POST',
         headers: {
@@ -179,7 +215,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           fileName: selectedFile.name,
           fileSize: uint8.length,
           totalChunks,
-          sha256,
+          sha256: extractedApk.sha256,
         }),
       });
 
@@ -197,16 +233,6 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
 
       setUploadProgress(100);
       setUploadedDraft(finalizeData.draft);
-
-      const match = selectedFile.name.match(/v?(\d+\.\d+(\.\d+)?)/i);
-      if (match && !versionName) {
-        setVersionName(match[0].startsWith('v') ? match[0] : `v${match[0]}`);
-      }
-      if (latestPublished && (!versionCode || versionCode <= latestPublished.versionCode)) {
-        setVersionCode(latestPublished.versionCode + 1);
-      } else if (!versionCode) {
-        setVersionCode(1);
-      }
       fetchReleases();
     } catch (err: unknown) {
       setUploadError(err instanceof Error ? err.message : 'APK upload failed.');
@@ -218,16 +244,6 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadedDraft) return;
-
-    if (!versionName.trim()) {
-      setPublishMessage({ type: 'error', text: 'Version name is required (e.g. v1.0.0).' });
-      return;
-    }
-
-    if (!versionCode || Number(versionCode) <= 0) {
-      setPublishMessage({ type: 'error', text: 'Android versionCode must be a positive integer.' });
-      return;
-    }
 
     setPublishing(true);
     setPublishMessage(null);
@@ -241,12 +257,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         },
         body: JSON.stringify({
           draftId: uploadedDraft.id,
-          versionName: versionName.trim(),
-          versionCode: Number(versionCode),
-          applicationId: applicationId.trim(),
           releaseNotes: releaseNotes.trim(),
-          minAndroidVersion,
-          releaseDate,
         }),
       });
 
@@ -262,6 +273,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         throw new Error(data.error || 'Failed to publish release');
       }
 
+      const publishedRel: ReleaseMetadata = data.release;
       const notif = data.notification;
       let notifSummary = '';
       if (notif) {
@@ -277,17 +289,15 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
       }
 
       setPublishMessage({
-        type: data.warning ? 'warning' : 'success',
-        text: data.warning
-          ? `Release published successfully! ${data.warning}${notifSummary}`
-          : `Release ${versionName} published successfully! The public download button and manifest are now updated live.${notifSummary}`,
+        type: 'success',
+        text: `Release ${publishedRel.versionName} (versionCode ${publishedRel.versionCode}) published on ${publishedRel.releaseDate}! The public download button and manifest are now live.${notifSummary}`,
       });
 
       // Reset upload state
       setSelectedFile(null);
+      setExtractedApk(null);
+      setCachedBuffer(null);
       setUploadedDraft(null);
-      setVersionName('');
-      setVersionCode('');
       setReleaseNotes('');
       if (fileInputRef.current) fileInputRef.current.value = '';
 
@@ -303,11 +313,8 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     }
   };
 
-  const handleDeleteRelease = async (id: string, versionName: string) => {
-    if (!confirm(`Are you sure you want to delete release ${versionName || id}? This will remove the APK file from storage.`)) {
-      return;
-    }
-
+  const handleDeleteRelease = async (id: string) => {
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/admin/releases/${id}`, {
         method: 'DELETE',
@@ -324,18 +331,44 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
       }
 
       if (res.ok && data.success) {
+        if (uploadedDraft?.id === id) {
+          setUploadedDraft(null);
+        }
+        setConfirmDeleteId(null);
         fetchReleases();
         onReleasePublished();
       } else {
-        alert(data.error || `Could not delete release (${res.status})`);
+        setPublishMessage({
+          type: 'error',
+          text: data.error || `Could not delete release (${res.status})`,
+        });
       }
-    } catch (err) {
-      alert('Network error when attempting to delete release');
+    } catch {
+      setPublishMessage({
+        type: 'error',
+        text: 'Network error when attempting to delete release.',
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  // Check version code warning
-  const isVersionCodeLowerOrEqual = latestPublished && versionCode && Number(versionCode) <= latestPublished.versionCode;
+  // Active preview metadata (either from server-verified draft or client-inspected APK)
+  const previewMeta = uploadedDraft
+    ? {
+        versionName: uploadedDraft.versionName,
+        versionCode: uploadedDraft.versionCode,
+        packageName: uploadedDraft.applicationId,
+        fileSizeFormatted: uploadedDraft.fileSizeFormatted,
+        fileSize: uploadedDraft.fileSize,
+        minSdkVersion: uploadedDraft.minSdkVersion ?? null,
+        targetSdkVersion: uploadedDraft.targetSdkVersion ?? null,
+        minAndroidVersion: uploadedDraft.minAndroidVersion,
+        targetAndroidVersion: uploadedDraft.targetAndroidVersion ?? null,
+        sha256: uploadedDraft.sha256,
+        fileName: uploadedDraft.fileName,
+      }
+    : extractedApk;
 
   return (
     <div className="space-y-6 text-left">
@@ -390,15 +423,17 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
               <div className="w-2.5 h-2.5 rounded-full bg-teal-400" />
               <span className="text-slate-400">Current Live Release:</span>
               <strong className="text-white font-mono">
-                {latestPublished ? `${latestPublished.versionName} (code: ${latestPublished.versionCode})` : 'None published yet'}
+                {latestPublished
+                  ? `${latestPublished.versionName} (versionCode: ${latestPublished.versionCode})`
+                  : 'None published yet'}
               </strong>
             </div>
 
             {latestPublished && (
-              <div className="text-slate-400 flex items-center gap-2">
+              <div className="text-slate-400 flex flex-wrap items-center gap-2">
                 <span>Size: {latestPublished.fileSizeFormatted}</span>
                 <span>·</span>
-                <span>Date: {latestPublished.releaseDate}</span>
+                <span>Published: {latestPublished.releaseDate}</span>
               </div>
             )}
           </div>
@@ -411,7 +446,7 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                   Action Required: Re-upload APK Binary for {latestPublished.versionName}
                 </strong>
                 <span>
-                  The metadata for <code>{latestPublished.fileName}</code> exists in Firestore, but its APK binary was uploaded before persistent Firestore chunk storage was enabled. Please select and upload <code>{latestPublished.fileName}</code> below and click Publish to make the download live across all Vercel instances.
+                  The metadata for <code>{latestPublished.fileName}</code> exists in Firestore, but its APK binary is missing. Please upload a valid APK below and publish.
                 </span>
               </div>
             </div>
@@ -436,246 +471,246 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
             </div>
           )}
 
-          {/* STEP 1: APK File Upload Container */}
-          <div className="p-5 sm:p-6 rounded-2xl bg-[#071319] border border-teal-500/30">
-            <div className="flex items-center justify-between mb-4">
+          {/* STEP 1: APK Selection, Automatic Metadata Extraction & Draft Upload */}
+          <div className="p-4 sm:p-6 rounded-2xl bg-[#071319] border border-teal-500/30 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-teal-950 border border-teal-500/40 text-teal-300 flex items-center justify-center font-mono text-xs font-bold">
+                <span className="w-6 h-6 rounded-full bg-teal-950 border border-teal-500/40 text-teal-300 flex items-center justify-center font-mono text-xs font-bold shrink-0">
                   1
                 </span>
-                <h4 className="text-base font-bold text-white">Select and Upload Android APK</h4>
+                <h4 className="text-sm sm:text-base font-bold text-white">
+                  Select Zoya APK (Auto-Detects Release Info)
+                </h4>
               </div>
-              <span className="text-xs text-slate-400">Max size: 150 MB</span>
+              <span className="text-xs text-slate-400">Package: {OFFICIAL_ZOYA_PACKAGE}</span>
             </div>
 
-            <div className="space-y-4">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-teal-400/60 rounded-xl p-6 sm:p-8 text-center cursor-pointer transition-colors bg-slate-900/40"
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".apk,application/vnd.android.package-archive"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setSelectedFile(file);
-                    setUploadError(null);
-                    setUploadedDraft(null);
-                  }}
-                />
-                <Upload className="w-8 h-8 text-teal-400 mx-auto mb-2" />
-                <p className="text-sm font-medium text-slate-200">
-                  {selectedFile ? selectedFile.name : 'Click or drag Zoya APK binary here'}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Supported formats: Standalone signed <code className="text-teal-400">.apk</code>
-                </p>
-              </div>
-
-              {selectedFile && !uploadedDraft && (
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-slate-900 rounded-xl border border-slate-800 text-xs">
-                  <div>
-                    <span className="text-slate-400">Selected File: </span>
-                    <strong className="text-white font-mono">{selectedFile.name}</strong>
-                    <span className="text-slate-500 ml-2">({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleUploadApk}
-                    disabled={uploading}
-                    className="w-full sm:w-auto px-4 py-2 min-h-[40px] bg-teal-400 hover:bg-teal-300 text-slate-950 font-bold rounded-lg transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {uploading ? `Uploading (${uploadProgress}%)` : 'Start Secure Upload'}
-                  </button>
-                </div>
-              )}
-
-              {uploading && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span>Uploading APK to server...</span>
-                    <span className="font-mono font-bold text-teal-300">{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 transition-all duration-150"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                  <span>{uploadError}</span>
-                </div>
-              )}
-
-              {uploadedDraft && (
-                <div className="p-4 rounded-xl bg-teal-950/30 border border-teal-500/40 space-y-2 text-xs">
-                  <div className="flex items-center gap-2 text-teal-300 font-semibold">
-                    <CheckCircle2 className="w-4 h-4 text-teal-400" />
-                    <span>APK Upload Verified by Server</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300 pt-1">
-                    <div>
-                      File Size: <strong className="font-mono text-white">{uploadedDraft.fileSizeFormatted}</strong>
-                    </div>
-                    <div className="truncate">
-                      Package Name: <strong className="font-mono text-white">{uploadedDraft.fileName}</strong>
-                    </div>
-                    <div className="sm:col-span-2 truncate">
-                      Genuine SHA-256: <strong className="font-mono text-teal-300">{uploadedDraft.sha256}</strong>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* STEP 2: Release Metadata & Publishing Form */}
-          <form onSubmit={handlePublish} className="p-5 sm:p-6 rounded-2xl bg-[#071319] border border-teal-500/30 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-teal-950 border border-teal-500/40 text-teal-300 flex items-center justify-center font-mono text-xs font-bold">
-                  2
-                </span>
-                <h4 className="text-base font-bold text-white">Enter Release Specifications &amp; Publish</h4>
-              </div>
-              <span className="text-xs text-slate-400">
-                {uploadedDraft ? 'Ready for publication' : 'Requires Step 1 upload first'}
-              </span>
+            <div
+              onClick={() => !uploading && !inspectingApk && fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-5 sm:p-7 text-center transition-colors bg-slate-900/40 ${
+                uploading || inspectingApk
+                  ? 'border-slate-800 opacity-60 cursor-not-allowed'
+                  : 'border-slate-700 hover:border-teal-400/60 cursor-pointer'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".apk,application/vnd.android.package-archive"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null;
+                  handleFileSelection(file);
+                }}
+              />
+              <Upload className="w-7 h-7 text-teal-400 mx-auto mb-2" />
+              <p className="text-xs sm:text-sm font-medium text-slate-200 break-all">
+                {selectedFile ? selectedFile.name : 'Tap to select Zoya Android APK file'}
+              </p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Automatically extracts Version Name, Version Code, SDK levels, and File Size from <code className="text-teal-400">AndroidManifest.xml</code>
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Version Name (e.g. v1.0.0, v0.9.3-beta) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  disabled={!uploadedDraft}
-                  value={versionName}
-                  onChange={(e) => setVersionName(e.target.value)}
-                  placeholder="v1.0.0"
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 disabled:opacity-50 focus-visible:outline-teal-400"
-                />
+            {/* Loading state while parsing APK binary */}
+            {inspectingApk && (
+              <div className="p-4 rounded-xl bg-slate-900/90 border border-teal-500/30 flex items-center gap-3 text-xs text-teal-200">
+                <Loader2 className="w-4 h-4 text-teal-400 animate-spin shrink-0" />
+                <span>Inspecting APK archive &amp; extracting embedded AndroidManifest.xml metadata...</span>
               </div>
+            )}
 
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Android versionCode (Integer) *
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  disabled={!uploadedDraft}
-                  value={versionCode}
-                  onChange={(e) => setVersionCode(e.target.value === '' ? '' : parseInt(e.target.value, 10))}
-                  placeholder="100"
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 disabled:opacity-50 focus-visible:outline-teal-400"
-                />
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Must be strictly incremented for in-place Android updates.
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Android Application ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  disabled={!uploadedDraft}
-                  value={applicationId}
-                  onChange={(e) => setApplicationId(e.target.value)}
-                  placeholder="com.riyajul.zoya"
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 disabled:opacity-50 focus-visible:outline-teal-400 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Minimum Android OS Target
-                </label>
-                <select
-                  disabled={!uploadedDraft}
-                  value={minAndroidVersion}
-                  onChange={(e) => setMinAndroidVersion(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white disabled:opacity-50 focus-visible:outline-teal-400"
-                >
-                  <option value="Android 8.0 (API 26)+">Android 8.0 (Oreo, API 26)+</option>
-                  <option value="Android 9.0 (API 28)+">Android 9.0 (Pie, API 28)+</option>
-                  <option value="Android 10.0 (API 29)+">Android 10.0 (Q, API 29)+</option>
-                  <option value="Android 11.0 (API 30)+">Android 11.0 (R, API 30)+</option>
-                  <option value="Android 12.0 (API 31)+">Android 12.0 (S, API 31)+</option>
-                  <option value="Android 13.0 (API 33)+">Android 13.0 (T, API 33)+</option>
-                  <option value="Android 14.0 (API 34)+">Android 14.0 (U, API 34)+</option>
-                </select>
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Release Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  disabled={!uploadedDraft}
-                  value={releaseDate}
-                  onChange={(e) => setReleaseDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white disabled:opacity-50 focus-visible:outline-teal-400"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Release Notes / Changelog
-                </label>
-                <textarea
-                  rows={4}
-                  disabled={!uploadedDraft}
-                  value={releaseNotes}
-                  onChange={(e) => setReleaseNotes(e.target.value)}
-                  placeholder="Detail the key improvements, bug fixes, and voice engine updates in this build..."
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 disabled:opacity-50 focus-visible:outline-teal-400"
-                />
-              </div>
-            </div>
-
-            {/* Android Update Compatibility Warning */}
-            {isVersionCodeLowerOrEqual && (
-              <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/50 flex items-start gap-3 text-xs text-amber-200">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                <div className="leading-relaxed">
-                  <strong className="text-white block font-semibold mb-0.5">Android Update Compatibility Warning:</strong>
-                  The entered versionCode ({versionCode}) is not higher than the latest published release ({latestPublished?.versionCode}). Android operating systems require newer builds to have a strictly higher versionCode in order to perform an update without uninstalling the previous app.
+            {/* Validation / Parsing Error */}
+            {validationError && (
+              <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-200 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                <div className="space-y-1">
+                  <strong className="block text-red-300 font-semibold">APK Validation Failed</strong>
+                  <p className="leading-relaxed">{validationError}</p>
                 </div>
               </div>
             )}
 
-            {/* Keystore Signing Callout */}
-            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-              <span>
-                <strong>Keystore Integrity:</strong> In order for Android users to install this APK over an existing installation, the APK must be signed with the exact same production keystore certificate and share package ID <code className="text-teal-300">com.riyajul.zoya</code>.
+            {/* Extracted APK Metadata Preview Card */}
+            {previewMeta && (
+              <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-teal-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">
+                      Extracted APK Metadata Preview
+                    </span>
+                  </div>
+                  {uploadedDraft ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-teal-500/20 border border-teal-500/40 text-teal-300 text-[11px] font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Draft Staged on Server
+                    </span>
+                  ) : !validationError ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold">
+                      <PackageCheck className="w-3.5 h-3.5" />
+                      Valid Zoya APK
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">Version Name</span>
+                    <strong className="font-mono text-sm text-white">{previewMeta.versionName}</strong>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">Version Code</span>
+                    <strong className="font-mono text-sm text-teal-300">{previewMeta.versionCode}</strong>
+                    {latestPublished && (
+                      <span className="block text-[10px] text-slate-500 mt-0.5">
+                        Previous live: {latestPublished.versionCode}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80 col-span-2 sm:col-span-1">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">APK File Size</span>
+                    <strong className="font-mono text-sm text-white">{previewMeta.fileSizeFormatted}</strong>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">
+                      {previewMeta.fileSize.toLocaleString()} bytes
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80 col-span-2 sm:col-span-1">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">Package Name</span>
+                    <strong
+                      className={`font-mono text-xs break-all ${
+                        previewMeta.packageName === OFFICIAL_ZOYA_PACKAGE ? 'text-teal-300' : 'text-red-400'
+                      }`}
+                    >
+                      {previewMeta.packageName}
+                    </strong>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">Minimum SDK</span>
+                    <strong className="font-mono text-xs text-white">
+                      {previewMeta.minSdkVersion ? `API ${previewMeta.minSdkVersion}` : 'Not specified'}
+                    </strong>
+                    <span className="block text-[10px] text-slate-500 mt-0.5">{previewMeta.minAndroidVersion}</span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80">
+                    <span className="block text-[11px] text-slate-400 mb-0.5">Target SDK</span>
+                    <strong className="font-mono text-xs text-white">
+                      {previewMeta.targetSdkVersion ? `API ${previewMeta.targetSdkVersion}` : 'Not specified'}
+                    </strong>
+                    {previewMeta.targetAndroidVersion && (
+                      <span className="block text-[10px] text-slate-500 mt-0.5">
+                        {previewMeta.targetAndroidVersion}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80 text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="truncate">
+                    <span className="text-slate-400">SHA-256: </span>
+                    <strong className="font-mono text-slate-300">{previewMeta.sha256}</strong>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-slate-400 shrink-0">
+                    <Clock className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Release Date: Set by server on publish</span>
+                  </div>
+                </div>
+
+                {/* Upload Draft Action Button (Step 1 completion) */}
+                {!uploadedDraft && !validationError && (
+                  <div className="pt-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <span className="text-xs text-slate-400">
+                      Metadata verified. Upload the APK binary to stage a release draft.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleUploadApk}
+                      disabled={uploading}
+                      className="px-5 py-2.5 min-h-[42px] bg-teal-400 hover:bg-teal-300 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      {uploading ? `Uploading Draft (${uploadProgress}%)...` : 'Upload & Stage Draft APK'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {uploading && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>Uploading APK chunks &amp; verifying AndroidManifest.xml on server...</span>
+                  <span className="font-mono font-bold text-teal-300">{uploadProgress}%</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-teal-400 to-cyan-400 transition-all duration-150"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{uploadError}</span>
+              </div>
+            )}
+          </div>
+
+          {/* STEP 2: Release Notes & Publish Action (Simplified Form) */}
+          <form onSubmit={handlePublish} className="p-4 sm:p-6 rounded-2xl bg-[#071319] border border-teal-500/30 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-teal-950 border border-teal-500/40 text-teal-300 flex items-center justify-center font-mono text-xs font-bold shrink-0">
+                  2
+                </span>
+                <h4 className="text-sm sm:text-base font-bold text-white">Release Notes &amp; Publish</h4>
+              </div>
+              <span className="text-xs text-slate-400">
+                {uploadedDraft
+                  ? `Staged: ${uploadedDraft.versionName} (code ${uploadedDraft.versionCode})`
+                  : 'Complete Step 1 draft upload first'}
               </span>
             </div>
 
-            <div className="pt-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                Release Notes / Changelog (Optional)
+              </label>
+              <textarea
+                rows={3}
+                disabled={!uploadedDraft || publishing}
+                value={releaseNotes}
+                onChange={(e) => setReleaseNotes(e.target.value)}
+                placeholder="Summarize what changed in this Zoya update (e.g., voice recognition improvements, faster wake-word response, bug fixes)..."
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 disabled:opacity-50 focus-visible:outline-teal-400"
+              />
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <span>
+                <strong>Automatic Server Timestamp &amp; Verification:</strong> Publishing promotes the staged draft to live status, records the official server timestamp as the release date, updates <code className="text-teal-300">/api/releases/manifest</code>, and sends an FCM update notification.
+              </span>
+            </div>
+
+            <div className="pt-1">
               <button
                 type="submit"
                 disabled={!uploadedDraft || publishing}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-3.5 min-h-[44px] rounded-xl font-bold text-sm text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-md active:scale-98 disabled:opacity-40 cursor-pointer focus-visible:outline-teal-400"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3 min-h-[44px] rounded-xl font-bold text-xs sm:text-sm text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-md active:scale-98 disabled:opacity-40 cursor-pointer focus-visible:outline-teal-400"
               >
-                {publishing ? 'Publishing Release...' : 'Publish Official Zoya Release'}
+                {publishing
+                  ? 'Publishing Release...'
+                  : uploadedDraft
+                  ? `Publish Zoya ${uploadedDraft.versionName} (Code ${uploadedDraft.versionCode})`
+                  : 'Publish Official Zoya Release'}
               </button>
             </div>
           </form>
@@ -708,8 +743,8 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                   key={rel.id}
                   className="p-4 sm:p-5 rounded-xl bg-[#071319] border border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs"
                 >
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="space-y-1.5 min-w-0 w-full">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                           rel.isPublished
@@ -722,29 +757,48 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                       <strong className="text-sm font-bold text-white font-mono">
                         {rel.versionName || rel.fileName}
                       </strong>
-                      <span className="text-slate-400">code: {rel.versionCode}</span>
+                      <span className="text-slate-400 font-mono">versionCode: {rel.versionCode}</span>
+                      <span className="text-slate-500 font-mono">({rel.applicationId})</span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-400">
                       <span>Size: {rel.fileSizeFormatted}</span>
                       <span>·</span>
-                      <span>Target: {rel.minAndroidVersion}</span>
+                      <span>Min OS: {rel.minAndroidVersion}</span>
+                      {rel.targetSdkVersion && (
+                        <>
+                          <span>·</span>
+                          <span>Target SDK: API {rel.targetSdkVersion}</span>
+                        </>
+                      )}
                       <span>·</span>
-                      <span>Date: {rel.releaseDate}</span>
+                      <span>Date: {rel.releaseDate || 'Unpublished draft'}</span>
                     </div>
 
-                    <div className="font-mono text-[10px] text-slate-500 truncate max-w-[180px] xs:max-w-xs sm:max-w-md md:max-w-lg">
+                    <div className="font-mono text-[10px] text-slate-500 truncate max-w-full">
                       SHA-256: {rel.sha256}
                     </div>
 
                     {rel.releaseNotes && (
-                      <p className="text-slate-300 text-xs pt-1 line-clamp-2">
-                        {rel.releaseNotes}
-                      </p>
+                      <p className="text-slate-300 text-xs pt-1 line-clamp-2">{rel.releaseNotes}</p>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                    {!rel.isPublished && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadedDraft(rel);
+                          setReleaseNotes(rel.releaseNotes || '');
+                          setActiveTab('upload');
+                        }}
+                        className="px-3 py-1.5 min-h-[36px] rounded-lg bg-teal-500/20 hover:bg-teal-500/30 border border-teal-500/40 text-teal-300 font-semibold text-xs transition-colors cursor-pointer"
+                      >
+                        Select Draft
+                      </button>
+                    )}
+
                     {rel.isPublished && (
                       <a
                         href={rel.downloadUrl}
@@ -756,14 +810,34 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                       </a>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRelease(rel.id, rel.versionName)}
-                      className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 transition-colors cursor-pointer"
-                      title="Delete release and remove APK binary"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {confirmDeleteId === rel.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={deletingId === rel.id}
+                          onClick={() => handleDeleteRelease(rel.id)}
+                          className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                        >
+                          {deletingId === rel.id ? 'Deleting...' : 'Confirm'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-2.5 py-1.5 min-h-[36px] rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(rel.id)}
+                        className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 transition-colors cursor-pointer"
+                        title="Delete release and remove APK binary"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -781,27 +855,12 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           </div>
 
           <p className="leading-relaxed">
-            The Zoya release distribution engine stores published Android APK files and release records. In this environment, local persistent storage is active at <code className="text-teal-300">.data/apks/</code> and <code className="text-teal-300">.data/releases.json</code>.
+            The Zoya release distribution engine stores published Android APK files and release records in Cloud Firestore (<code className="text-teal-300">releases</code> and <code className="text-teal-300">apk_chunks</code>) with local backup at <code className="text-teal-300">.data/releases.json</code>.
           </p>
-
-          <h5 className="font-bold text-white text-xs pt-2">Required Production Environment Variables</h5>
-          <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] space-y-1 text-slate-300">
-            <div><span className="text-teal-400">ADMIN_EMAIL</span>=&quot;riyajulansari113b@gmail.com&quot;</div>
-            <div><span className="text-teal-400">ADMIN_PASSWORD</span>=&quot;&lt;your_strong_password&gt;&quot;</div>
-            <div><span className="text-teal-400">ADMIN_JWT_SECRET</span>=&quot;&lt;long_random_secret_string&gt;&quot;</div>
-            <div><span className="text-cyan-400">STORAGE_PROVIDER</span>=&quot;s3&quot; # or &quot;r2&quot; / &quot;vercel-blob&quot;</div>
-            <div><span className="text-cyan-400">S3_BUCKET</span>=&quot;zoya-releases&quot;</div>
-            <div><span className="text-cyan-400">S3_REGION</span>=&quot;auto&quot;</div>
-            <div><span className="text-cyan-400">S3_ENDPOINT</span>=&quot;https://...&quot;</div>
-            <div><span className="text-cyan-400">S3_ACCESS_KEY_ID</span>=&quot;...&quot;</div>
-            <div><span className="text-cyan-400">S3_SECRET_ACCESS_KEY</span>=&quot;...&quot;</div>
-          </div>
 
           <div className="pt-2">
             <h5 className="font-bold text-white text-xs mb-1">Public Update Manifest URL</h5>
-            <p className="text-slate-400 mb-2">
-              The public update manifest is served directly at:
-            </p>
+            <p className="text-slate-400 mb-2">The public update manifest is served directly at:</p>
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-900 border border-slate-800 font-mono text-[11px] text-teal-300">
               <span className="truncate">/api/releases/manifest</span>
               <a

@@ -74,6 +74,13 @@ export default function App() {
     }
   };
 
+  const scrollToFeatures = () => {
+    const el = document.querySelector('#features');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-pink-ambient text-zinc-900 flex flex-col font-sans selection:bg-pink-500/15 selection:text-pink-700 relative">
       {/* Top Navigation */}
@@ -84,24 +91,26 @@ export default function App() {
         {/* Hero Section */}
         <Hero
           latestRelease={latestRelease}
+          onExploreDownloads={scrollToDownload}
+          onExploreFeatures={scrollToFeatures}
           onDownloadClick={scrollToDownload}
         />
 
-        {/* Features Section */}
+        {/* Section 1 — Core Capabilities */}
         <Features />
+
+        {/* Section 2 — Simple Setup */}
+        <InstallationGuide />
 
         {/* About Zoya Section */}
         <About />
 
-        {/* Real One-Click APK Download Area */}
+        {/* Official Android Release / APK Download Area */}
         <ApkDownload
           latestRelease={latestRelease}
           loading={loadingRelease}
           onOpenAdmin={() => setAdminOpen(true)}
         />
-
-        {/* Installation Instructions */}
-        <InstallationGuide />
 
         {/* Frequently Asked Questions */}
         <Faq apkConfig={DEFAULT_APK_CONFIG} />
