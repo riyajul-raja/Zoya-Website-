@@ -2,6 +2,10 @@
   "buildCommand": "npm run build",
   "rewrites": [
     {
+      "source": "/api/admin/notify",
+      "destination": "/api/admin/notify"
+    },
+    {
       "source": "/api/admin/releases/:id",
       "destination": "/api/admin/releases/[id]"
     }

@@ -201,7 +201,13 @@ export async function handleApiRequest(
 ): Promise<boolean> {
   const url = req.url || '';
   const parsedUrl = new URL(url, 'http://localhost:3000');
-  let pathname = explicitRoute || parsedUrl.pathname;
+  const rawReqPath = parsedUrl.pathname.replace(/\/+$/, '') || '/';
+  let pathname =
+    rawReqPath === '/api/admin/notify' ||
+    rawReqPath === '/admin/notify' ||
+    parsedUrl.searchParams.get('action') === 'notify'
+      ? '/api/admin/notify'
+      : explicitRoute || parsedUrl.pathname;
 
   // Ensure leading /api if missing from proxy/rewrites
   if (!pathname.startsWith('/api/')) {

@@ -55913,8 +55913,10 @@ function buildReleaseNotificationContent(release) {
   };
   return { title, body, data };
 }
-async function sendFcmV1Request(projectId, accessToken, target, title, body, data, notificationTag) {
+async function sendFcmV1Request(projectId, accessToken, target, title, body, data, notificationTag, options2) {
   const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+  const collapseKey = options2?.collapseKey || "zoya_release_update";
+  const clickAction = options2?.clickAction || "OPEN_APP_UPDATE";
   const fcmPayload = {
     message: {
       ...target,
@@ -55925,14 +55927,14 @@ async function sendFcmV1Request(projectId, accessToken, target, title, body, dat
       data,
       android: {
         priority: "HIGH",
-        collapse_key: "zoya_release_update",
+        collapse_key: collapseKey,
         ttl: "604800s",
         notification: {
           title,
           body,
           channel_id: "zoya_updates",
           tag: notificationTag,
-          click_action: "OPEN_APP_UPDATE",
+          click_action: clickAction,
           default_sound: true,
           default_vibrate_timings: true
         }
@@ -56185,7 +56187,7 @@ async function sendReleasePushNotification(release) {
       data
     };
   } catch (err) {
-    console.error("FCM sendReleasePushNotification error:", err);
+    console.error("FCM sendReleasePushNotification error:", err instanceof Error ? err.message : "Unknown error");
     return {
       sent: false,
       configured: true,
@@ -56197,6 +56199,294 @@ async function sendReleasePushNotification(release) {
       body,
       data
     };
+  }
+}
+var MAX_MANUAL_TITLE_LENGTH = 60;
+var MAX_MANUAL_MESSAGE_LENGTH = 200;
+var MANUAL_DEDUP_WINDOW_MS = 60 * 1e3;
+var inFlightManualKeys = /* @__PURE__ */ new Set();
+var recentManualSends = /* @__PURE__ */ new Map();
+function sanitizeNotificationText(raw, allowNewlines = false) {
+  if (typeof raw !== "string") return "";
+  const withoutControls = allowNewlines ? raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") : raw.replace(/[\x00-\x1F\x7F]/g, " ");
+  return withoutControls.replace(/\r\n/g, "\n").trim();
+}
+function validateAndSanitizeManualNotification(input) {
+  if (!input || typeof input !== "object") {
+    return { valid: false, error: "Invalid request payload." };
+  }
+  if (typeof input.title !== "string") {
+    return { valid: false, error: "Notification title is required and must be a string." };
+  }
+  if (typeof input.message !== "string") {
+    return { valid: false, error: "Notification message is required and must be a string." };
+  }
+  const title = sanitizeNotificationText(input.title, false);
+  const message = sanitizeNotificationText(input.message, true);
+  const requestId = typeof input.requestId === "string" && input.requestId.trim().length > 0 ? sanitizeNotificationText(input.requestId, false).slice(0, 80) : void 0;
+  if (!title) {
+    return { valid: false, error: "Notification title cannot be empty." };
+  }
+  if (title.length > MAX_MANUAL_TITLE_LENGTH) {
+    return {
+      valid: false,
+      error: `Notification title cannot exceed ${MAX_MANUAL_TITLE_LENGTH} characters (received ${title.length}).`
+    };
+  }
+  if (!message) {
+    return { valid: false, error: "Notification message cannot be empty." };
+  }
+  if (message.length > MAX_MANUAL_MESSAGE_LENGTH) {
+    return {
+      valid: false,
+      error: `Notification message cannot exceed ${MAX_MANUAL_MESSAGE_LENGTH} characters (received ${message.length}).`
+    };
+  }
+  return { valid: true, title, message, requestId };
+}
+async function sendManualPushNotification(params) {
+  const validation = validateAndSanitizeManualNotification(params);
+  const topic = getFcmTopic();
+  const creds = getServiceAccountCredentials();
+  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  if (!validation.valid) {
+    return {
+      sent: false,
+      configured: Boolean(creds),
+      idempotencyKey: "",
+      topic,
+      projectId,
+      reason: validation.error,
+      title: String(params?.title || ""),
+      body: String(params?.message || ""),
+      data: {}
+    };
+  }
+  const { title, message, requestId } = validation;
+  const contentHash = crypto4.createHash("sha256").update(`${title}
+${message}`).digest("hex").substring(0, 32);
+  const idempotencyKey = requestId ? `manual_req_${crypto4.createHash("sha256").update(requestId).digest("hex").substring(0, 32)}` : `manual_msg_${contentHash}`;
+  const contentDedupKey = `manual_msg_${contentHash}`;
+  const nowMs = Date.now();
+  const sentAtIso = new Date(nowMs).toISOString();
+  const data = {
+    type: "manual_notification",
+    action: "OPEN_ZOYA_APP",
+    title,
+    body: message,
+    sentAt: sentAtIso
+  };
+  if (inFlightManualKeys.has(idempotencyKey) || inFlightManualKeys.has(contentDedupKey)) {
+    return {
+      sent: false,
+      alreadySent: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: "This notification is already being sent. Please wait.",
+      title,
+      body: message,
+      data
+    };
+  }
+  const recentByReq = recentManualSends.get(idempotencyKey);
+  const recentByContent = recentManualSends.get(contentDedupKey);
+  const activeRecent = recentByReq || (recentByContent && nowMs - recentByContent.timestampMs < MANUAL_DEDUP_WINDOW_MS ? recentByContent : null);
+  if (activeRecent) {
+    return {
+      sent: false,
+      alreadySent: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      messageId: activeRecent.messageId,
+      sentAt: activeRecent.sentAt,
+      reason: "Duplicate notification prevented: An identical notification was just sent less than a minute ago.",
+      title,
+      body: message,
+      data
+    };
+  }
+  const db = getDb();
+  const notifDocRef = doc(db, "fcm_notifications", contentDedupKey);
+  try {
+    const existingSnap = await getDoc(notifDocRef);
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      const prevSentMs = existingData?.sentAt ? Date.parse(String(existingData.sentAt)) : 0;
+      if (existingData?.status === "sent" && (requestId && existingData.requestId === requestId || prevSentMs > 0 && nowMs - prevSentMs < MANUAL_DEDUP_WINDOW_MS)) {
+        return {
+          sent: false,
+          alreadySent: true,
+          configured: Boolean(creds),
+          idempotencyKey,
+          topic,
+          projectId,
+          messageId: existingData.messageId,
+          sentAt: existingData.sentAt,
+          reason: "Duplicate notification prevented: An identical notification was just sent recently.",
+          title,
+          body: message,
+          data
+        };
+      }
+    }
+  } catch {
+  }
+  if (!creds) {
+    return {
+      sent: false,
+      skipped: true,
+      configured: false,
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: "FCM service account credentials (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY) are not configured on the server.",
+      title,
+      body: message,
+      data
+    };
+  }
+  inFlightManualKeys.add(idempotencyKey);
+  inFlightManualKeys.add(contentDedupKey);
+  try {
+    const accessToken = await getFcmAccessToken(creds);
+    const notificationTag = `zoya_manual_${contentHash.substring(0, 12)}_${Math.floor(nowMs / 1e3)}`;
+    const topicResult = await sendFcmV1Request(
+      creds.projectId,
+      accessToken,
+      { topic },
+      title,
+      message,
+      data,
+      notificationTag,
+      {
+        collapseKey: "zoya_manual_notification",
+        clickAction: "OPEN_ZOYA_APP"
+      }
+    );
+    let devicesTargeted = 0;
+    let devicesSucceeded = 0;
+    try {
+      const devicesSnap = await getDocs(collection(db, "fcm_devices"));
+      devicesTargeted = devicesSnap.size;
+      const staleDeviceIds = [];
+      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data();
+        const devToken = String(devData?.token || "").trim();
+        if (!devToken) return;
+        const res = await sendFcmV1Request(
+          creds.projectId,
+          accessToken,
+          { token: devToken },
+          title,
+          message,
+          data,
+          notificationTag,
+          {
+            collapseKey: "zoya_manual_notification",
+            clickAction: "OPEN_ZOYA_APP"
+          }
+        );
+        if (res.ok) {
+          devicesSucceeded += 1;
+        } else if (res.errorCode === "UNREGISTERED" || res.errorCode === "NOT_FOUND") {
+          staleDeviceIds.push(deviceDoc.id);
+        }
+      });
+      await Promise.allSettled(tokenPromises);
+      if (staleDeviceIds.length > 0) {
+        await Promise.allSettled(
+          staleDeviceIds.map((id) => deleteDoc(doc(db, "fcm_devices", id)))
+        );
+      }
+    } catch {
+    }
+    if (!topicResult.ok && devicesSucceeded === 0) {
+      console.error("FCM manual notification dispatch failed:", {
+        topic,
+        projectId: creds.projectId,
+        errorCode: topicResult.errorCode || "UNKNOWN",
+        errorMessage: topicResult.errorMessage || "FCM dispatch failed"
+      });
+      return {
+        sent: false,
+        configured: true,
+        idempotencyKey,
+        topic,
+        projectId: creds.projectId,
+        devicesTargeted,
+        devicesSucceeded,
+        reason: topicResult.errorMessage || "FCM HTTP v1 dispatch failed.",
+        title,
+        body: message,
+        data
+      };
+    }
+    const finalSentAt = (/* @__PURE__ */ new Date()).toISOString();
+    const messageId = topicResult.messageId || `devices:${devicesSucceeded}`;
+    recentManualSends.set(idempotencyKey, {
+      sentAt: finalSentAt,
+      timestampMs: Date.now(),
+      messageId
+    });
+    recentManualSends.set(contentDedupKey, {
+      sentAt: finalSentAt,
+      timestampMs: Date.now(),
+      messageId
+    });
+    try {
+      await setDoc(notifDocRef, {
+        idempotencyKey,
+        requestId: requestId || null,
+        type: "manual_notification",
+        title,
+        body: message,
+        status: "sent",
+        messageId,
+        topic,
+        devicesNotified: devicesSucceeded,
+        sentAt: finalSentAt
+      });
+    } catch {
+    }
+    return {
+      sent: true,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      messageId,
+      devicesTargeted,
+      devicesSucceeded,
+      sentAt: finalSentAt,
+      title,
+      body: message,
+      data
+    };
+  } catch (err) {
+    const safeErrorMsg = err instanceof Error ? err.message : "Failed to send manual FCM notification.";
+    console.error("FCM sendManualPushNotification error:", {
+      topic,
+      projectId: creds.projectId,
+      error: safeErrorMsg
+    });
+    return {
+      sent: false,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      reason: safeErrorMsg,
+      title,
+      body: message,
+      data
+    };
+  } finally {
+    inFlightManualKeys.delete(idempotencyKey);
+    inFlightManualKeys.delete(contentDedupKey);
   }
 }
 
@@ -56338,7 +56628,8 @@ async function readBinaryBody(req) {
 async function handleApiRequest(req, res, explicitRoute) {
   const url = req.url || "";
   const parsedUrl = new URL(url, "http://localhost:3000");
-  let pathname = explicitRoute || parsedUrl.pathname;
+  const rawReqPath = parsedUrl.pathname.replace(/\/+$/, "") || "/";
+  let pathname = rawReqPath === "/api/admin/notify" || rawReqPath === "/admin/notify" || parsedUrl.searchParams.get("action") === "notify" ? "/api/admin/notify" : explicitRoute || parsedUrl.pathname;
   if (!pathname.startsWith("/api/")) {
     pathname = `/api${pathname.startsWith("/") ? pathname : "/" + pathname}`;
   }
@@ -56859,6 +57150,59 @@ async function handleApiRequest(req, res, explicitRoute) {
           return true;
         }
         sendJson(res, 200, { success: true, message: "Release deleted." });
+        return true;
+      }
+      if (pathname === "/api/admin/notify") {
+        if (method !== "POST") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+        let body = {};
+        try {
+          body = await parseJsonBody(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
+          return true;
+        }
+        const validation = validateAndSanitizeManualNotification(body);
+        if (!validation.valid) {
+          sendError(res, 400, validation.error);
+          return true;
+        }
+        const result = await sendManualPushNotification({
+          title: validation.title,
+          message: validation.message,
+          requestId: validation.requestId
+        });
+        if (result.alreadySent) {
+          sendJson(res, 409, {
+            success: false,
+            error: result.reason || "Duplicate notification prevented.",
+            notification: result
+          });
+          return true;
+        }
+        if (!result.configured) {
+          sendJson(res, 503, {
+            success: false,
+            error: result.reason || "Firebase Cloud Messaging credentials are not configured on the server.",
+            notification: result
+          });
+          return true;
+        }
+        if (!result.sent) {
+          sendJson(res, 502, {
+            success: false,
+            error: result.reason || "Failed to dispatch push notification via FCM.",
+            notification: result
+          });
+          return true;
+        }
+        sendJson(res, 200, {
+          success: true,
+          message: `Push notification "${result.title}" sent to topic "${result.topic}".`,
+          notification: result
+        });
         return true;
       }
     }

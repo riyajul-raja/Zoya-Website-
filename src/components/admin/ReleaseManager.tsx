@@ -422,14 +422,58 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
 
       const rawText = await res.text();
       let data: any = {};
+      let isJson = false;
       try {
-        data = rawText ? JSON.parse(rawText) : {};
+        if (rawText) {
+          data = JSON.parse(rawText);
+          isJson = true;
+        }
       } catch {
-        throw new Error(`Unexpected response from server (${res.status}).`);
+        isJson = false;
       }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to send notification (${res.status}).`);
+        if (res.status === 404) {
+          throw new Error(
+            data?.error
+              ? `Endpoint not found (404): ${data.error}`
+              : 'Notification endpoint not found (404): POST /api/admin/notify is not deployed on this server yet. Please sync the latest repository changes to GitHub and redeploy on Vercel.'
+          );
+        }
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(
+            `Authentication failed (${res.status}): ${
+              data?.error || 'Your administrator session has expired or is unauthorized. Please sign out and sign in again.'
+            }`
+          );
+        }
+        if (res.status === 503) {
+          throw new Error(
+            `Missing server credentials (503): ${
+              data?.error ||
+              'Firebase Cloud Messaging service-account credentials (FIREBASE_SERVICE_ACCOUNT_JSON) are not configured on the server.'
+            }`
+          );
+        }
+        if (res.status === 409) {
+          throw new Error(
+            data?.error || 'Duplicate notification prevented (409): An identical notification was just sent recently.'
+          );
+        }
+        if (res.status === 400) {
+          throw new Error(`Validation error (400): ${data?.error || 'Invalid notification title or message.'}`);
+        }
+        if (res.status === 502 || res.status === 500) {
+          throw new Error(
+            `FCM send failure (${res.status}): ${
+              data?.error || 'Failed to dispatch push notification via Firebase Cloud Messaging.'
+            }`
+          );
+        }
+        if (!isJson) {
+          throw new Error(`Unexpected non-JSON response from server (HTTP ${res.status}).`);
+        }
+        throw new Error(data?.error || `Failed to send notification (HTTP ${res.status}).`);
       }
 
       // Clear the form ONLY after the server confirms success
