@@ -31,6 +31,8 @@ import {
 } from './auth';
 import {
   sendReleasePushNotification,
+  sendManualPushNotification,
+  validateAndSanitizeManualNotification,
   registerFcmDeviceToken,
   getFcmStatus,
 } from './fcm';
@@ -862,6 +864,70 @@ export async function handleApiRequest(
         }
 
         sendJson(res, 200, { success: true, message: 'Release deleted.' });
+        return true;
+      }
+
+      // POST /api/admin/notify (Manual Push Notification to subscribed Zoya Android app users)
+      if (pathname === '/api/admin/notify') {
+        if (method !== 'POST') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+
+        let body: { title?: unknown; message?: unknown; requestId?: unknown } = {};
+        try {
+          body = await parseJsonBody<{ title?: unknown; message?: unknown; requestId?: unknown }>(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+          return true;
+        }
+
+        const validation = validateAndSanitizeManualNotification(body);
+        if (!validation.valid) {
+          sendError(res, 400, validation.error);
+          return true;
+        }
+
+        const result = await sendManualPushNotification({
+          title: validation.title,
+          message: validation.message,
+          requestId: validation.requestId,
+        });
+
+        if (result.alreadySent) {
+          sendJson(res, 409, {
+            success: false,
+            error: result.reason || 'Duplicate notification prevented.',
+            notification: result,
+          });
+          return true;
+        }
+
+        if (!result.configured) {
+          sendJson(res, 503, {
+            success: false,
+            error:
+              result.reason ||
+              'Firebase Cloud Messaging credentials are not configured on the server.',
+            notification: result,
+          });
+          return true;
+        }
+
+        if (!result.sent) {
+          sendJson(res, 502, {
+            success: false,
+            error: result.reason || 'Failed to dispatch push notification via FCM.',
+            notification: result,
+          });
+          return true;
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          message: `Push notification "${result.title}" sent to topic "${result.topic}".`,
+          notification: result,
+        });
         return true;
       }
     }

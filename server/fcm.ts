@@ -212,9 +212,15 @@ async function sendFcmV1Request(
   title: string,
   body: string,
   data: Record<string, string>,
-  notificationTag: string
+  notificationTag: string,
+  options?: {
+    collapseKey?: string;
+    clickAction?: string;
+  }
 ): Promise<{ ok: boolean; messageId?: string; errorCode?: string; errorMessage?: string }> {
   const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+  const collapseKey = options?.collapseKey || 'zoya_release_update';
+  const clickAction = options?.clickAction || 'OPEN_APP_UPDATE';
 
   const fcmPayload = {
     message: {
@@ -226,14 +232,14 @@ async function sendFcmV1Request(
       data,
       android: {
         priority: 'HIGH',
-        collapse_key: 'zoya_release_update',
+        collapse_key: collapseKey,
         ttl: '604800s',
         notification: {
           title,
           body,
           channel_id: 'zoya_updates',
           tag: notificationTag,
-          click_action: 'OPEN_APP_UPDATE',
+          click_action: clickAction,
           default_sound: true,
           default_vibrate_timings: true,
         },
@@ -561,7 +567,7 @@ export async function sendReleasePushNotification(
       data,
     };
   } catch (err: unknown) {
-    console.error('FCM sendReleasePushNotification error:', err);
+    console.error('FCM sendReleasePushNotification error:', err instanceof Error ? err.message : 'Unknown error');
     return {
       sent: false,
       configured: true,
@@ -575,3 +581,370 @@ export async function sendReleasePushNotification(
     };
   }
 }
+
+export const MAX_MANUAL_TITLE_LENGTH = 60;
+export const MAX_MANUAL_MESSAGE_LENGTH = 200;
+const MANUAL_DEDUP_WINDOW_MS = 60 * 1000; // 60s window to prevent double-click / repeated identical sends
+
+const inFlightManualKeys = new Set<string>();
+const recentManualSends = new Map<string, { sentAt: string; timestampMs: number; messageId: string }>();
+
+export function sanitizeNotificationText(raw: unknown, allowNewlines = false): string {
+  if (typeof raw !== 'string') return '';
+  const withoutControls = allowNewlines
+    ? raw.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    : raw.replace(/[\x00-\x1F\x7F]/g, ' ');
+  return withoutControls.replace(/\r\n/g, '\n').trim();
+}
+
+export function validateAndSanitizeManualNotification(input: {
+  title?: unknown;
+  message?: unknown;
+  requestId?: unknown;
+}):
+  | { valid: true; title: string; message: string; requestId?: string }
+  | { valid: false; error: string } {
+  if (!input || typeof input !== 'object') {
+    return { valid: false, error: 'Invalid request payload.' };
+  }
+
+  if (typeof input.title !== 'string') {
+    return { valid: false, error: 'Notification title is required and must be a string.' };
+  }
+  if (typeof input.message !== 'string') {
+    return { valid: false, error: 'Notification message is required and must be a string.' };
+  }
+
+  const title = sanitizeNotificationText(input.title, false);
+  const message = sanitizeNotificationText(input.message, true);
+  const requestId =
+    typeof input.requestId === 'string' && input.requestId.trim().length > 0
+      ? sanitizeNotificationText(input.requestId, false).slice(0, 80)
+      : undefined;
+
+  if (!title) {
+    return { valid: false, error: 'Notification title cannot be empty.' };
+  }
+  if (title.length > MAX_MANUAL_TITLE_LENGTH) {
+    return {
+      valid: false,
+      error: `Notification title cannot exceed ${MAX_MANUAL_TITLE_LENGTH} characters (received ${title.length}).`,
+    };
+  }
+
+  if (!message) {
+    return { valid: false, error: 'Notification message cannot be empty.' };
+  }
+  if (message.length > MAX_MANUAL_MESSAGE_LENGTH) {
+    return {
+      valid: false,
+      error: `Notification message cannot exceed ${MAX_MANUAL_MESSAGE_LENGTH} characters (received ${message.length}).`,
+    };
+  }
+
+  return { valid: true, title, message, requestId };
+}
+
+/**
+ * Sends an administrator-initiated manual push notification to the `zoya_releases` topic
+ * (and registered devices) via FCM HTTP v1 without modifying any APK release state.
+ */
+export async function sendManualPushNotification(params: {
+  title: string;
+  message: string;
+  requestId?: string;
+}): Promise<FcmSendResult> {
+  const validation = validateAndSanitizeManualNotification(params);
+  const topic = getFcmTopic();
+  const creds = getServiceAccountCredentials();
+  const projectId = creds?.projectId || firebaseConfig.projectId || '';
+
+  if (!validation.valid) {
+    return {
+      sent: false,
+      configured: Boolean(creds),
+      idempotencyKey: '',
+      topic,
+      projectId,
+      reason: validation.error,
+      title: String(params?.title || ''),
+      body: String(params?.message || ''),
+      data: {},
+    };
+  }
+
+  const { title, message, requestId } = validation;
+  const contentHash = crypto
+    .createHash('sha256')
+    .update(`${title}\n${message}`)
+    .digest('hex')
+    .substring(0, 32);
+  const idempotencyKey = requestId
+    ? `manual_req_${ crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 32) }`
+    : `manual_msg_${contentHash}`;
+  const contentDedupKey = `manual_msg_${contentHash}`;
+
+  const nowMs = Date.now();
+  const sentAtIso = new Date(nowMs).toISOString();
+  const data: Record<string, string> = {
+    type: 'manual_notification',
+    action: 'OPEN_ZOYA_APP',
+    title,
+    body: message,
+    sentAt: sentAtIso,
+  };
+
+  // 1. Prevent concurrent in-flight duplicate sends (e.g., rapid double-click)
+  if (inFlightManualKeys.has(idempotencyKey) || inFlightManualKeys.has(contentDedupKey)) {
+    return {
+      sent: false,
+      alreadySent: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      reason: 'This notification is already being sent. Please wait.',
+      title,
+      body: message,
+      data,
+    };
+  }
+
+  // 2. Check recent in-memory duplicate sends within cooldown window
+  const recentByReq = recentManualSends.get(idempotencyKey);
+  const recentByContent = recentManualSends.get(contentDedupKey);
+  const activeRecent =
+    recentByReq ||
+    (recentByContent && nowMs - recentByContent.timestampMs < MANUAL_DEDUP_WINDOW_MS
+      ? recentByContent
+      : null);
+
+  if (activeRecent) {
+    return {
+      sent: false,
+      alreadySent: true,
+      configured: Boolean(creds),
+      idempotencyKey,
+      topic,
+      projectId,
+      messageId: activeRecent.messageId,
+      sentAt: activeRecent.sentAt,
+      reason: 'Duplicate notification prevented: An identical notification was just sent less than a minute ago.',
+      title,
+      body: message,
+      data,
+    };
+  }
+
+  const db = getDb();
+  const notifDocRef = doc(db, 'fcm_notifications', contentDedupKey);
+
+  // 3. Check persistent Firestore deduplication record across serverless instances
+  try {
+    const existingSnap = await getDoc(notifDocRef);
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      const prevSentMs = existingData?.sentAt ? Date.parse(String(existingData.sentAt)) : 0;
+      if (
+        existingData?.status === 'sent' &&
+        ((requestId && existingData.requestId === requestId) ||
+          (prevSentMs > 0 && nowMs - prevSentMs < MANUAL_DEDUP_WINDOW_MS))
+      ) {
+        return {
+          sent: false,
+          alreadySent: true,
+          configured: Boolean(creds),
+          idempotencyKey,
+          topic,
+          projectId,
+          messageId: existingData.messageId,
+          sentAt: existingData.sentAt,
+          reason: 'Duplicate notification prevented: An identical notification was just sent recently.',
+          title,
+          body: message,
+          data,
+        };
+      }
+    }
+  } catch {
+    // Non-fatal if Firestore check is unavailable
+  }
+
+  // 4. Verify server-side Firebase service account credentials are configured
+  if (!creds) {
+    return {
+      sent: false,
+      skipped: true,
+      configured: false,
+      idempotencyKey,
+      topic,
+      projectId,
+      reason:
+        'FCM service account credentials (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY) are not configured on the server.',
+      title,
+      body: message,
+      data,
+    };
+  }
+
+  inFlightManualKeys.add(idempotencyKey);
+  inFlightManualKeys.add(contentDedupKey);
+
+  try {
+    const accessToken = await getFcmAccessToken(creds);
+    const notificationTag = `zoya_manual_${contentHash.substring(0, 12)}_${Math.floor(nowMs / 1000)}`;
+
+    // 5. Send to FCM topic (`zoya_releases`)
+    const topicResult = await sendFcmV1Request(
+      creds.projectId,
+      accessToken,
+      { topic },
+      title,
+      message,
+      data,
+      notificationTag,
+      {
+        collapseKey: 'zoya_manual_notification',
+        clickAction: 'OPEN_ZOYA_APP',
+      }
+    );
+
+    // 6. Also broadcast to any explicitly registered Android device tokens in `/fcm_devices`
+    let devicesTargeted = 0;
+    let devicesSucceeded = 0;
+    try {
+      const devicesSnap = await getDocs(collection(db, 'fcm_devices'));
+      devicesTargeted = devicesSnap.size;
+      const staleDeviceIds: string[] = [];
+
+      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data();
+        const devToken = String(devData?.token || '').trim();
+        if (!devToken) return;
+
+        const res = await sendFcmV1Request(
+          creds.projectId,
+          accessToken,
+          { token: devToken },
+          title,
+          message,
+          data,
+          notificationTag,
+          {
+            collapseKey: 'zoya_manual_notification',
+            clickAction: 'OPEN_ZOYA_APP',
+          }
+        );
+
+        if (res.ok) {
+          devicesSucceeded += 1;
+        } else if (
+          res.errorCode === 'UNREGISTERED' ||
+          res.errorCode === 'NOT_FOUND'
+        ) {
+          staleDeviceIds.push(deviceDoc.id);
+        }
+      });
+
+      await Promise.allSettled(tokenPromises);
+
+      if (staleDeviceIds.length > 0) {
+        await Promise.allSettled(
+          staleDeviceIds.map((id) => deleteDoc(doc(db, 'fcm_devices', id)))
+        );
+      }
+    } catch {
+      // Ignore device token broadcast warning
+    }
+
+    if (!topicResult.ok && devicesSucceeded === 0) {
+      console.error('FCM manual notification dispatch failed:', {
+        topic,
+        projectId: creds.projectId,
+        errorCode: topicResult.errorCode || 'UNKNOWN',
+        errorMessage: topicResult.errorMessage || 'FCM dispatch failed',
+      });
+      return {
+        sent: false,
+        configured: true,
+        idempotencyKey,
+        topic,
+        projectId: creds.projectId,
+        devicesTargeted,
+        devicesSucceeded,
+        reason: topicResult.errorMessage || 'FCM HTTP v1 dispatch failed.',
+        title,
+        body: message,
+        data,
+      };
+    }
+
+    const finalSentAt = new Date().toISOString();
+    const messageId = topicResult.messageId || `devices:${devicesSucceeded}`;
+
+    recentManualSends.set(idempotencyKey, {
+      sentAt: finalSentAt,
+      timestampMs: Date.now(),
+      messageId,
+    });
+    recentManualSends.set(contentDedupKey, {
+      sentAt: finalSentAt,
+      timestampMs: Date.now(),
+      messageId,
+    });
+
+    try {
+      await setDoc(notifDocRef, {
+        idempotencyKey,
+        requestId: requestId || null,
+        type: 'manual_notification',
+        title,
+        body: message,
+        status: 'sent',
+        messageId,
+        topic,
+        devicesNotified: devicesSucceeded,
+        sentAt: finalSentAt,
+      });
+    } catch {
+      // Non-fatal if audit record cannot be written
+    }
+
+    return {
+      sent: true,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      messageId,
+      devicesTargeted,
+      devicesSucceeded,
+      sentAt: finalSentAt,
+      title,
+      body: message,
+      data,
+    };
+  } catch (err: unknown) {
+    const safeErrorMsg = err instanceof Error ? err.message : 'Failed to send manual FCM notification.';
+    console.error('FCM sendManualPushNotification error:', {
+      topic,
+      projectId: creds.projectId,
+      error: safeErrorMsg,
+    });
+    return {
+      sent: false,
+      configured: true,
+      idempotencyKey,
+      topic,
+      projectId: creds.projectId,
+      reason: safeErrorMsg,
+      title,
+      body: message,
+      data,
+    };
+  } finally {
+    inFlightManualKeys.delete(idempotencyKey);
+    inFlightManualKeys.delete(contentDedupKey);
+  }
+}
+

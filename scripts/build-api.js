@@ -9,6 +9,7 @@ const entryPoints = [
   'server/api/admin/releases/[id].ts',
   'server/api/admin/upload.ts',
   'server/api/admin/publish.ts',
+  'server/api/admin/notify.ts',
   'server/api/releases/latest.ts',
   'server/api/releases/manifest.ts',
   'server/api/releases/download.ts',

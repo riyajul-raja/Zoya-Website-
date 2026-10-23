@@ -15,6 +15,8 @@ import {
   Cpu,
   PackageCheck,
   Clock,
+  Bell,
+  Send,
 } from 'lucide-react';
 import { ReleaseMetadata } from '../../../server/storage';
 import {
@@ -31,7 +33,7 @@ interface ReleaseManagerProps {
 export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onReleasePublished }) => {
   const [releases, setReleases] = useState<ReleaseMetadata[]>([]);
   const [loadingReleases, setLoadingReleases] = useState(true);
-  const [activeTab, setActiveTab] = useState<'upload' | 'history' | 'storage-config'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'notify' | 'history' | 'storage-config'>('upload');
 
   // APK Inspection & Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -49,6 +51,14 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
   const [releaseNotes, setReleaseNotes] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [publishMessage, setPublishMessage] = useState<{ type: 'success' | 'warning' | 'error'; text: string } | null>(null);
+
+  // Manual Push Notification State
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifConfirming, setNotifConfirming] = useState(false);
+  const [sendingNotif, setSendingNotif] = useState(false);
+  const [notifRequestId, setNotifRequestId] = useState(() => `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+  const [notifFeedback, setNotifFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Delete confirmation state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -353,6 +363,96 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
     }
   };
 
+  // Step 1 of Manual Push Notification: Validate inputs and open confirmation view
+  const handleInitiateNotification = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sendingNotif) return;
+
+    setNotifFeedback(null);
+    const trimmedTitle = notifTitle.trim();
+    const trimmedMessage = notifMessage.trim();
+
+    if (!trimmedTitle) {
+      setNotifFeedback({ type: 'error', text: 'Notification Title is required.' });
+      return;
+    }
+    if (trimmedTitle.length > 60) {
+      setNotifFeedback({ type: 'error', text: 'Notification Title cannot exceed 60 characters.' });
+      return;
+    }
+    if (!trimmedMessage) {
+      setNotifFeedback({ type: 'error', text: 'Message is required.' });
+      return;
+    }
+    if (trimmedMessage.length > 200) {
+      setNotifFeedback({ type: 'error', text: 'Message cannot exceed 200 characters.' });
+      return;
+    }
+
+    setNotifConfirming(true);
+  };
+
+  // Step 2 of Manual Push Notification: Confirm & send to authenticated backend endpoint
+  const handleConfirmSendNotification = async () => {
+    if (sendingNotif) return;
+
+    const trimmedTitle = notifTitle.trim();
+    const trimmedMessage = notifMessage.trim();
+    if (!trimmedTitle || !trimmedMessage || trimmedTitle.length > 60 || trimmedMessage.length > 200) {
+      setNotifConfirming(false);
+      return;
+    }
+
+    setSendingNotif(true);
+    setNotifFeedback(null);
+
+    try {
+      const res = await fetch('/api/admin/notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: trimmedTitle,
+          message: trimmedMessage,
+          requestId: notifRequestId,
+        }),
+      });
+
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`Unexpected response from server (${res.status}).`);
+      }
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Failed to send notification (${res.status}).`);
+      }
+
+      // Clear the form ONLY after the server confirms success
+      setNotifTitle('');
+      setNotifMessage('');
+      setNotifConfirming(false);
+      setNotifRequestId(`req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+      setNotifFeedback({
+        type: 'success',
+        text: data.message || `Push notification "${trimmedTitle}" sent to topic "zoya_releases".`,
+      });
+    } catch (err: unknown) {
+      setNotifConfirming(false);
+      setNotifRequestId(`req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+      setNotifFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to send push notification.',
+      });
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
   // Active preview metadata (either from server-verified draft or client-inspected APK)
   const previewMeta = uploadedDraft
     ? {
@@ -370,6 +470,176 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
       }
     : extractedApk;
 
+  const renderSendNotificationSection = () => (
+    <section
+      aria-labelledby="send-notification-heading"
+      className="p-4 sm:p-6 rounded-2xl bg-[#071319] border border-teal-500/30 space-y-4"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-teal-950 border border-teal-500/40 text-teal-300 flex items-center justify-center shrink-0">
+            <Bell className="w-4 h-4" />
+          </div>
+          <div>
+            <h4 id="send-notification-heading" className="text-sm sm:text-base font-bold text-white">
+              Send Notification
+            </h4>
+            <p className="text-[11px] text-slate-400">
+              Send a custom push notification to subscribed Zoya Android app users via topic{' '}
+              <code className="text-teal-300 font-mono">zoya_releases</code>
+            </p>
+          </div>
+        </div>
+        <span className="text-[11px] font-mono text-slate-400">No APK upload required</span>
+      </div>
+
+      {notifFeedback && (
+        <div
+          role="status"
+          className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
+            notifFeedback.type === 'success'
+              ? 'bg-teal-950/40 border border-teal-500/40 text-teal-200'
+              : 'bg-red-950/40 border border-red-500/40 text-red-200'
+          }`}
+        >
+          {notifFeedback.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          )}
+          <span>{notifFeedback.text}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleInitiateNotification} className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label htmlFor="manual-notif-title" className="block text-xs font-medium text-slate-300">
+              Notification Title <span className="text-teal-400">*</span>
+            </label>
+            <span
+              className={`text-[11px] font-mono ${
+                notifTitle.length >= 60 ? 'text-amber-300 font-semibold' : 'text-slate-400'
+              }`}
+            >
+              {notifTitle.length}/60
+            </span>
+          </div>
+          <input
+            id="manual-notif-title"
+            type="text"
+            required
+            maxLength={60}
+            disabled={sendingNotif || notifConfirming}
+            value={notifTitle}
+            onChange={(e) => {
+              setNotifTitle(e.target.value.slice(0, 60));
+              if (notifFeedback) setNotifFeedback(null);
+            }}
+            placeholder="e.g., New Zoya Voice Features Available"
+            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 disabled:opacity-60 focus-visible:outline-teal-400"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label htmlFor="manual-notif-message" className="block text-xs font-medium text-slate-300">
+              Message <span className="text-teal-400">*</span>
+            </label>
+            <span
+              className={`text-[11px] font-mono ${
+                notifMessage.length >= 200 ? 'text-amber-300 font-semibold' : 'text-slate-400'
+              }`}
+            >
+              {notifMessage.length}/200
+            </span>
+          </div>
+          <textarea
+            id="manual-notif-message"
+            rows={3}
+            required
+            maxLength={200}
+            disabled={sendingNotif || notifConfirming}
+            value={notifMessage}
+            onChange={(e) => {
+              setNotifMessage(e.target.value.slice(0, 200));
+              if (notifFeedback) setNotifFeedback(null);
+            }}
+            placeholder="Write a concise update or announcement for Zoya Android users..."
+            className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 disabled:opacity-60 focus-visible:outline-teal-400"
+          />
+        </div>
+
+        {notifConfirming ? (
+          <div className="p-4 rounded-xl bg-slate-900/95 border border-teal-500/40 space-y-3">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-teal-300 uppercase tracking-wider">
+                Confirm Push Notification
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">Topic: zoya_releases</span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800">
+                <span className="block text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
+                  Title
+                </span>
+                <p className="font-semibold text-white break-words">{notifTitle.trim()}</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800">
+                <span className="block text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
+                  Message
+                </span>
+                <p className="text-slate-200 whitespace-pre-wrap break-words">{notifMessage.trim()}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmSendNotification}
+                disabled={sendingNotif}
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[42px] rounded-xl font-bold text-xs sm:text-sm text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {sendingNotif ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Sending Notification...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Confirm &amp; Send Notification</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={sendingNotif}
+                onClick={() => setNotifConfirming(false)}
+                className="px-4 py-2.5 min-h-[42px] rounded-xl font-semibold text-xs sm:text-sm text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel / Edit
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="pt-1">
+            <button
+              type="submit"
+              disabled={sendingNotif || !notifTitle.trim() || !notifMessage.trim()}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[44px] rounded-xl font-bold text-xs sm:text-sm text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-400 hover:from-teal-300 hover:to-cyan-300 transition-all shadow-md active:scale-98 disabled:opacity-40 cursor-pointer focus-visible:outline-teal-400"
+            >
+              <Send className="w-4 h-4" />
+              <span>Send Notification</span>
+            </button>
+          </div>
+        )}
+      </form>
+    </section>
+  );
+
   return (
     <div className="space-y-6 text-left">
       {/* Navigation Sub-Tabs */}
@@ -385,6 +655,19 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
         >
           <Upload className="w-4 h-4" />
           <span>Publish New APK</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('notify')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+            activeTab === 'notify'
+              ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>Send Notification</span>
         </button>
 
         <button
@@ -714,8 +997,14 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
               </button>
             </div>
           </form>
+
+          {/* Manual Push Notification Section */}
+          {renderSendNotificationSection()}
         </div>
       )}
+
+      {/* TAB: SEND MANUAL NOTIFICATION */}
+      {activeTab === 'notify' && renderSendNotificationSection()}
 
       {/* TAB 2: RELEASE HISTORY */}
       {activeTab === 'history' && (
