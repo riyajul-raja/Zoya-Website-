@@ -65,7 +65,7 @@ export const AdminLoginForm: React.FC<AdminLoginFormProps> = ({ onSuccess }) => 
   };
 
   return (
-    <div className="max-w-sm mx-auto p-6 sm:p-8 bg-pink-50/40 border border-pink-200/80 rounded-2xl text-left">
+    <div className="max-w-sm mx-auto p-6 sm:p-8 bg-white border border-pink-200/80 rounded-2xl shadow-2xl text-left">
       <div className="flex items-center gap-3 mb-6 pb-4 border-b border-pink-200/60">
         <div className="w-10 h-10 rounded-xl bg-white border border-pink-200 flex items-center justify-center text-pink-600 shrink-0">
           <ShieldCheck className="w-5 h-5" aria-hidden="true" />

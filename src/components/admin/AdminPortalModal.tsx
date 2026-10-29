@@ -1,85 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { X, Shield, LogOut } from 'lucide-react';
+import { X, LogOut, Shield, Loader2, ArrowLeft } from 'lucide-react';
 import { AdminLoginForm } from './AdminLoginForm';
 import { ReleaseManager } from './ReleaseManager';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onReleaseChanged: () => void;
+  onReleaseChanged?: () => void;
+  onReleasePublished?: () => void;
 }
 
 export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   isOpen,
   onClose,
   onReleaseChanged,
+  onReleasePublished,
 }) => {
+  const handleReleaseUpdate = () => {
+    if (onReleaseChanged) onReleaseChanged();
+    if (onReleasePublished) onReleasePublished();
+  };
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ email: string; name: string } | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
-  // Check existing session
   useEffect(() => {
     if (!isOpen) return;
 
-    const storedToken = sessionStorage.getItem('zoya_admin_token');
-    if (!storedToken) {
-      setToken(null);
-      setUser(null);
-      setCheckingSession(false);
-      return;
-    }
+    const verifyExistingSession = async () => {
+      setCheckingSession(true);
+      const savedToken = sessionStorage.getItem('zoya_admin_token');
 
-    setCheckingSession(true);
-    fetch('/api/admin/session', {
-      headers: {
-        Authorization: `Bearer ${storedToken}`,
-      },
-    })
-      .then(async (res) => {
-        const text = await res.text();
+      try {
+        const res = await fetch('/api/admin/session', {
+          headers: savedToken ? { Authorization: `Bearer ${savedToken}` } : {},
+        });
+        const rawText = await res.text();
+        let data: { authenticated?: boolean; user?: { email: string; name: string } } = {};
         try {
-          return text ? JSON.parse(text) : {};
+          data = rawText ? JSON.parse(rawText) : {};
         } catch {
-          return { authenticated: false };
+          // Non-JSON response
         }
-      })
-      .then((data) => {
-        if (data.authenticated && data.user) {
-          setToken(storedToken);
+
+        if (res.ok && data.authenticated && data.user) {
           setUser(data.user);
+          setToken(savedToken || 'cookie-session');
         } else {
           sessionStorage.removeItem('zoya_admin_token');
           setToken(null);
           setUser(null);
         }
-      })
-      .catch(() => {
+      } catch {
         setToken(null);
         setUser(null);
-      })
-      .finally(() => {
+      } finally {
         setCheckingSession(false);
-      });
-  }, [isOpen]);
-
-  // Handle Escape key and body scroll lock
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
       }
     };
 
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
+    verifyExistingSession();
+  }, [isOpen]);
 
+  // Close on Escape key and lock background body scroll while full-page portal is active
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, onClose]);
@@ -87,7 +81,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const handleLogout = async () => {
     try {
       await fetch('/api/admin/logout', { method: 'POST' });
-    } catch (e) {
+    } catch {
       // Ignore
     }
     sessionStorage.removeItem('zoya_admin_token');
@@ -95,81 +89,90 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     setUser(null);
   };
 
-  const handleLoginSuccess = (newToken: string, loggedInUser: { email: string; name: string }) => {
-    setToken(newToken);
-    setUser(loggedInUser);
-  };
-
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-2.5 sm:p-6 bg-zinc-900/35 backdrop-blur-xs animate-overlay-fade overflow-y-auto"
-      onClick={onClose}
+      className="fixed inset-0 z-[110] w-screen h-dvh flex flex-col bg-[#040c10] text-slate-100 overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-portal-title"
     >
-      <div
-        className="relative w-full max-w-4xl max-h-[94dvh] bg-white/95 backdrop-blur-xl border border-pink-200 rounded-3xl p-4 sm:p-8 overflow-y-auto text-left shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-pink-100 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-pink-600 shrink-0">
+      {/* Full-Width Top Navigation Header */}
+      <header className="w-full border-b border-slate-800/90 bg-[#071319]/95 backdrop-blur-md shrink-0">
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-teal-950 border border-teal-500/40 flex items-center justify-center text-teal-300 shrink-0">
               <Shield className="w-5 h-5" aria-hidden="true" />
             </div>
-            <div>
-              <h2 id="admin-portal-title" className="text-base sm:text-xl font-bold text-zinc-900 tracking-tight">
-                Zoya Release Management &amp; Distribution
+            <div className="min-w-0">
+              <h2
+                id="admin-portal-title"
+                className="text-sm sm:text-base font-bold text-white tracking-tight truncate"
+              >
+                Zoya Admin Portal
               </h2>
-              <p className="text-xs text-zinc-500">
-                {user ? `Authenticated as ${user.name}` : 'Administrator Access Portal'}
+              <p className="text-[11px] text-slate-400 truncate">
+                Release Management, Push Notifications &amp; Lifetime License Management
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {user && (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-700 hover:text-pink-600 bg-pink-50/70 hover:bg-pink-100/70 border border-pink-200 rounded-xl transition-colors cursor-pointer"
-                title="Sign out of Admin Portal"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </button>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="hidden md:inline-block px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-slate-300 font-mono">
+                  {user.name} ({user.email})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 hover:text-white transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-teal-400" aria-hidden="true" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             )}
 
             <button
               type="button"
               onClick={onClose}
-              className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl text-zinc-500 hover:text-pink-600 hover:bg-pink-50 transition-colors focus-visible:outline-pink-600 cursor-pointer"
-              aria-label="Close portal"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition-colors cursor-pointer"
+              aria-label="Close Admin Portal and return to website"
             >
-              <X className="w-5 h-5" aria-hidden="true" />
+              <ArrowLeft className="w-3.5 h-3.5 text-teal-400 hidden sm:inline" aria-hidden="true" />
+              <span className="hidden sm:inline">Back to Website</span>
+              <X className="w-4 h-4 sm:hidden" aria-hidden="true" />
             </button>
           </div>
         </div>
+      </header>
 
-        {/* Content Body */}
-        {checkingSession ? (
-          <div className="py-16 text-center text-xs text-zinc-500">
-            Checking authentication session...
-          </div>
-        ) : token && user ? (
-          <ReleaseManager
-            token={token}
-            onReleasePublished={() => {
-              onReleaseChanged();
-            }}
-          />
-        ) : (
-          <AdminLoginForm onSuccess={handleLoginSuccess} />
-        )}
-      </div>
+      {/* Full-Viewport Scrollable Workspace */}
+      <main className="flex-1 w-full overflow-y-auto overscroll-contain">
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+          {checkingSession ? (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
+              <Loader2 className="w-6 h-6 animate-spin text-teal-400" aria-hidden="true" />
+              <span>Verifying administrator session...</span>
+            </div>
+          ) : token && user ? (
+            <ReleaseManager token={token} onReleasePublished={handleReleaseUpdate} />
+          ) : (
+            <div className="min-h-[65vh] flex items-center justify-center py-6">
+              <div className="w-full max-w-md">
+                <AdminLoginForm
+                  onSuccess={(newToken, loggedInUser) => {
+                    setToken(newToken);
+                    setUser(loggedInUser);
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 };

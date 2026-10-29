@@ -658,14 +658,14 @@ var require_tls_helpers = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CIPHER_SUITES = void 0;
     exports.getDefaultRootsData = getDefaultRootsData;
-    var fs2 = __require("fs");
+    var fs3 = __require("fs");
     exports.CIPHER_SUITES = process.env.GRPC_SSL_CIPHER_SUITES;
     var DEFAULT_ROOTS_FILE_PATH = process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH;
     var defaultRootsData = null;
     function getDefaultRootsData() {
       if (DEFAULT_ROOTS_FILE_PATH) {
         if (defaultRootsData === null) {
-          defaultRootsData = fs2.readFileSync(DEFAULT_ROOTS_FILE_PATH);
+          defaultRootsData = fs3.readFileSync(DEFAULT_ROOTS_FILE_PATH);
         }
         return defaultRootsData;
       }
@@ -1271,19 +1271,19 @@ var require_uri_parser = __commonJS({
       };
     }
     var NUMBER_REGEX = /^\d+$/;
-    function splitHostPort(path3) {
-      if (path3.startsWith("[")) {
-        const hostEnd = path3.indexOf("]");
+    function splitHostPort(path4) {
+      if (path4.startsWith("[")) {
+        const hostEnd = path4.indexOf("]");
         if (hostEnd === -1) {
           return null;
         }
-        const host = path3.substring(1, hostEnd);
+        const host = path4.substring(1, hostEnd);
         if (host.indexOf(":") === -1) {
           return null;
         }
-        if (path3.length > hostEnd + 1) {
-          if (path3[hostEnd + 1] === ":") {
-            const portString = path3.substring(hostEnd + 2);
+        if (path4.length > hostEnd + 1) {
+          if (path4[hostEnd + 1] === ":") {
+            const portString = path4.substring(hostEnd + 2);
             if (NUMBER_REGEX.test(portString)) {
               return {
                 host,
@@ -1301,7 +1301,7 @@ var require_uri_parser = __commonJS({
           };
         }
       } else {
-        const splitPath = path3.split(":");
+        const splitPath = path4.split(":");
         if (splitPath.length === 2) {
           if (NUMBER_REGEX.test(splitPath[1])) {
             return {
@@ -1313,7 +1313,7 @@ var require_uri_parser = __commonJS({
           }
         } else {
           return {
-            host: path3
+            host: path4
           };
         }
       }
@@ -2456,14 +2456,14 @@ var require_client_interceptors = __commonJS({
       }
     };
     exports.InterceptingCall = InterceptingCall;
-    function getCall(channel, path3, options2) {
+    function getCall(channel, path4, options2) {
       var _a2, _b;
       const deadline = (_a2 = options2.deadline) !== null && _a2 !== void 0 ? _a2 : Infinity;
       const host = options2.host;
       const parent2 = (_b = options2.parent) !== null && _b !== void 0 ? _b : null;
       const propagateFlags = options2.propagate_flags;
       const credentials2 = options2.credentials;
-      const call = channel.createCall(path3, deadline, host, parent2, propagateFlags);
+      const call = channel.createCall(path4, deadline, host, parent2, propagateFlags);
       if (credentials2) {
         call.setCredentials(credentials2);
       }
@@ -3028,9 +3028,9 @@ var require_make_client = __commonJS({
       ServiceClientImpl.serviceName = serviceName;
       return ServiceClientImpl;
     }
-    function partial(fn, path3, serialize, deserialize) {
+    function partial(fn, path4, serialize, deserialize) {
       return function(...args) {
-        return fn.call(this, path3, serialize, deserialize, ...args);
+        return fn.call(this, path4, serialize, deserialize, ...args);
       };
     }
     function isProtobufTypeDefinition(obj) {
@@ -5913,17 +5913,17 @@ var require_codegen = __commonJS({
 var require_fs = __commonJS({
   "node_modules/@protobufjs/fetch/util/fs.js"(exports, module) {
     "use strict";
-    var fs2 = null;
+    var fs3 = null;
     try {
-      fs2 = __require(
+      fs3 = __require(
         /* webpackIgnore: true */
         "fs"
       );
-      if (!fs2 || !fs2.readFile || !fs2.readFileSync)
-        fs2 = null;
+      if (!fs3 || !fs3.readFile || !fs3.readFileSync)
+        fs3 = null;
     } catch (e) {
     }
-    module.exports = fs2;
+    module.exports = fs3;
   }
 });
 
@@ -5933,7 +5933,7 @@ var require_fetch = __commonJS({
     "use strict";
     module.exports = fetch2;
     var asPromise = require_aspromise();
-    var fs2 = require_fs();
+    var fs3 = require_fs();
     function fetch2(filename, options2, callback) {
       if (typeof options2 === "function") {
         callback = options2;
@@ -5942,8 +5942,8 @@ var require_fetch = __commonJS({
         options2 = {};
       if (!callback)
         return asPromise(fetch2, this, filename, options2);
-      if (!options2.xhr && fs2 && fs2.readFile)
-        return fs2.readFile(filename, function fetchReadFileCallback(err, contents) {
+      if (!options2.xhr && fs3 && fs3.readFile)
+        return fs3.readFile(filename, function fetchReadFileCallback(err, contents) {
           return err && typeof XMLHttpRequest !== "undefined" ? fetch2.xhr(filename, options2, callback) : err ? callback(err) : callback(null, options2.binary ? contents : contents.toString("utf8"));
         });
       return fetch2.xhr(filename, options2, callback);
@@ -5981,15 +5981,15 @@ var require_fetch = __commonJS({
 var require_path = __commonJS({
   "node_modules/@protobufjs/path/index.js"(exports) {
     "use strict";
-    var path3 = exports;
+    var path4 = exports;
     var isAbsolute = (
       /**
        * Tests if the specified path is absolute.
        * @param {string} path Path to test
        * @returns {boolean} `true` if path is absolute
        */
-      path3.isAbsolute = function isAbsolute2(path4) {
-        return /^(?:\/|\w+:)/.test(path4);
+      path4.isAbsolute = function isAbsolute2(path5) {
+        return /^(?:\/|\w+:)/.test(path5);
       }
     );
     var normalize = (
@@ -5998,9 +5998,9 @@ var require_path = __commonJS({
        * @param {string} path Path to normalize
        * @returns {string} Normalized path
        */
-      path3.normalize = function normalize2(path4) {
-        path4 = path4.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-        var parts = path4.split("/"), absolute = isAbsolute(path4), prefix = "";
+      path4.normalize = function normalize2(path5) {
+        path5 = path5.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+        var parts = path5.split("/"), absolute = isAbsolute(path5), prefix = "";
         if (absolute)
           prefix = parts.shift() + "/";
         for (var i = 0; i < parts.length; ) {
@@ -6019,7 +6019,7 @@ var require_path = __commonJS({
         return prefix + parts.join("/");
       }
     );
-    path3.resolve = function resolve(originPath, includePath, alreadyNormalized) {
+    path4.resolve = function resolve(originPath, includePath, alreadyNormalized) {
       if (!alreadyNormalized)
         includePath = normalize(includePath);
       if (isAbsolute(includePath))
@@ -6046,17 +6046,17 @@ var require_patterns = __commonJS({
 var require_fs2 = __commonJS({
   "node_modules/protobufjs/src/util/fs.js"(exports, module) {
     "use strict";
-    var fs2 = null;
+    var fs3 = null;
     try {
-      fs2 = __require(
+      fs3 = __require(
         /* webpackIgnore: true */
         "fs"
       );
-      if (!fs2 || !fs2.readFile || !fs2.readFileSync)
-        fs2 = null;
+      if (!fs3 || !fs3.readFile || !fs3.readFileSync)
+        fs3 = null;
     } catch (e) {
     }
-    module.exports = fs2;
+    module.exports = fs3;
   }
 });
 
@@ -6203,18 +6203,18 @@ var require_namespace = __commonJS({
       object.onRemove(this);
       return clearCache(this);
     };
-    Namespace.prototype.define = function define2(path3, json) {
-      if (util.isString(path3))
-        path3 = path3.split(".");
-      else if (!Array.isArray(path3))
+    Namespace.prototype.define = function define2(path4, json) {
+      if (util.isString(path4))
+        path4 = path4.split(".");
+      else if (!Array.isArray(path4))
         throw TypeError("illegal path");
-      if (path3 && path3.length && path3[0] === "")
+      if (path4 && path4.length && path4[0] === "")
         throw Error("path must be relative");
-      if (path3.length > util.recursionLimit)
+      if (path4.length > util.recursionLimit)
         throw Error("max depth exceeded");
       var ptr = this;
-      while (path3.length > 0) {
-        var part = path3.shift();
+      while (path4.length > 0) {
+        var part = path4.shift();
         if (ptr.nested && ptr.nested[part]) {
           ptr = ptr.nested[part];
           if (!(ptr instanceof Namespace))
@@ -6249,26 +6249,26 @@ var require_namespace = __commonJS({
       });
       return this;
     };
-    Namespace.prototype.lookup = function lookup(path3, filterTypes, parentAlreadyChecked) {
+    Namespace.prototype.lookup = function lookup(path4, filterTypes, parentAlreadyChecked) {
       if (typeof filterTypes === "boolean") {
         parentAlreadyChecked = filterTypes;
         filterTypes = void 0;
       } else if (filterTypes && !Array.isArray(filterTypes))
         filterTypes = [filterTypes];
-      if (util.isString(path3) && path3.length) {
-        if (path3 === ".")
+      if (util.isString(path4) && path4.length) {
+        if (path4 === ".")
           return this.root;
-        path3 = path3.split(".");
-      } else if (!path3.length)
+        path4 = path4.split(".");
+      } else if (!path4.length)
         return this;
-      var flatPath = path3.join(".");
-      if (path3[0] === "")
-        return this.root.lookup(path3.slice(1), filterTypes);
+      var flatPath = path4.join(".");
+      if (path4[0] === "")
+        return this.root.lookup(path4.slice(1), filterTypes);
       var found = this.root._fullyQualifiedObjects && this.root._fullyQualifiedObjects["." + flatPath];
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
-      found = this._lookupImpl(path3, flatPath);
+      found = this._lookupImpl(path4, flatPath);
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
@@ -6276,7 +6276,7 @@ var require_namespace = __commonJS({
         return null;
       var current = this;
       while (current.parent) {
-        found = current.parent._lookupImpl(path3, flatPath);
+        found = current.parent._lookupImpl(path4, flatPath);
         if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
           return found;
         }
@@ -6284,22 +6284,22 @@ var require_namespace = __commonJS({
       }
       return null;
     };
-    Namespace.prototype._lookupImpl = function lookup(path3, flatPath) {
+    Namespace.prototype._lookupImpl = function lookup(path4, flatPath) {
       if (Object.prototype.hasOwnProperty.call(this._lookupCache, flatPath)) {
         return this._lookupCache[flatPath];
       }
-      var found = this.get(path3[0]);
+      var found = this.get(path4[0]);
       var exact = null;
       if (found) {
-        if (path3.length === 1) {
+        if (path4.length === 1) {
           exact = found;
         } else if (found instanceof Namespace) {
-          path3 = path3.slice(1);
-          exact = found._lookupImpl(path3, path3.join("."));
+          path4 = path4.slice(1);
+          exact = found._lookupImpl(path4, path4.join("."));
         }
       } else {
         for (var i = 0; i < this.nestedArray.length; ++i)
-          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path3, flatPath))) {
+          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path4, flatPath))) {
             exact = found;
             break;
           }
@@ -6307,28 +6307,28 @@ var require_namespace = __commonJS({
       this._lookupCache[flatPath] = exact;
       return exact;
     };
-    Namespace.prototype.lookupType = function lookupType(path3) {
-      var found = this.lookup(path3, [Type]);
+    Namespace.prototype.lookupType = function lookupType(path4) {
+      var found = this.lookup(path4, [Type]);
       if (!found)
-        throw Error("no such type: " + path3);
+        throw Error("no such type: " + path4);
       return found;
     };
-    Namespace.prototype.lookupEnum = function lookupEnum(path3) {
-      var found = this.lookup(path3, [Enum]);
+    Namespace.prototype.lookupEnum = function lookupEnum(path4) {
+      var found = this.lookup(path4, [Enum]);
       if (!found)
-        throw Error("no such Enum '" + path3 + "' in " + this);
+        throw Error("no such Enum '" + path4 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path3) {
-      var found = this.lookup(path3, [Type, Enum]);
+    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path4) {
+      var found = this.lookup(path4, [Type, Enum]);
       if (!found)
-        throw Error("no such Type or Enum '" + path3 + "' in " + this);
+        throw Error("no such Type or Enum '" + path4 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupService = function lookupService(path3) {
-      var found = this.lookup(path3, [Service]);
+    Namespace.prototype.lookupService = function lookupService(path4) {
+      var found = this.lookup(path4, [Service]);
       if (!found)
-        throw Error("no such Service '" + path3 + "' in " + this);
+        throw Error("no such Service '" + path4 + "' in " + this);
       return found;
     };
     Namespace._configure = function(Type_, Service_, Enum_) {
@@ -7745,13 +7745,13 @@ var require_util = __commonJS({
       Object.defineProperty(object, "$type", { value: enm, enumerable: false });
       return enm;
     };
-    util.setProperty = function setProperty(dst, path3, value, ifNotSet) {
-      function setProp(dst2, path4, value2) {
-        var part = path4.shift();
+    util.setProperty = function setProperty(dst, path4, value, ifNotSet) {
+      function setProp(dst2, path5, value2) {
+        var part = path5.shift();
         if (util.isUnsafeProperty(part))
           return dst2;
-        if (path4.length > 0) {
-          dst2[part] = setProp(dst2[part] || {}, path4, value2);
+        if (path5.length > 0) {
+          dst2[part] = setProp(dst2[part] || {}, path5, value2);
         } else {
           var prevValue = dst2[part];
           if (prevValue && ifNotSet)
@@ -7764,12 +7764,12 @@ var require_util = __commonJS({
       }
       if (typeof dst !== "object")
         throw TypeError("dst must be an object");
-      if (!path3)
+      if (!path4)
         throw TypeError("path must be specified");
-      path3 = path3.split(".");
-      if (path3.length > util.recursionLimit)
+      path4 = path4.split(".");
+      if (path4.length > util.recursionLimit)
         throw Error("max depth exceeded");
-      return setProp(dst, path3, value);
+      return setProp(dst, path4, value);
     };
     Object.defineProperty(util, "decorateRoot", {
       get: function() {
@@ -8315,12 +8315,12 @@ var require_object = __commonJS({
        */
       fullName: {
         get: function() {
-          var path3 = [this.name], ptr = this.parent;
+          var path4 = [this.name], ptr = this.parent;
           while (ptr) {
-            path3.unshift(ptr.name);
+            path4.unshift(ptr.name);
             ptr = ptr.parent;
           }
-          return path3.join(".");
+          return path4.join(".");
         }
       }
     });
@@ -12357,19 +12357,19 @@ var require_util2 = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.addCommonProtos = exports.loadProtosWithOptionsSync = exports.loadProtosWithOptions = void 0;
-    var fs2 = __require("fs");
-    var path3 = __require("path");
+    var fs3 = __require("fs");
+    var path4 = __require("path");
     var Protobuf = require_protobufjs();
     function addIncludePathResolver(root, includePaths) {
       const originalResolvePath = root.resolvePath;
       root.resolvePath = (origin, target) => {
-        if (path3.isAbsolute(target)) {
+        if (path4.isAbsolute(target)) {
           return target;
         }
         for (const directory of includePaths) {
-          const fullPath = path3.join(directory, target);
+          const fullPath = path4.join(directory, target);
           try {
-            fs2.accessSync(fullPath, fs2.constants.R_OK);
+            fs3.accessSync(fullPath, fs3.constants.R_OK);
             return fullPath;
           } catch (err) {
             continue;
@@ -18250,11 +18250,11 @@ var require_server = __commonJS({
         }
         return true;
       }
-      _retrieveHandler(path3) {
-        this.trace("Received call to method " + path3 + " at address " + this.serverAddressString);
-        const handler2 = this.handlers.get(path3);
+      _retrieveHandler(path4) {
+        this.trace("Received call to method " + path4 + " at address " + this.serverAddressString);
+        const handler2 = this.handlers.get(path4);
         if (handler2 === void 0) {
-          this.trace("No handler registered for method " + path3 + ". Sending UNIMPLEMENTED status.");
+          this.trace("No handler registered for method " + path4 + ". Sending UNIMPLEMENTED status.");
           return null;
         }
         return handler2;
@@ -18281,10 +18281,10 @@ var require_server = __commonJS({
           channelzSessionInfo === null || channelzSessionInfo === void 0 ? void 0 : channelzSessionInfo.streamTracker.addCallFailed();
           return;
         }
-        const path3 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path3);
+        const path4 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path4);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path3), stream, channelzSessionInfo);
+          this._respondWithError(getUnimplementedStatusResponse(path4), stream, channelzSessionInfo);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -18327,10 +18327,10 @@ var require_server = __commonJS({
         if (this._verifyContentType(stream, headers) !== true) {
           return;
         }
-        const path3 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path3);
+        const path4 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path4);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path3), stream, null);
+          this._respondWithError(getUnimplementedStatusResponse(path4), stream, null);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -19224,13 +19224,13 @@ var require_resolver_uds = __commonJS({
         this.listener = listener;
         this.addresses = [];
         this.hasReturnedResult = false;
-        let path3;
+        let path4;
         if (target.authority === "") {
-          path3 = "/" + target.path;
+          path4 = "/" + target.path;
         } else {
-          path3 = target.path;
+          path4 = target.path;
         }
-        this.addresses = [{ path: path3 }];
+        this.addresses = [{ path: path4 }];
       }
       updateResolution() {
         if (!this.hasReturnedResult) {
@@ -19287,12 +19287,12 @@ var require_resolver_ip = __commonJS({
           return;
         }
         const pathList = target.path.split(",");
-        for (const path3 of pathList) {
-          const hostPort = (0, uri_parser_1.splitHostPort)(path3);
+        for (const path4 of pathList) {
+          const hostPort = (0, uri_parser_1.splitHostPort)(path4);
           if (hostPort === null) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path3}`,
+              details: `Failed to parse ${target.scheme} address ${path4}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19300,7 +19300,7 @@ var require_resolver_ip = __commonJS({
           if (target.scheme === IPV4_SCHEME && !(0, net_1.isIPv4)(hostPort.host) || target.scheme === IPV6_SCHEME && !(0, net_1.isIPv6)(hostPort.host)) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path3}`,
+              details: `Failed to parse ${target.scheme} address ${path4}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19960,8 +19960,8 @@ var require_src3 = __commonJS({
 });
 
 // server/apiHandler.ts
-import crypto5 from "crypto";
-import path2 from "path";
+import crypto6 from "crypto";
+import path3 from "path";
 
 // server/storage.ts
 import crypto2 from "crypto";
@@ -29772,11 +29772,11 @@ var ResourcePath = class _ResourcePath extends BasePath {
    */
   static fromString(...pathComponents) {
     const segments = [];
-    for (const path3 of pathComponents) {
-      if (path3.indexOf("//") >= 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path3}). Paths must not contain // in them.`);
+    for (const path4 of pathComponents) {
+      if (path4.indexOf("//") >= 0) {
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path4}). Paths must not contain // in them.`);
       }
-      segments.push(...path3.split("/").filter((segment) => segment.length > 0));
+      segments.push(...path4.split("/").filter((segment) => segment.length > 0));
     }
     return new _ResourcePath(segments);
   }
@@ -29830,27 +29830,27 @@ var FieldPath$1 = class FieldPath extends BasePath {
    * TODO(b/37244157): we should make this more strict. Right now, it allows
    * non-identifier path components, even if they aren't escaped.
    */
-  static fromServerFormat(path3) {
+  static fromServerFormat(path4) {
     const segments = [];
     let current = "";
     let i = 0;
     const addCurrentSegment = () => {
       if (current.length === 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path4}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
       }
       segments.push(current);
       current = "";
     };
     let inBackticks = false;
-    while (i < path3.length) {
-      const c = path3[i];
+    while (i < path4.length) {
+      const c = path4[i];
       if (c === "\\") {
-        if (i + 1 === path3.length) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path3);
+        if (i + 1 === path4.length) {
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path4);
         }
-        const next = path3[i + 1];
+        const next = path4[i + 1];
         if (!(next === "\\" || next === "." || next === "`")) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path3);
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path4);
         }
         current += next;
         i += 2;
@@ -29867,7 +29867,7 @@ var FieldPath$1 = class FieldPath extends BasePath {
     }
     addCurrentSegment();
     if (inBackticks) {
-      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path3);
+      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path4);
     }
     return new FieldPath(segments);
   }
@@ -29949,11 +29949,11 @@ function isEmpty(obj) {
   return true;
 }
 var DocumentKey = class _DocumentKey {
-  constructor(path3) {
-    this.path = path3;
+  constructor(path4) {
+    this.path = path4;
   }
-  static fromPath(path3) {
-    return new _DocumentKey(ResourcePath.fromString(path3));
+  static fromPath(path4) {
+    return new _DocumentKey(ResourcePath.fromString(path4));
   }
   static fromName(name5) {
     return new _DocumentKey(ResourcePath.fromString(name5).popFirst(5));
@@ -29985,8 +29985,8 @@ var DocumentKey = class _DocumentKey {
   static comparator(k1, k2) {
     return ResourcePath.comparator(k1.path, k2.path);
   }
-  static isDocumentKey(path3) {
-    return path3.length % 2 === 0;
+  static isDocumentKey(path4) {
+    return path4.length % 2 === 0;
   }
   /**
    * Creates and returns a new document key with the given segments.
@@ -30008,14 +30008,14 @@ function validateIsNotUsedTogether(optionName1, argument1, optionName2, argument
     throw new FirestoreError(Code.INVALID_ARGUMENT, `${optionName1} and ${optionName2} cannot be used together.`);
   }
 }
-function validateDocumentPath(path3) {
-  if (!DocumentKey.isDocumentKey(path3)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path3} has ${path3.length}.`);
+function validateDocumentPath(path4) {
+  if (!DocumentKey.isDocumentKey(path4)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path4} has ${path4.length}.`);
   }
 }
-function validateCollectionPath(path3) {
-  if (DocumentKey.isDocumentKey(path3)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path3} has ${path3.length}.`);
+function validateCollectionPath(path4) {
+  if (DocumentKey.isDocumentKey(path4)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path4} has ${path4.length}.`);
   }
 }
 function isPlainObject(input) {
@@ -32424,18 +32424,18 @@ var ObjectValue = class _ObjectValue {
    * @param path - the path to search
    * @returns The value at the path or null if the path is not set.
    */
-  field(path3) {
-    if (path3.isEmpty()) {
+  field(path4) {
+    if (path4.isEmpty()) {
       return this.value;
     } else {
       let currentLevel = this.value;
-      for (let i = 0; i < path3.length - 1; ++i) {
-        currentLevel = (currentLevel.mapValue.fields || {})[path3.get(i)];
+      for (let i = 0; i < path4.length - 1; ++i) {
+        currentLevel = (currentLevel.mapValue.fields || {})[path4.get(i)];
         if (!isMapValue(currentLevel)) {
           return null;
         }
       }
-      currentLevel = (currentLevel.mapValue.fields || {})[path3.lastSegment()];
+      currentLevel = (currentLevel.mapValue.fields || {})[path4.lastSegment()];
       return currentLevel || null;
     }
   }
@@ -32445,9 +32445,9 @@ var ObjectValue = class _ObjectValue {
    * @param path - The field path to set.
    * @param value - The value to set.
    */
-  set(path3, value) {
-    const fieldsMap = this.getFieldsMap(path3.popLast());
-    fieldsMap[path3.lastSegment()] = deepClone(value);
+  set(path4, value) {
+    const fieldsMap = this.getFieldsMap(path4.popLast());
+    fieldsMap[path4.lastSegment()] = deepClone(value);
   }
   /**
    * Sets the provided fields to the provided values.
@@ -32458,18 +32458,18 @@ var ObjectValue = class _ObjectValue {
     let parent2 = FieldPath$1.emptyPath();
     let upserts = {};
     let deletes = [];
-    data.forEach((value, path3) => {
-      if (!parent2.isImmediateParentOf(path3)) {
+    data.forEach((value, path4) => {
+      if (!parent2.isImmediateParentOf(path4)) {
         const fieldsMap2 = this.getFieldsMap(parent2);
         this.applyChanges(fieldsMap2, upserts, deletes);
         upserts = {};
         deletes = [];
-        parent2 = path3.popLast();
+        parent2 = path4.popLast();
       }
       if (value) {
-        upserts[path3.lastSegment()] = deepClone(value);
+        upserts[path4.lastSegment()] = deepClone(value);
       } else {
-        deletes.push(path3.lastSegment());
+        deletes.push(path4.lastSegment());
       }
     });
     const fieldsMap = this.getFieldsMap(parent2);
@@ -32481,10 +32481,10 @@ var ObjectValue = class _ObjectValue {
    *
    * @param path - The field path to remove.
    */
-  delete(path3) {
-    const nestedValue = this.field(path3.popLast());
+  delete(path4) {
+    const nestedValue = this.field(path4.popLast());
     if (isMapValue(nestedValue) && nestedValue.mapValue.fields) {
-      delete nestedValue.mapValue.fields[path3.lastSegment()];
+      delete nestedValue.mapValue.fields[path4.lastSegment()];
     }
   }
   isEqual(other) {
@@ -32494,16 +32494,16 @@ var ObjectValue = class _ObjectValue {
    * Returns the map that contains the leaf element of `path`. If the parent
    * entry does not yet exist, or if it is not a map, a new map will be created.
    */
-  getFieldsMap(path3) {
+  getFieldsMap(path4) {
     let current = this.value;
     if (!current.mapValue.fields) {
       current.mapValue = { fields: {} };
     }
-    for (let i = 0; i < path3.length; ++i) {
-      let next = current.mapValue.fields[path3.get(i)];
+    for (let i = 0; i < path4.length; ++i) {
+      let next = current.mapValue.fields[path4.get(i)];
       if (!isMapValue(next) || !next.mapValue.fields) {
         next = { mapValue: { fields: {} } };
-        current.mapValue.fields[path3.get(i)] = next;
+        current.mapValue.fields[path4.get(i)] = next;
       }
       current = next;
     }
@@ -32801,19 +32801,19 @@ function calculateOverlayMutation(doc3, mask) {
     const docValue = doc3.data;
     const patchValue = ObjectValue.empty();
     let maskSet = new SortedSet(FieldPath$1.comparator);
-    for (let path3 of mask.fields) {
-      if (!maskSet.has(path3)) {
-        let value = docValue.field(path3);
-        if (value === null && path3.length > 1) {
-          path3 = path3.popLast();
-          value = docValue.field(path3);
+    for (let path4 of mask.fields) {
+      if (!maskSet.has(path4)) {
+        let value = docValue.field(path4);
+        if (value === null && path4.length > 1) {
+          path4 = path4.popLast();
+          value = docValue.field(path4);
         }
         if (value === null) {
-          patchValue.delete(path3);
+          patchValue.delete(path4);
         } else {
-          patchValue.set(path3, value);
+          patchValue.set(path4, value);
         }
-        maskSet = maskSet.add(path3);
+        maskSet = maskSet.add(path4);
       }
     }
     return new PatchMutation(doc3.key, patchValue, new FieldMask(maskSet.toArray()), Precondition.none());
@@ -33570,8 +33570,8 @@ function indexOffsetComparator(left, right) {
   return primitiveComparator(left.largestBatchId, right.largestBatchId);
 }
 var TargetImpl = class {
-  constructor(path3, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-    this.path = path3;
+  constructor(path4, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
+    this.path = path4;
     this.collectionGroup = collectionGroup2;
     this.orderBy = orderBy;
     this.filters = filters;
@@ -33581,8 +33581,8 @@ var TargetImpl = class {
     this.memoizedCanonicalId = null;
   }
 };
-function newTarget(path3, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-  return new TargetImpl(path3, collectionGroup2, orderBy, filters, limit, startAt, endAt);
+function newTarget(path4, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
+  return new TargetImpl(path4, collectionGroup2, orderBy, filters, limit, startAt, endAt);
 }
 function canonifyTarget(target) {
   const targetImpl = debugCast(target);
@@ -33681,8 +33681,8 @@ var QueryImpl = class {
    * Initializes a Query with a path and optional additional query constraints.
    * Path must currently be empty if this is a collection group query.
    */
-  constructor(path3, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit = null, limitType = "F", startAt = null, endAt = null) {
-    this.path = path3;
+  constructor(path4, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit = null, limitType = "F", startAt = null, endAt = null) {
+    this.path = path4;
     this.collectionGroup = collectionGroup2;
     this.explicitOrderBy = explicitOrderBy;
     this.filters = filters;
@@ -33697,15 +33697,15 @@ var QueryImpl = class {
     if (this.endAt) ;
   }
 };
-function newQuery(path3, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt) {
-  return new QueryImpl(path3, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt);
+function newQuery(path4, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt) {
+  return new QueryImpl(path4, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt);
 }
-function newQueryForPath(path3) {
-  return new QueryImpl(path3);
+function newQueryForPath(path4) {
+  return new QueryImpl(path4);
 }
-function asCollectionQueryAtPath(query, path3) {
+function asCollectionQueryAtPath(query, path4) {
   return new QueryImpl(
-    path3,
+    path4,
     /*collectionGroup=*/
     null,
     query.explicitOrderBy.slice(),
@@ -34568,8 +34568,8 @@ var WatchChangeAggregator = class {
       const targetData = this.targetDataForActiveTarget(targetId);
       if (targetData) {
         if (targetState.current && this.isSingleDocumentTarget(targetData.target)) {
-          const path3 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
-          const key = new DocumentKey(path3);
+          const path4 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
+          const key = new DocumentKey(path4);
           if (!this.ensureDocumentUpdateByTarget(key).has(targetId) && !this.targetContainsDocument(targetId, key)) {
             this.removeDocumentFromTarget(targetId, key, MutableDocument.newNoDocument(key, snapshotVersion));
           }
@@ -34916,12 +34916,12 @@ function fromVersion(version6) {
   hardAssert(!!version6, 49232);
   return SnapshotVersion.fromTimestamp(fromTimestamp(version6));
 }
-function toResourceName(databaseId, path3) {
-  return toResourcePath(databaseId, path3).canonicalString();
+function toResourceName(databaseId, path4) {
+  return toResourcePath(databaseId, path4).canonicalString();
 }
-function toResourcePath(databaseId, path3) {
+function toResourcePath(databaseId, path4) {
   const resourcePath = fullyQualifiedPrefixPath(databaseId).child("documents");
-  return path3 === void 0 ? resourcePath : resourcePath.child(path3);
+  return path4 === void 0 ? resourcePath : resourcePath.child(path4);
 }
 function fromResourceName(name5) {
   const resource = ResourcePath.fromString(name5);
@@ -34941,8 +34941,8 @@ function fromName(serializer, name5) {
   }
   return new DocumentKey(extractLocalPathFromResourceName(resource));
 }
-function toQueryPath(serializer, path3) {
-  return toResourceName(serializer.databaseId, path3);
+function toQueryPath(serializer, path4) {
+  return toResourceName(serializer.databaseId, path4);
 }
 function fromQueryPath(name5) {
   const resourceName = fromResourceName(name5);
@@ -34952,13 +34952,13 @@ function fromQueryPath(name5) {
   return extractLocalPathFromResourceName(resourceName);
 }
 function getEncodedDatabaseId(serializer) {
-  const path3 = new ResourcePath([
+  const path4 = new ResourcePath([
     "projects",
     serializer.databaseId.projectId,
     "databases",
     serializer.databaseId.database
   ]);
-  return path3.canonicalString();
+  return path4.canonicalString();
 }
 function fullyQualifiedPrefixPath(databaseId) {
   return new ResourcePath([
@@ -35164,10 +35164,10 @@ function toDocumentsTarget(serializer, target) {
 }
 function toQueryTarget(serializer, target) {
   const queryTarget = { structuredQuery: {} };
-  const path3 = target.path;
+  const path4 = target.path;
   let parent2;
   if (target.collectionGroup !== null) {
-    parent2 = path3;
+    parent2 = path4;
     queryTarget.structuredQuery.from = [
       {
         collectionId: target.collectionGroup,
@@ -35175,8 +35175,8 @@ function toQueryTarget(serializer, target) {
       }
     ];
   } else {
-    parent2 = path3.popLast();
-    queryTarget.structuredQuery.from = [{ collectionId: path3.lastSegment() }];
+    parent2 = path4.popLast();
+    queryTarget.structuredQuery.from = [{ collectionId: path4.lastSegment() }];
   }
   queryTarget.parent = toQueryPath(serializer, parent2);
   const where = toFilters(target.filters);
@@ -35200,7 +35200,7 @@ function toQueryTarget(serializer, target) {
   return { queryTarget, parent: parent2 };
 }
 function convertQueryTargetToQuery(target) {
-  let path3 = fromQueryPath(target.parent);
+  let path4 = fromQueryPath(target.parent);
   const query = target.structuredQuery;
   const fromCount = query.from ? query.from.length : 0;
   let collectionGroup2 = null;
@@ -35210,7 +35210,7 @@ function convertQueryTargetToQuery(target) {
     if (from.allDescendants) {
       collectionGroup2 = from.collectionId;
     } else {
-      path3 = path3.child(from.collectionId);
+      path4 = path4.child(from.collectionId);
     }
   }
   let filterBy = [];
@@ -35233,7 +35233,7 @@ function convertQueryTargetToQuery(target) {
   if (query.endAt) {
     endAt = fromEndAtCursor(query.endAt);
   }
-  return newQuery(path3, collectionGroup2, orderBy, filterBy, limit, "F", startAt, endAt);
+  return newQuery(path4, collectionGroup2, orderBy, filterBy, limit, "F", startAt, endAt);
 }
 function toListenRequestLabels(serializer, targetData) {
   const value = toLabel(targetData.purpose);
@@ -35412,8 +35412,8 @@ function fromCompositeOperatorName(op) {
       return fail(1026);
   }
 }
-function toFieldPathReference(path3) {
-  return { fieldPath: path3.canonicalString() };
+function toFieldPathReference(path4) {
+  return { fieldPath: path4.canonicalString() };
 }
 function fromFieldPathReference(fieldReference) {
   return FieldPath$1.fromServerFormat(fieldReference.fieldPath);
@@ -35531,8 +35531,8 @@ function toDocumentMask(fieldMask) {
     fieldPaths: canonicalFields
   };
 }
-function isValidResourceName(path3) {
-  return path3.length >= 4 && path3.get(0) === "projects" && path3.get(2) === "databases";
+function isValidResourceName(path4) {
+  return path4.length >= 4 && path4.get(0) === "projects" && path4.get(2) === "databases";
 }
 function isProtoValueSerializable(value) {
   return !!value && typeof value._toProto === "function" && value._protoValueType === "ProtoValue";
@@ -36326,7 +36326,7 @@ var GrpcConnection = class {
     }
     return this.cachedStub;
   }
-  invokeRPC(rpcName, path3, request, authToken, appCheckToken) {
+  invokeRPC(rpcName, path4, request, authToken, appCheckToken) {
     const streamId = generateUniqueDebugId();
     const stub = this.ensureActiveStub();
     const metadata = createMetadata(this.databasePath, authToken, appCheckToken, this.databaseInfo.appId, this.databaseInfo.apiKey, this.databaseInfo._customHeaders);
@@ -36344,7 +36344,7 @@ var GrpcConnection = class {
       });
     });
   }
-  invokeStreamingRPC(rpcName, path3, request, authToken, appCheckToken, expectedResponseCount) {
+  invokeStreamingRPC(rpcName, path4, request, authToken, appCheckToken, expectedResponseCount) {
     const streamId = generateUniqueDebugId();
     const results = [];
     const responseDeferred = new Deferred2();
@@ -42266,11 +42266,11 @@ var CollectionReference = class _CollectionReference extends Query {
     return new _CollectionReference(this.firestore, converter, this._path);
   }
 };
-function collection(parent2, path3, ...pathSegments) {
+function collection(parent2, path4, ...pathSegments) {
   parent2 = getModularInstance(parent2);
-  validateNonEmptyArgument("collection", "path", path3);
+  validateNonEmptyArgument("collection", "path", path4);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path4, ...pathSegments);
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2,
@@ -42282,7 +42282,7 @@ function collection(parent2, path3, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path4, ...pathSegments));
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2.firestore,
@@ -42292,14 +42292,14 @@ function collection(parent2, path3, ...pathSegments) {
     );
   }
 }
-function doc(parent2, path3, ...pathSegments) {
+function doc(parent2, path4, ...pathSegments) {
   parent2 = getModularInstance(parent2);
   if (arguments.length === 1) {
-    path3 = AutoId.newId();
+    path4 = AutoId.newId();
   }
-  validateNonEmptyArgument("doc", "path", path3);
+  validateNonEmptyArgument("doc", "path", path4);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path4, ...pathSegments);
     validateDocumentPath(absolutePath);
     return new DocumentReference(
       parent2,
@@ -42311,7 +42311,7 @@ function doc(parent2, path3, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to doc() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path4, ...pathSegments));
     validateDocumentPath(absolutePath);
     return new DocumentReference(parent2.firestore, parent2 instanceof CollectionReference ? parent2.converter : null, new DocumentKey(absolutePath));
   }
@@ -42838,12 +42838,12 @@ function validatePlainObject(message, context, input) {
     }
   }
 }
-function fieldPathFromArgument(methodName, path3, targetDoc) {
-  path3 = getModularInstance(path3);
-  if (path3 instanceof FieldPath2) {
-    return path3._internalPath;
-  } else if (typeof path3 === "string") {
-    return fieldPathFromDotSeparatedString(methodName, path3);
+function fieldPathFromArgument(methodName, path4, targetDoc) {
+  path4 = getModularInstance(path4);
+  if (path4 instanceof FieldPath2) {
+    return path4._internalPath;
+  } else if (typeof path4 === "string") {
+    return fieldPathFromDotSeparatedString(methodName, path4);
   } else {
     const message = "Field path arguments must be of type string or ";
     throw createError(
@@ -42858,11 +42858,11 @@ function fieldPathFromArgument(methodName, path3, targetDoc) {
   }
 }
 var FIELD_PATH_RESERVED = new RegExp("[~\\*/\\[\\]]");
-function fieldPathFromDotSeparatedString(methodName, path3, targetDoc) {
-  const found = path3.search(FIELD_PATH_RESERVED);
+function fieldPathFromDotSeparatedString(methodName, path4, targetDoc) {
+  const found = path4.search(FIELD_PATH_RESERVED);
   if (found >= 0) {
     throw createError(
-      `Invalid field path (${path3}). Paths must not contain '~', '*', '/', '[', or ']'`,
+      `Invalid field path (${path4}). Paths must not contain '~', '*', '/', '[', or ']'`,
       methodName,
       /* hasConverter= */
       false,
@@ -42872,10 +42872,10 @@ function fieldPathFromDotSeparatedString(methodName, path3, targetDoc) {
     );
   }
   try {
-    return new FieldPath2(...path3.split("."))._internalPath;
+    return new FieldPath2(...path4.split("."))._internalPath;
   } catch (e) {
     throw createError(
-      `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
+      `Invalid field path (${path4}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
       methodName,
       /* hasConverter= */
       false,
@@ -42885,8 +42885,8 @@ function fieldPathFromDotSeparatedString(methodName, path3, targetDoc) {
     );
   }
 }
-function createError(reason, methodName, hasConverter, path3, targetDoc) {
-  const hasPath = path3 && !path3.isEmpty();
+function createError(reason, methodName, hasConverter, path4, targetDoc) {
+  const hasPath = path4 && !path4.isEmpty();
   const hasDocument = targetDoc !== void 0;
   let message = `Function ${methodName}() called with invalid data`;
   if (hasConverter) {
@@ -42897,7 +42897,7 @@ function createError(reason, methodName, hasConverter, path3, targetDoc) {
   if (hasPath || hasDocument) {
     description += " (found";
     if (hasPath) {
-      description += ` in field ${path3}`;
+      description += ` in field ${path4}`;
     }
     if (hasDocument) {
       description += ` in document ${targetDoc}`;
@@ -45176,7 +45176,7 @@ var DocumentsSource = class extends Stage {
     if (!docPaths || docPaths.length === 0) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Empty document paths are not allowed in DocumentsSource");
     }
-    const paths = docPaths.map((path3) => path3.startsWith("/") ? path3 : "/" + path3);
+    const paths = docPaths.map((path4) => path4.startsWith("/") ? path4 : "/" + path4);
     const uniqueDocPaths = new Set(paths);
     if (uniqueDocPaths.size !== paths.length) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Duplicate document paths are not allowed in DocumentsSource");
@@ -47606,10 +47606,10 @@ function canonifyPipeline(p) {
 function pipelineEq(left, right) {
   return canonifyPipeline(left) === canonifyPipeline(right);
 }
-function asCollectionPipelineAtPath(pipeline, path3) {
+function asCollectionPipelineAtPath(pipeline, path4) {
   const newStages = pipeline.stages.map((s) => {
     if (s instanceof CollectionGroupSource) {
-      return new CollectionSource(path3.canonicalString(), {});
+      return new CollectionSource(path4.canonicalString(), {});
     }
     return s;
   });
@@ -47872,13 +47872,13 @@ var escapeChar = "";
 var encodedSeparatorChar = "";
 var encodedNul = "";
 var encodedEscape = "";
-function encodeResourcePath(path3) {
+function encodeResourcePath(path4) {
   let result = "";
-  for (let i = 0; i < path3.length; i++) {
+  for (let i = 0; i < path4.length; i++) {
     if (result.length > 0) {
       result = encodeSeparator(result);
     }
-    result = encodeSegment(path3.get(i), result);
+    result = encodeSegment(path4.get(i), result);
   }
   return encodeSeparator(result);
 }
@@ -48232,8 +48232,8 @@ var FirestoreIndexValueWriter = class {
   writeIndexEntityRef(referenceValue, encoder2) {
     this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE);
     const segments = referenceValue.split("/").filter((segment) => segment.length > 0);
-    const path3 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
-    path3.forEach((segment) => {
+    const path4 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
+    path4.forEach((segment) => {
       this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE_SEGMENT);
       this.writeUnlabeledIndexString(segment, encoder2);
     });
@@ -49652,8 +49652,8 @@ var MemoryEagerDelegate = class _MemoryEagerDelegate {
   onTransactionCommitted(txn) {
     const cache = this.persistence.getRemoteDocumentCache();
     const changeBuffer = cache.newChangeBuffer();
-    return PersistencePromise.forEach(this.orphanedDocuments, (path3) => {
-      const key = DocumentKey.fromPath(path3);
+    return PersistencePromise.forEach(this.orphanedDocuments, (path4) => {
+      const key = DocumentKey.fromPath(path4);
       return this.isReferenced(txn, key).next((isReferenced) => {
         if (!isReferenced) {
           changeBuffer.removeEntry(key, SnapshotVersion.min());
@@ -53567,9 +53567,9 @@ var BundleBuilder = class {
     return bundleString;
   }
 };
-function buildDocumentSnapshotJsonBundle(db, document2, docData, path3) {
+function buildDocumentSnapshotJsonBundle(db, document2, docData, path4) {
   const builder = new BundleBuilder(db, AutoId.newId());
-  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path3, docData, document2));
+  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path4, docData, document2));
   return builder.build();
 }
 function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, docs, documentData) {
@@ -53587,11 +53587,11 @@ function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, doc
   builder.addBundleQuery(bundleData);
   return builder.build();
 }
-function documentToDocumentSnapshotBundleData(path3, documentData, document2) {
+function documentToDocumentSnapshotBundleData(path4, documentData, document2) {
   return {
     documentData,
     documentKey: document2.mutableCopy().key,
-    documentPath: path3,
+    documentPath: path4,
     documentExists: true,
     createdTime: document2.createTime.toTimestamp(),
     readTime: document2.readTime.toTimestamp(),
@@ -54004,8 +54004,8 @@ function unknown() {
   const message = "An unknown error occurred, please check the error payload for server response.";
   return new StorageError(StorageErrorCode.UNKNOWN, message);
 }
-function objectNotFound(path3) {
-  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path3 + "' does not exist.");
+function objectNotFound(path4) {
+  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path4 + "' does not exist.");
 }
 function quotaExceeded(bucket) {
   return new StorageError(StorageErrorCode.QUOTA_EXCEEDED, "Quota for bucket '" + bucket + "' exceeded, please view quota on https://firebase.google.com/pricing/.");
@@ -54017,8 +54017,8 @@ function unauthenticated() {
 function unauthorizedApp() {
   return new StorageError(StorageErrorCode.UNAUTHORIZED_APP, "This app does not have permission to access Firebase Storage on this project.");
 }
-function unauthorized(path3) {
-  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path3 + "'.");
+function unauthorized(path4) {
+  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path4 + "'.");
 }
 function retryLimitExceeded() {
   return new StorageError(StorageErrorCode.RETRY_LIMIT_EXCEEDED, "Max retry time for operation exceeded, please try again.");
@@ -54048,9 +54048,9 @@ function internalError(message) {
   throw new StorageError(StorageErrorCode.INTERNAL_ERROR, "Internal error: " + message);
 }
 var Location = class _Location {
-  constructor(bucket, path3) {
+  constructor(bucket, path4) {
     this.bucket = bucket;
-    this.path_ = path3;
+    this.path_ = path4;
   }
   get path() {
     return this.path_;
@@ -54436,31 +54436,31 @@ function makeRequest(requestInfo, appId, authToken, appCheckToken, requestFactor
   addAppCheckHeader_(headers, appCheckToken);
   return new NetworkRequest(url, requestInfo.method, headers, requestInfo.body, requestInfo.successCodes, requestInfo.additionalRetryCodes, requestInfo.handler, requestInfo.errorHandler, requestInfo.timeout, requestInfo.progressCallback, requestFactory, retry, isUsingEmulator);
 }
-function parent(path3) {
-  if (path3.length === 0) {
+function parent(path4) {
+  if (path4.length === 0) {
     return null;
   }
-  const index = path3.lastIndexOf("/");
+  const index = path4.lastIndexOf("/");
   if (index === -1) {
     return "";
   }
-  const newPath = path3.slice(0, index);
+  const newPath = path4.slice(0, index);
   return newPath;
 }
-function child(path3, childPath) {
+function child(path4, childPath) {
   const canonicalChildPath = childPath.split("/").filter((component) => component.length > 0).join("/");
-  if (path3.length === 0) {
+  if (path4.length === 0) {
     return canonicalChildPath;
   } else {
-    return path3 + "/" + canonicalChildPath;
+    return path4 + "/" + canonicalChildPath;
   }
 }
-function lastComponent(path3) {
-  const index = path3.lastIndexOf("/", path3.length - 2);
+function lastComponent(path4) {
+  const index = path4.lastIndexOf("/", path4.length - 2);
   if (index === -1) {
-    return path3;
+    return path4;
   } else {
-    return path3.slice(index + 1);
+    return path4.slice(index + 1);
   }
 }
 var RequestInfo = class {
@@ -54725,27 +54725,27 @@ function _getChild$1(ref2, childPath) {
   const location = new Location(ref2._location.bucket, newPath);
   return new Reference(ref2.storage, location);
 }
-function isUrl(path3) {
-  return /^[A-Za-z]+:\/\//.test(path3);
+function isUrl(path4) {
+  return /^[A-Za-z]+:\/\//.test(path4);
 }
 function refFromURL(service, url) {
   return new Reference(service, url);
 }
-function refFromPath(ref2, path3) {
+function refFromPath(ref2, path4) {
   if (ref2 instanceof FirebaseStorageImpl) {
     const service = ref2;
     if (service._bucket == null) {
       throw noDefaultBucket();
     }
     const reference = new Reference(service, service._bucket);
-    if (path3 != null) {
-      return refFromPath(reference, path3);
+    if (path4 != null) {
+      return refFromPath(reference, path4);
     } else {
       return reference;
     }
   } else {
-    if (path3 !== void 0) {
-      return _getChild$1(ref2, path3);
+    if (path4 !== void 0) {
+      return _getChild$1(ref2, path4);
     } else {
       return ref2;
     }
@@ -56490,6 +56490,654 @@ ${message}`).digest("hex").substring(0, 32);
   }
 }
 
+// server/licenses.ts
+import crypto5 from "crypto";
+import fs2 from "fs";
+import path2 from "path";
+var LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+var LICENSE_KEY_REGEX = /^ZOYA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+var IS_SERVERLESS2 = Boolean(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
+);
+function getLicenseStoragePath() {
+  if (IS_SERVERLESS2) {
+    const tmpData = path2.join("/tmp", "zoya-data");
+    return {
+      dataDir: tmpData,
+      licensesFile: path2.join(tmpData, "licenses.json")
+    };
+  }
+  const localData = path2.resolve(process.cwd(), ".data");
+  return {
+    dataDir: localData,
+    licensesFile: path2.join(localData, "licenses.json")
+  };
+}
+function ensureLicenseDir() {
+  const { dataDir } = getLicenseStoragePath();
+  try {
+    if (!fs2.existsSync(dataDir)) {
+      fs2.mkdirSync(dataDir, { recursive: true });
+    }
+  } catch {
+  }
+}
+var licenseOperationChain = Promise.resolve();
+function withLicenseLock(fn) {
+  const next = licenseOperationChain.then(fn, fn);
+  licenseOperationChain = next.then(
+    () => void 0,
+    () => void 0
+  );
+  return next;
+}
+function generateCryptographicLicenseKey() {
+  const group = () => {
+    let chars = "";
+    for (let i = 0; i < 4; i++) {
+      const idx = crypto5.randomInt(0, LICENSE_ALPHABET.length);
+      chars += LICENSE_ALPHABET[idx];
+    }
+    return chars;
+  };
+  return `ZOYA-${group()}-${group()}-${group()}`;
+}
+function normalizeLicenseKey(rawKey) {
+  if (typeof rawKey !== "string") return "";
+  return rawKey.trim().toUpperCase();
+}
+function isValidLicenseKeyFormat(rawKey) {
+  const normalized = normalizeLicenseKey(rawKey);
+  return LICENSE_KEY_REGEX.test(normalized);
+}
+function hashLicenseKey(rawKey) {
+  const normalized = normalizeLicenseKey(rawKey);
+  return crypto5.createHash("sha256").update(`zoya_license_v1:${normalized}`).digest("hex");
+}
+function maskLicenseKey(rawKey) {
+  const normalized = normalizeLicenseKey(rawKey);
+  const parts = normalized.split("-");
+  const lastFour = parts.length === 4 && parts[3].length === 4 ? parts[3] : normalized.slice(-4);
+  return {
+    maskedKey: `ZOYA-\u2022\u2022\u2022\u2022-\u2022\u2022\u2022\u2022-${lastFour}`,
+    keyLastFour: lastFour
+  };
+}
+function sanitizeText(raw, maxLen = 200) {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/[\x00-\x1F\x7F]/g, " ").trim().slice(0, maxLen);
+}
+var EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function readLocalLicensesBackup() {
+  ensureLicenseDir();
+  const { licensesFile } = getLicenseStoragePath();
+  if (!fs2.existsSync(licensesFile)) return [];
+  try {
+    const raw = fs2.readFileSync(licensesFile, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function writeLocalLicensesBackup(records) {
+  try {
+    ensureLicenseDir();
+    const { licensesFile } = getLicenseStoragePath();
+    fs2.writeFileSync(licensesFile, JSON.stringify(records, null, 2), "utf-8");
+  } catch {
+  }
+}
+function sanitizeRecordForStorage(record) {
+  const copy = { ...record };
+  delete copy.licenseKey;
+  delete copy.plaintextKey;
+  delete copy.rawKey;
+  const cleaned = Object.fromEntries(
+    Object.entries(copy).filter(([, v]) => v !== void 0)
+  );
+  return cleaned;
+}
+async function getAllLicenses() {
+  const byId = /* @__PURE__ */ new Map();
+  const localRecords = readLocalLicensesBackup();
+  for (const rec of localRecords) {
+    if (rec && rec.id && rec.keyHash) {
+      byId.set(rec.id, sanitizeRecordForStorage(rec));
+    }
+  }
+  try {
+    const db = getDb();
+    const snap = await getDocs(collection(db, "licenses"));
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data && data.id && data.keyHash) {
+        byId.set(data.id, sanitizeRecordForStorage(data));
+      }
+    });
+  } catch (err) {
+    console.warn("Firestore licenses read fallback notice:", err);
+  }
+  const all = Array.from(byId.values());
+  all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return all;
+}
+async function getLicenseById(id) {
+  const cleanId = sanitizeText(id, 100);
+  if (!cleanId) return null;
+  try {
+    const db = getDb();
+    const snap = await getDoc(doc(db, "licenses", cleanId));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data && data.id) {
+        return sanitizeRecordForStorage(data);
+      }
+    }
+  } catch (err) {
+    console.warn("Firestore getLicenseById fallback notice:", err);
+  }
+  const local = readLocalLicensesBackup();
+  const found = local.find((r) => r.id === cleanId);
+  return found ? sanitizeRecordForStorage(found) : null;
+}
+async function getLicenseByKeyHash(keyHash) {
+  if (!keyHash) return null;
+  const all = await getAllLicenses();
+  return all.find((r) => r.keyHash === keyHash) || null;
+}
+async function saveLicenseRecord(record) {
+  const safeRecord = sanitizeRecordForStorage({
+    ...record,
+    updatedAt: record.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
+  });
+  try {
+    const db = getDb();
+    await setDoc(doc(db, "licenses", safeRecord.id), safeRecord);
+  } catch (err) {
+    console.warn("Firestore saveLicenseRecord notice:", err);
+  }
+  const existing = readLocalLicensesBackup();
+  const idx = existing.findIndex((r) => r.id === safeRecord.id);
+  if (idx >= 0) {
+    existing[idx] = safeRecord;
+  } else {
+    existing.push(safeRecord);
+  }
+  writeLocalLicensesBackup(existing);
+  return safeRecord;
+}
+function computeLicenseStats(licenses) {
+  let active = 0;
+  let pendingPayment = 0;
+  let revoked = 0;
+  let complimentary = 0;
+  for (const lic of licenses) {
+    if (lic.status === "active") active += 1;
+    else if (lic.status === "pending_payment") pendingPayment += 1;
+    else if (lic.status === "revoked") revoked += 1;
+    if (lic.isComplimentary) complimentary += 1;
+  }
+  return {
+    total: licenses.length,
+    active,
+    pendingPayment,
+    revoked,
+    complimentary
+  };
+}
+async function createLifetimeLicense(input, admin, customKeyGenerator) {
+  if (!admin || admin.role !== "admin") {
+    return { success: false, status: 401, error: "Unauthorized administrator session." };
+  }
+  if (!input || typeof input !== "object") {
+    return { success: false, status: 400, error: "Invalid license creation payload." };
+  }
+  const customerName = sanitizeText(input.customerName, 120);
+  const customerEmail = sanitizeText(input.customerEmail, 160).toLowerCase();
+  const licenseTypeRaw = input.licenseType !== void 0 && input.licenseType !== null ? sanitizeText(input.licenseType, 40) : "Lifetime";
+  if (!customerName || customerName.length < 2) {
+    return {
+      success: false,
+      status: 400,
+      error: "Customer name is required (minimum 2 characters)."
+    };
+  }
+  if (!customerEmail || !EMAIL_REGEX.test(customerEmail)) {
+    return {
+      success: false,
+      status: 400,
+      error: "A valid customer email address is required."
+    };
+  }
+  if (licenseTypeRaw !== "Lifetime") {
+    return {
+      success: false,
+      status: 400,
+      error: "Only Lifetime licenses are supported."
+    };
+  }
+  const isComplimentary = Boolean(input.isComplimentary === true);
+  const complimentaryReason = isComplimentary ? sanitizeText(input.complimentaryReason, 300) : null;
+  if (isComplimentary && (!complimentaryReason || complimentaryReason.length < 3)) {
+    return {
+      success: false,
+      status: 400,
+      error: "A complimentary license requires a recorded reason (minimum 3 characters)."
+    };
+  }
+  const paymentReferenceRaw = sanitizeText(input.paymentReference, 120);
+  const paymentReference = paymentReferenceRaw.length > 0 ? paymentReferenceRaw : null;
+  let amount = null;
+  if (input.amount !== void 0 && input.amount !== null && String(input.amount).trim() !== "") {
+    const rawAmount = String(input.amount).trim();
+    const numericAmount = Number(rawAmount);
+    if (isNaN(numericAmount) || numericAmount < 0 || numericAmount > 1e6) {
+      return {
+        success: false,
+        status: 400,
+        error: "Amount must be a valid non-negative number."
+      };
+    }
+    amount = rawAmount;
+  }
+  const currencyRaw = sanitizeText(input.currency, 12).toUpperCase();
+  const currency = currencyRaw.length > 0 ? currencyRaw : amount ? "INR" : null;
+  return withLicenseLock(async () => {
+    const existingLicenses = await getAllLicenses();
+    const existingHashes = new Set(existingLicenses.map((l) => l.keyHash));
+    const keyGen = customKeyGenerator || generateCryptographicLicenseKey;
+    let rawKey = "";
+    let keyHash = "";
+    const MAX_ATTEMPTS = 10;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const candidate = normalizeLicenseKey(keyGen());
+      if (!isValidLicenseKeyFormat(candidate)) {
+        continue;
+      }
+      const candidateHash = hashLicenseKey(candidate);
+      if (!existingHashes.has(candidateHash)) {
+        rawKey = candidate;
+        keyHash = candidateHash;
+        break;
+      }
+    }
+    if (!rawKey || !keyHash) {
+      return {
+        success: false,
+        status: 500,
+        error: "Failed to generate a unique cryptographic license key after multiple attempts."
+      };
+    }
+    const { maskedKey, keyLastFour } = maskLicenseKey(rawKey);
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const licenseId = `lic_${Date.now()}_${crypto5.randomBytes(4).toString("hex")}`;
+    const actorLabel = `${admin.name} <${admin.email}>`;
+    const initialStatus = isComplimentary ? "active" : "pending_payment";
+    const auditLog = [
+      {
+        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+        action: "created",
+        timestamp: nowIso,
+        actor: actorLabel,
+        details: isComplimentary ? `Created Lifetime complimentary license (${maskedKey}) for ${customerName} (${customerEmail}).` : `Created Lifetime license (${maskedKey}) for ${customerName} (${customerEmail}) in Pending Payment status.${paymentReference ? ` Recorded unverified payment reference: ${paymentReference}.` : ""}`
+      }
+    ];
+    if (isComplimentary && complimentaryReason) {
+      auditLog.push({
+        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}_comp`,
+        action: "complimentary_issued",
+        timestamp: nowIso,
+        actor: actorLabel,
+        details: `Activated as admin-authorized complimentary license. Reason: ${complimentaryReason}`
+      });
+    }
+    const record = {
+      id: licenseId,
+      keyHash,
+      maskedKey,
+      keyLastFour,
+      customerName,
+      customerEmail,
+      licenseType: "Lifetime",
+      status: initialStatus,
+      isComplimentary,
+      complimentaryReason,
+      paymentReference,
+      amount,
+      currency,
+      paymentVerified: false,
+      verifiedBy: null,
+      verifiedAt: null,
+      createdBy: {
+        email: admin.email,
+        name: admin.name
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      activatedAt: null,
+      revokedAt: null,
+      revokedBy: null,
+      revokeReason: null,
+      linkedDevice: null,
+      lastSeenAt: null,
+      validationCount: 0,
+      auditLog
+    };
+    const saved = await saveLicenseRecord(record);
+    return {
+      success: true,
+      generatedKey: rawKey,
+      license: saved
+    };
+  });
+}
+async function verifyLicensePayment(licenseId, input, admin) {
+  if (!admin || admin.role !== "admin") {
+    return { success: false, status: 401, error: "Unauthorized administrator session." };
+  }
+  return withLicenseLock(async () => {
+    const existing = await getLicenseById(licenseId);
+    if (!existing) {
+      return { success: false, status: 404, error: "License record not found." };
+    }
+    if (existing.status === "revoked") {
+      return {
+        success: false,
+        status: 400,
+        error: "Cannot verify payment or activate a revoked license."
+      };
+    }
+    if (existing.paymentVerified && existing.status === "active") {
+      return {
+        success: false,
+        status: 400,
+        error: "Payment for this license has already been verified."
+      };
+    }
+    const providedRef = sanitizeText(input?.paymentReference, 120);
+    const finalPaymentRef = providedRef || existing.paymentReference || null;
+    if (!finalPaymentRef) {
+      return {
+        success: false,
+        status: 400,
+        error: "A payment reference / transaction ID is required before marking payment as verified."
+      };
+    }
+    let finalAmount = existing.amount;
+    if (input?.amount !== void 0 && input?.amount !== null && String(input.amount).trim() !== "") {
+      const rawAmount = String(input.amount).trim();
+      const num = Number(rawAmount);
+      if (isNaN(num) || num < 0 || num > 1e6) {
+        return {
+          success: false,
+          status: 400,
+          error: "Amount must be a valid non-negative number."
+        };
+      }
+      finalAmount = rawAmount;
+    }
+    const providedCurrency = sanitizeText(input?.currency, 12).toUpperCase();
+    const finalCurrency = providedCurrency || existing.currency || (finalAmount ? "INR" : null);
+    const verificationNote = sanitizeText(input?.verificationNote, 240);
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const actorLabel = `${admin.name} <${admin.email}>`;
+    const auditEntry = {
+      id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+      action: "payment_verified",
+      timestamp: nowIso,
+      actor: actorLabel,
+      details: `Payment independently verified by ${admin.name} (Ref: ${finalPaymentRef}${finalAmount ? `, Amount: ${finalCurrency || ""} ${finalAmount}`.trim() : ""}). Status changed to Active.${verificationNote ? ` Note: ${verificationNote}` : ""}`
+    };
+    const updated = {
+      ...existing,
+      paymentReference: finalPaymentRef,
+      amount: finalAmount,
+      currency: finalCurrency,
+      paymentVerified: true,
+      verifiedBy: {
+        email: admin.email,
+        name: admin.name
+      },
+      verifiedAt: nowIso,
+      status: "active",
+      updatedAt: nowIso,
+      auditLog: [...existing.auditLog || [], auditEntry]
+    };
+    const saved = await saveLicenseRecord(updated);
+    return { success: true, license: saved };
+  });
+}
+async function revokeLicense(licenseId, input, admin) {
+  if (!admin || admin.role !== "admin") {
+    return { success: false, status: 401, error: "Unauthorized administrator session." };
+  }
+  return withLicenseLock(async () => {
+    const existing = await getLicenseById(licenseId);
+    if (!existing) {
+      return { success: false, status: 404, error: "License record not found." };
+    }
+    if (existing.status === "revoked") {
+      return {
+        success: false,
+        status: 400,
+        error: "This license is already revoked."
+      };
+    }
+    const reason = sanitizeText(input?.reason, 300) || "Revoked by administrator";
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const actorLabel = `${admin.name} <${admin.email}>`;
+    const auditEntry = {
+      id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+      action: "revoked",
+      timestamp: nowIso,
+      actor: actorLabel,
+      details: `License revoked by ${admin.name}. Reason: ${reason}`
+    };
+    const updated = {
+      ...existing,
+      status: "revoked",
+      revokedAt: nowIso,
+      revokedBy: {
+        email: admin.email,
+        name: admin.name
+      },
+      revokeReason: reason,
+      updatedAt: nowIso,
+      auditLog: [...existing.auditLog || [], auditEntry]
+    };
+    const saved = await saveLicenseRecord(updated);
+    return { success: true, license: saved };
+  });
+}
+async function validateLicenseForAndroid(payload) {
+  if (!payload || typeof payload !== "object") {
+    return {
+      valid: false,
+      status: "malformed",
+      code: "MALFORMED_KEY",
+      httpStatus: 400,
+      error: "Request payload is required."
+    };
+  }
+  const normalizedKey = normalizeLicenseKey(payload.licenseKey);
+  if (!normalizedKey || !isValidLicenseKeyFormat(normalizedKey)) {
+    return {
+      valid: false,
+      status: "malformed",
+      code: "MALFORMED_KEY",
+      httpStatus: 400,
+      error: "License key format is invalid. Expected ZOYA-XXXX-XXXX-XXXX."
+    };
+  }
+  const keyHash = hashLicenseKey(normalizedKey);
+  return withLicenseLock(async () => {
+    const existing = await getLicenseByKeyHash(keyHash);
+    if (!existing) {
+      return {
+        valid: false,
+        status: "not_found",
+        code: "UNKNOWN_KEY",
+        httpStatus: 404,
+        error: "License key not found."
+      };
+    }
+    if (existing.status === "revoked") {
+      return {
+        valid: false,
+        status: "revoked",
+        code: "LICENSE_REVOKED",
+        httpStatus: 403,
+        revokedAt: existing.revokedAt,
+        error: "This license has been revoked and is no longer valid."
+      };
+    }
+    const isAuthorizedActive = existing.status === "active" && (existing.paymentVerified || existing.isComplimentary);
+    if (!isAuthorizedActive) {
+      return {
+        valid: false,
+        status: "pending_payment",
+        code: "PAYMENT_UNVERIFIED",
+        httpStatus: 403,
+        error: "This license is pending manual payment verification by an administrator and cannot be activated yet."
+      };
+    }
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const isFirstActivation = !existing.activatedAt;
+    const activatedAt = existing.activatedAt || nowIso;
+    let linkedDevice = existing.linkedDevice || null;
+    if (payload.deviceInfo && typeof payload.deviceInfo === "object") {
+      const deviceId = sanitizeText(payload.deviceInfo.deviceId, 120) || null;
+      const deviceModel = sanitizeText(payload.deviceInfo.deviceModel, 120) || null;
+      const androidVersion = sanitizeText(payload.deviceInfo.androidVersion, 60) || null;
+      const appVersion = sanitizeText(payload.deviceInfo.appVersion, 60) || null;
+      if (deviceId || deviceModel || androidVersion || appVersion) {
+        linkedDevice = {
+          deviceId: deviceId ?? linkedDevice?.deviceId ?? null,
+          deviceModel: deviceModel ?? linkedDevice?.deviceModel ?? null,
+          androidVersion: androidVersion ?? linkedDevice?.androidVersion ?? null,
+          appVersion: appVersion ?? linkedDevice?.appVersion ?? null,
+          linkedAt: linkedDevice?.linkedAt || nowIso
+        };
+      }
+    }
+    const updatedAuditLog = [...existing.auditLog || []];
+    if (isFirstActivation) {
+      updatedAuditLog.push({
+        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+        action: "activated",
+        timestamp: nowIso,
+        actor: "Zoya Android Client",
+        details: linkedDevice?.deviceModel ? `License activated on device (${linkedDevice.deviceModel}).` : "License activated via validation endpoint."
+      });
+    } else if (updatedAuditLog.length < 50) {
+      updatedAuditLog.push({
+        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+        action: "validated",
+        timestamp: nowIso,
+        actor: "Zoya Android Client",
+        details: linkedDevice?.deviceModel ? `License validated from device (${linkedDevice.deviceModel}).` : "License validated."
+      });
+    }
+    const updated = {
+      ...existing,
+      activatedAt,
+      lastSeenAt: nowIso,
+      linkedDevice,
+      validationCount: (existing.validationCount || 0) + 1,
+      updatedAt: nowIso,
+      auditLog: updatedAuditLog
+    };
+    const saved = await saveLicenseRecord(updated);
+    return {
+      valid: true,
+      status: "active",
+      code: "LICENSE_VALID",
+      httpStatus: 200,
+      license: {
+        id: saved.id,
+        maskedKey: saved.maskedKey,
+        licenseType: "Lifetime",
+        status: "active",
+        customerName: saved.customerName,
+        activatedAt: saved.activatedAt || nowIso,
+        lastSeenAt: saved.lastSeenAt || nowIso,
+        linkedDevice: saved.linkedDevice
+      }
+    };
+  });
+}
+
+// server/rateLimit.ts
+var buckets = /* @__PURE__ */ new Map();
+function getClientIdentifier(req) {
+  const headers = req.headers || {};
+  const forwarded = headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.trim().length > 0) {
+    return forwarded.split(",")[0].trim();
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    return String(forwarded[0]).split(",")[0].trim();
+  }
+  const realIp = headers["x-real-ip"];
+  if (typeof realIp === "string" && realIp.trim().length > 0) {
+    return realIp.trim();
+  }
+  const socketAddr = req.socket?.remoteAddress;
+  if (socketAddr) {
+    return socketAddr;
+  }
+  return "unknown-client";
+}
+function checkRateLimit(req, options2) {
+  const clientIp = getClientIdentifier(req);
+  const key = `${options2.namespace}:${clientIp}`;
+  const now = Date.now();
+  const windowStart = now - options2.windowMs;
+  let bucket = buckets.get(key);
+  if (!bucket) {
+    bucket = { timestamps: [] };
+    buckets.set(key, bucket);
+  }
+  bucket.timestamps = bucket.timestamps.filter((ts) => ts > windowStart);
+  if (bucket.timestamps.length >= options2.maxRequests) {
+    const oldestInWindow = bucket.timestamps[0] || now;
+    const retryAfterMs = Math.max(1e3, options2.windowMs - (now - oldestInWindow));
+    const retryAfterSeconds = Math.ceil(retryAfterMs / 1e3);
+    return {
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds,
+      limit: options2.maxRequests
+    };
+  }
+  bucket.timestamps.push(now);
+  if (buckets.size > 5e3) {
+    for (const [k, v] of buckets.entries()) {
+      const active = v.timestamps.filter((ts) => ts > now - 36e5);
+      if (active.length === 0) {
+        buckets.delete(k);
+      } else {
+        v.timestamps = active;
+      }
+    }
+  }
+  return {
+    allowed: true,
+    remaining: Math.max(0, options2.maxRequests - bucket.timestamps.length),
+    retryAfterSeconds: 0,
+    limit: options2.maxRequests
+  };
+}
+function applyRateLimitHeaders(res, result) {
+  if (res.writableEnded || res.headersSent) return;
+  res.setHeader("X-RateLimit-Limit", String(result.limit));
+  res.setHeader("X-RateLimit-Remaining", String(result.remaining));
+  if (!result.allowed && result.retryAfterSeconds > 0) {
+    res.setHeader("Retry-After", String(result.retryAfterSeconds));
+  }
+}
+
 // server/apiHandler.ts
 function sendJson(res, status, data) {
   if (res.writableEnded || res.headersSent) {
@@ -56629,14 +57277,26 @@ async function handleApiRequest(req, res, explicitRoute) {
   const url = req.url || "";
   const parsedUrl = new URL(url, "http://localhost:3000");
   const rawReqPath = parsedUrl.pathname.replace(/\/+$/, "") || "/";
-  let pathname = rawReqPath === "/api/admin/notify" || rawReqPath === "/admin/notify" || parsedUrl.searchParams.get("action") === "notify" ? "/api/admin/notify" : explicitRoute || parsedUrl.pathname;
+  const rewrittenRoute = (parsedUrl.searchParams.get("__route") || "").trim();
+  let pathname;
+  if (rewrittenRoute) {
+    pathname = rewrittenRoute;
+  } else if (rawReqPath === "/api/admin/notify" || rawReqPath === "/admin/notify" || parsedUrl.searchParams.get("action") === "notify") {
+    pathname = "/api/admin/notify";
+  } else if (rawReqPath === "/api/admin/licenses" || rawReqPath === "/admin/licenses" || rawReqPath.startsWith("/api/admin/licenses/") || rawReqPath.startsWith("/admin/licenses/")) {
+    pathname = rawReqPath;
+  } else if (rawReqPath === "/api/licenses/validate" || rawReqPath === "/licenses/validate") {
+    pathname = "/api/licenses/validate";
+  } else {
+    pathname = explicitRoute || parsedUrl.pathname;
+  }
   if (!pathname.startsWith("/api/")) {
     pathname = `/api${pathname.startsWith("/") ? pathname : "/" + pathname}`;
   }
   pathname = pathname.replace(/\/+$/, "") || "/";
   const method = req.method?.toUpperCase() || "GET";
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-filename, Accept, X-Requested-With");
   if (method === "OPTIONS") {
     res.statusCode = 204;
@@ -56761,9 +57421,65 @@ async function handleApiRequest(req, res, explicitRoute) {
       });
       return true;
     }
+    if (pathname === "/api/licenses/validate") {
+      if (method !== "POST") {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+      const rateLimit = checkRateLimit(req, {
+        namespace: "license_validate",
+        maxRequests: 20,
+        windowMs: 6e4
+      });
+      applyRateLimitHeaders(res, rateLimit);
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          valid: false,
+          status: "rate_limited",
+          code: "RATE_LIMITED",
+          error: `Too many license validation requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`
+        });
+        return true;
+      }
+      let body = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendJson(res, 400, {
+          success: false,
+          valid: false,
+          status: "malformed",
+          code: "MALFORMED_KEY",
+          error: err instanceof Error ? err.message : "Invalid JSON body."
+        });
+        return true;
+      }
+      const result = await validateLicenseForAndroid(body);
+      const { httpStatus, ...payload } = result;
+      sendJson(res, httpStatus, {
+        success: result.valid,
+        ...payload
+      });
+      return true;
+    }
     if (pathname === "/api/admin/login") {
       if (method !== "POST") {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+      const loginRateLimit = checkRateLimit(req, {
+        namespace: "admin_login",
+        maxRequests: 10,
+        windowMs: 6e4
+      });
+      applyRateLimitHeaders(res, loginRateLimit);
+      if (!loginRateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          code: "RATE_LIMITED",
+          error: `Too many login attempts. Please wait ${loginRateLimit.retryAfterSeconds}s before trying again.`
+        });
         return true;
       }
       let body = {};
@@ -56867,7 +57583,7 @@ async function handleApiRequest(req, res, explicitRoute) {
         if (phase === "finalize") {
           const body = await parseJsonBody(req);
           const storageKey = (body.storageKey || "").trim();
-          const fileName = path2.basename(body.fileName || "zoya-assistant.apk");
+          const fileName = path3.basename(body.fileName || "zoya-assistant.apk");
           const totalChunks = Number(body.totalChunks) || 0;
           if (!storageKey || !fileName.toLowerCase().endsWith(".apk") || totalChunks <= 0) {
             sendError(res, 400, "Invalid finalize parameters for APK upload.");
@@ -56911,7 +57627,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             );
             return true;
           }
-          const serverSha256 = crypto5.createHash("sha256").update(apkBuffer).digest("hex");
+          const serverSha256 = crypto6.createHash("sha256").update(apkBuffer).digest("hex");
           const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
           const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
@@ -57203,6 +57919,103 @@ async function handleApiRequest(req, res, explicitRoute) {
           message: `Push notification "${result.title}" sent to topic "${result.topic}".`,
           notification: result
         });
+        return true;
+      }
+      if (pathname === "/api/admin/licenses" && method === "GET") {
+        const licenses = await getAllLicenses();
+        const stats = computeLicenseStats(licenses);
+        sendJson(res, 200, {
+          success: true,
+          stats,
+          licenses
+        });
+        return true;
+      }
+      if (pathname === "/api/admin/licenses" && method === "POST") {
+        let body = {};
+        try {
+          body = await parseJsonBody(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
+          return true;
+        }
+        const created = await createLifetimeLicense(body, user);
+        if (!created.success) {
+          sendError(res, created.status, created.error);
+          return true;
+        }
+        sendJson(res, 201, {
+          success: true,
+          message: created.license.isComplimentary ? `Complimentary Lifetime license generated and activated for ${created.license.customerName}.` : `Lifetime license generated for ${created.license.customerName} (Pending Payment verification).`,
+          generatedKey: created.generatedKey,
+          license: created.license
+        });
+        return true;
+      }
+      if (pathname.startsWith("/api/admin/licenses/")) {
+        const anyReq = req;
+        const queryId = anyReq.query?.id || parsedUrl.searchParams.get("id");
+        const rawSubPath = pathname.substring("/api/admin/licenses/".length).trim();
+        const licenseId = (rawSubPath && rawSubPath !== ":id" && rawSubPath !== "[id]" ? rawSubPath : queryId || "").trim();
+        if (!licenseId) {
+          sendError(res, 400, "License ID is required.");
+          return true;
+        }
+        if (method === "GET") {
+          const license = await getLicenseById(licenseId);
+          if (!license) {
+            sendError(res, 404, "License record not found.");
+            return true;
+          }
+          sendJson(res, 200, {
+            success: true,
+            license
+          });
+          return true;
+        }
+        if (method === "POST" || method === "PATCH") {
+          let body = {};
+          try {
+            body = await parseJsonBody(req);
+          } catch (err) {
+            sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
+            return true;
+          }
+          const action = typeof body.action === "string" ? body.action.trim() : "";
+          if (action === "verify_payment") {
+            const verified = await verifyLicensePayment(licenseId, body, user);
+            if (!verified.success) {
+              sendError(res, verified.status, verified.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `Payment verified by ${user.name}. License is now Active.`,
+              license: verified.license
+            });
+            return true;
+          }
+          if (action === "revoke") {
+            const revoked = await revokeLicense(licenseId, body, user);
+            if (!revoked.success) {
+              sendError(res, revoked.status, revoked.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `License ${revoked.license.maskedKey} has been revoked.`,
+              license: revoked.license
+            });
+            return true;
+          }
+          sendError(
+            res,
+            400,
+            'Invalid license action. Supported actions: "verify_payment", "revoke".'
+          );
+          return true;
+        }
+        sendError(res, 405, `Method ${method} Not Allowed on /api/admin/licenses/:id.`);
         return true;
       }
     }

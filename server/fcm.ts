@@ -8,7 +8,7 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
-import { getDb } from './firebase';
+import { ensureServerFirestoreAuth } from './firebase';
 import { ReleaseMetadata, hasApkBinary } from './storage';
 
 export const DEFAULT_FCM_TOPIC = 'zoya_releases';
@@ -299,7 +299,7 @@ export async function registerFcmDeviceToken(params: {
     .digest('hex')
     .substring(0, 40);
 
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const now = new Date().toISOString();
   await setDoc(
     doc(db, 'fcm_devices', deviceId),
@@ -333,7 +333,7 @@ export async function getFcmStatus(): Promise<{
   let registeredDevicesCount = 0;
 
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snap = await getDocs(collection(db, 'fcm_devices'));
     registeredDevicesCount = snap.size;
   } catch {
@@ -396,7 +396,7 @@ export async function sendReleasePushNotification(
   }
 
   // 3. Guard: Idempotency check in Firestore `/fcm_notifications/{idempotencyKey}`
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const notifDocRef = doc(db, 'fcm_notifications', idempotencyKey);
   try {
     const existingSnap = await getDoc(notifDocRef);
@@ -736,7 +736,7 @@ export async function sendManualPushNotification(params: {
     };
   }
 
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const notifDocRef = doc(db, 'fcm_notifications', contentDedupKey);
 
   // 3. Check persistent Firestore deduplication record across serverless instances

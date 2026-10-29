@@ -8,6 +8,18 @@
     {
       "source": "/api/admin/releases/:id",
       "destination": "/api/admin/releases/[id]"
+    },
+    {
+      "source": "/api/admin/licenses",
+      "destination": "/api/admin/releases?__route=/api/admin/licenses"
+    },
+    {
+      "source": "/api/admin/licenses/:id",
+      "destination": "/api/admin/releases/[id]?__route=/api/admin/licenses/:id&id=:id"
+    },
+    {
+      "source": "/api/licenses/validate",
+      "destination": "/api/devices/register?__route=/api/licenses/validate"
     }
   ]
 }

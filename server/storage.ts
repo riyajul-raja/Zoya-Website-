@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { getDb, getStorageInstance } from './firebase';
+import { ensureServerFirestoreAuth, getStorageInstance } from './firebase';
 import {
   collection,
   doc,
@@ -131,7 +131,7 @@ export function isValidApkHeader(buffer: Buffer | Uint8Array): boolean {
 
 export async function getAllReleases(): Promise<ReleaseMetadata[]> {
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snapshot = await getDocs(collection(db, 'releases'));
     const releases: ReleaseMetadata[] = [];
     snapshot.forEach((docSnap) => {
@@ -176,7 +176,7 @@ export async function getLatestPublishedRelease(): Promise<ReleaseMetadata | nul
 export async function getReleaseById(id: string): Promise<ReleaseMetadata | null> {
   if (!id) return null;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const docRef = doc(db, 'releases', id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
@@ -201,7 +201,7 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
   ) as unknown as ReleaseMetadata;
 
   // 1. Persist permanently to Cloud Firestore
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const docRef = doc(db, 'releases', updatedRelease.id);
   await setDoc(docRef, updatedRelease);
 
@@ -225,7 +225,7 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
 export async function deleteStoredChunks(storageKey: string, totalChunks: number): Promise<void> {
   if (!storageKey || totalChunks <= 0) return;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const delPromises: Promise<void>[] = [];
     for (let i = 0; i < totalChunks; i++) {
       delPromises.push(deleteDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${i}`)));
@@ -242,7 +242,7 @@ export async function deleteRelease(id: string): Promise<boolean> {
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
 
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
 
   // 1. Delete permanently from Cloud Firestore releases collection
   try {
@@ -334,7 +334,7 @@ export async function storeApkChunk(
     throw new Error(`Chunk size (${chunkBuffer.length} bytes) exceeds safe Firestore document limit.`);
   }
 
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const uint8 = new Uint8Array(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
   await setDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${index}`), {
     storageKey,
@@ -355,7 +355,7 @@ export async function verifyStoredChunks(
 ): Promise<boolean> {
   if (!storageKey || totalChunks <= 0) return false;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const firstSnap = await getDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_0`));
     if (!firstSnap.exists()) return false;
     const firstData = firstSnap.data();
@@ -382,7 +382,7 @@ export async function hasApkBinary(release: ReleaseMetadata | null | undefined):
 
   // 1. Check Cloud Firestore apk_chunks (primary persistent cross-instance store)
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const chunk0Snap = await getDoc(doc(db, 'apk_chunks', `${release.storageKey}_chunk_0`));
     if (chunk0Snap.exists()) {
       const d = chunk0Snap.data();
@@ -524,7 +524,7 @@ export async function getApkBuffer(
 
   // 2. Download permanently from Cloud Firestore `apk_chunks` across separate Vercel Lambdas
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     let total = chunkCount && chunkCount > 0 ? chunkCount : 0;
     let chunk0Buffer: Buffer | null = null;
 

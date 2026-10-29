@@ -1,17 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Only the authenticated backend server identity (via Service Account Custom Token
+    // or pinned backend server UID) may read or write server-managed collections.
+    // All unauthenticated client requests and arbitrary client Firebase Auth users are denied.
+    function isAuthenticatedServer() {
+      return request.auth != null && (
+        request.auth.uid == 'ukJVtQYppkV4awTHZImYEPV7dH53' ||
+        request.auth.token.serverAdmin == true
+      );
+    }
+
+    function isValidLicenseDocument(data, licenseId) {
+      return !('licenseKey' in data)
+        && !('plaintextKey' in data)
+        && !('rawKey' in data)
+        && data.id == licenseId
+        && data.keyHash is string
+        && data.keyHash.size() == 64
+        && data.maskedKey is string
+        && data.maskedKey.size() >= 14
+        && data.customerName is string
+        && data.customerName.size() >= 2
+        && data.customerEmail is string
+        && data.customerEmail.size() >= 3
+        && data.licenseType == 'Lifetime'
+        && data.status in ['pending_payment', 'active', 'revoked']
+        && data.isComplimentary is bool
+        && data.paymentVerified is bool;
+    }
+
     match /releases/{releaseId} {
-      allow read, write: if true;
+      allow read, delete: if isAuthenticatedServer();
+      allow create, update: if isAuthenticatedServer()
+        && request.resource.data.id == releaseId
+        && request.resource.data.versionName is string
+        && request.resource.data.versionCode is int;
     }
+
     match /apk_chunks/{chunkId} {
-      allow read, write: if true;
+      allow read, delete: if isAuthenticatedServer();
+      allow create, update: if isAuthenticatedServer()
+        && request.resource.data.storageKey is string
+        && request.resource.data.index is int
+        && request.resource.data.totalChunks is int;
     }
+
     match /fcm_devices/{deviceId} {
-      allow read, write: if true;
+      allow read, delete: if isAuthenticatedServer();
+      allow create, update: if isAuthenticatedServer()
+        && request.resource.data.token is string;
     }
+
     match /fcm_notifications/{notificationId} {
-      allow read, write: if true;
+      allow read, delete: if isAuthenticatedServer();
+      allow create, update: if isAuthenticatedServer()
+        && request.resource.data.idempotencyKey is string
+        && request.resource.data.status is string;
+    }
+
+    match /licenses/{licenseId} {
+      allow read, delete: if isAuthenticatedServer();
+      allow create, update: if isAuthenticatedServer()
+        && isValidLicenseDocument(request.resource.data, licenseId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
+

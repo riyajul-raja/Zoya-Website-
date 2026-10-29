@@ -36,6 +36,20 @@ import {
   registerFcmDeviceToken,
   getFcmStatus,
 } from './fcm';
+import {
+  getAllLicenses,
+  getLicenseById,
+  computeLicenseStats,
+  createLifetimeLicense,
+  verifyLicensePayment,
+  revokeLicense,
+  validateLicenseForAndroid,
+  LicenseStorageError,
+} from './licenses';
+import {
+  checkRateLimit,
+  applyRateLimitHeaders,
+} from './rateLimit';
 
 export function sendJson(res: ServerResponse, status: number, data: unknown) {
   if (res.writableEnded || res.headersSent) {
@@ -46,8 +60,12 @@ export function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
-export function sendError(res: ServerResponse, status: number, message: string) {
-  sendJson(res, status, { success: false, error: message });
+export function sendError(res: ServerResponse, status: number, message: string, code?: string) {
+  sendJson(res, status, {
+    success: false,
+    ...(code ? { code } : status === 503 ? { code: 'STORAGE_UNAVAILABLE' } : {}),
+    error: message,
+  });
 }
 
 async function parseJsonBody<T>(req: IncomingMessage): Promise<T> {
@@ -202,12 +220,32 @@ export async function handleApiRequest(
   const url = req.url || '';
   const parsedUrl = new URL(url, 'http://localhost:3000');
   const rawReqPath = parsedUrl.pathname.replace(/\/+$/, '') || '/';
-  let pathname =
+  const rewrittenRoute = (parsedUrl.searchParams.get('__route') || '').trim();
+
+  let pathname: string;
+  if (rewrittenRoute) {
+    pathname = rewrittenRoute;
+  } else if (
     rawReqPath === '/api/admin/notify' ||
     rawReqPath === '/admin/notify' ||
     parsedUrl.searchParams.get('action') === 'notify'
-      ? '/api/admin/notify'
-      : explicitRoute || parsedUrl.pathname;
+  ) {
+    pathname = '/api/admin/notify';
+  } else if (
+    rawReqPath === '/api/admin/licenses' ||
+    rawReqPath === '/admin/licenses' ||
+    rawReqPath.startsWith('/api/admin/licenses/') ||
+    rawReqPath.startsWith('/admin/licenses/')
+  ) {
+    pathname = rawReqPath;
+  } else if (
+    rawReqPath === '/api/licenses/validate' ||
+    rawReqPath === '/licenses/validate'
+  ) {
+    pathname = '/api/licenses/validate';
+  } else {
+    pathname = explicitRoute || parsedUrl.pathname;
+  }
 
   // Ensure leading /api if missing from proxy/rewrites
   if (!pathname.startsWith('/api/')) {
@@ -220,7 +258,7 @@ export async function handleApiRequest(
 
   // CORS headers for API safety
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename, Accept, X-Requested-With');
 
   if (method === 'OPTIONS') {
@@ -383,6 +421,62 @@ export async function handleApiRequest(
       return true;
     }
 
+    // 5. POST /api/licenses/validate (Public rate-limited Android license validation endpoint)
+    if (pathname === '/api/licenses/validate') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      const rateLimit = checkRateLimit(req, {
+        namespace: 'license_validate',
+        maxRequests: 20,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          valid: false,
+          status: 'rate_limited',
+          code: 'RATE_LIMITED',
+          error: `Too many license validation requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        });
+        return true;
+      }
+
+      let body: {
+        licenseKey?: unknown;
+        deviceInfo?: {
+          deviceId?: unknown;
+          deviceModel?: unknown;
+          androidVersion?: unknown;
+          appVersion?: unknown;
+        } | null;
+      } = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendJson(res, 400, {
+          success: false,
+          valid: false,
+          status: 'malformed',
+          code: 'MALFORMED_KEY',
+          error: err instanceof Error ? err.message : 'Invalid JSON body.',
+        });
+        return true;
+      }
+
+      const result = await validateLicenseForAndroid(body);
+      const { httpStatus, ...payload } = result;
+      sendJson(res, httpStatus, {
+        success: result.valid,
+        ...payload,
+      });
+      return true;
+    }
+
     // ----------------------------------------------------
     // ADMIN AUTHENTICATION ENDPOINTS
     // ----------------------------------------------------
@@ -391,6 +485,22 @@ export async function handleApiRequest(
     if (pathname === '/api/admin/login') {
       if (method !== 'POST') {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      const loginRateLimit = checkRateLimit(req, {
+        namespace: 'admin_login',
+        maxRequests: 10,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, loginRateLimit);
+
+      if (!loginRateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          code: 'RATE_LIMITED',
+          error: `Too many login attempts. Please wait ${loginRateLimit.retryAfterSeconds}s before trying again.`,
+        });
         return true;
       }
 
@@ -936,12 +1046,146 @@ export async function handleApiRequest(
         });
         return true;
       }
+
+      // ----------------------------------------------------
+      // LIFETIME LICENSE MANAGEMENT ENDPOINTS (Admin Only)
+      // ----------------------------------------------------
+
+      // GET /api/admin/licenses (List all licenses + summary overview counts)
+      if (pathname === '/api/admin/licenses' && method === 'GET') {
+        const licenses = await getAllLicenses();
+        const stats = computeLicenseStats(licenses);
+        sendJson(res, 200, {
+          success: true,
+          stats,
+          licenses,
+        });
+        return true;
+      }
+
+      // POST /api/admin/licenses (Generate a new Lifetime license)
+      if (pathname === '/api/admin/licenses' && method === 'POST') {
+        let body: Record<string, unknown> = {};
+        try {
+          body = await parseJsonBody<Record<string, unknown>>(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+          return true;
+        }
+
+        const created = await createLifetimeLicense(body, user);
+        if (!created.success) {
+          sendError(res, created.status, created.error);
+          return true;
+        }
+
+        sendJson(res, 201, {
+          success: true,
+          message: created.license.isComplimentary
+            ? `Complimentary Lifetime license generated and activated for ${created.license.customerName}.`
+            : `Lifetime license generated for ${created.license.customerName} (Pending Payment verification).`,
+          generatedKey: created.generatedKey,
+          license: created.license,
+        });
+        return true;
+      }
+
+      // GET / POST / PATCH /api/admin/licenses/:id
+      if (pathname.startsWith('/api/admin/licenses/')) {
+        const anyReq = req as any;
+        const queryId = anyReq.query?.id || parsedUrl.searchParams.get('id');
+        const rawSubPath = pathname.substring('/api/admin/licenses/'.length).trim();
+        const licenseId = (
+          rawSubPath && rawSubPath !== ':id' && rawSubPath !== '[id]' ? rawSubPath : queryId || ''
+        ).trim();
+
+        if (!licenseId) {
+          sendError(res, 400, 'License ID is required.');
+          return true;
+        }
+
+        // GET /api/admin/licenses/:id (Retrieve full license details & audit history)
+        if (method === 'GET') {
+          const license = await getLicenseById(licenseId);
+          if (!license) {
+            sendError(res, 404, 'License record not found.');
+            return true;
+          }
+          sendJson(res, 200, {
+            success: true,
+            license,
+          });
+          return true;
+        }
+
+        // POST or PATCH /api/admin/licenses/:id (Verify payment or Revoke license)
+        if (method === 'POST' || method === 'PATCH') {
+          let body: {
+            action?: unknown;
+            paymentReference?: unknown;
+            amount?: unknown;
+            currency?: unknown;
+            verificationNote?: unknown;
+            reason?: unknown;
+          } = {};
+          try {
+            body = await parseJsonBody(req);
+          } catch (err) {
+            sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+            return true;
+          }
+
+          const action = typeof body.action === 'string' ? body.action.trim() : '';
+
+          if (action === 'verify_payment') {
+            const verified = await verifyLicensePayment(licenseId, body, user);
+            if (!verified.success) {
+              sendError(res, verified.status, verified.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `Payment verified by ${user.name}. License is now Active.`,
+              license: verified.license,
+            });
+            return true;
+          }
+
+          if (action === 'revoke') {
+            const revoked = await revokeLicense(licenseId, body, user);
+            if (!revoked.success) {
+              sendError(res, revoked.status, revoked.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `License ${revoked.license.maskedKey} has been revoked.`,
+              license: revoked.license,
+            });
+            return true;
+          }
+
+          sendError(
+            res,
+            400,
+            'Invalid license action. Supported actions: "verify_payment", "revoke".'
+          );
+          return true;
+        }
+
+        sendError(res, 405, `Method ${method} Not Allowed on /api/admin/licenses/:id.`);
+        return true;
+      }
     }
 
     // Unmatched API route
     sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
     return true;
   } catch (err: unknown) {
+    if (err instanceof LicenseStorageError) {
+      sendError(res, 503, err.message, err.code);
+      return true;
+    }
     console.error('API Error:', err);
     sendError(res, 500, err instanceof Error ? err.message : 'Internal Server Error');
     return true;

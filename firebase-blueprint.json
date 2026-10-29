@@ -73,6 +73,36 @@
         "sentAt": { "type": "string" }
       },
       "required": ["idempotencyKey", "releaseId", "status", "sentAt"]
+    },
+    "License": {
+      "title": "License",
+      "description": "Zoya Lifetime License record with SHA-256 hashed key and payment verification audit history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "keyHash": { "type": "string" },
+        "maskedKey": { "type": "string" },
+        "keyLastFour": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "licenseType": { "type": "string" },
+        "status": { "type": "string" },
+        "isComplimentary": { "type": "boolean" },
+        "complimentaryReason": { "type": "string" },
+        "paymentReference": { "type": "string" },
+        "amount": { "type": "string" },
+        "currency": { "type": "string" },
+        "paymentVerified": { "type": "boolean" },
+        "verifiedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "activatedAt": { "type": "string" },
+        "revokedAt": { "type": "string" },
+        "revokeReason": { "type": "string" },
+        "lastSeenAt": { "type": "string" },
+        "validationCount": { "type": "number" }
+      },
+      "required": ["id", "keyHash", "maskedKey", "customerName", "customerEmail", "licenseType", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -91,6 +121,10 @@
     "/fcm_notifications/{notificationId}": {
       "schema": "FcmNotification",
       "description": "Stores idempotency records for published release push notifications"
+    },
+    "/licenses/{licenseId}": {
+      "schema": "License",
+      "description": "Stores Zoya Lifetime License records, payment verification status, and audit logs"
     }
   }
 }

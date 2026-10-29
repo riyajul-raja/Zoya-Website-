@@ -17,6 +17,7 @@ import {
   Clock,
   Bell,
   Send,
+  Key,
 } from 'lucide-react';
 import { ReleaseMetadata } from '../../../server/storage';
 import {
@@ -24,6 +25,7 @@ import {
   ClientApkMetadata,
   OFFICIAL_ZOYA_PACKAGE,
 } from '../../utils/apkParser';
+import { LicenseManager } from './LicenseManager';
 
 interface ReleaseManagerProps {
   token: string;
@@ -33,7 +35,9 @@ interface ReleaseManagerProps {
 export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onReleasePublished }) => {
   const [releases, setReleases] = useState<ReleaseMetadata[]>([]);
   const [loadingReleases, setLoadingReleases] = useState(true);
-  const [activeTab, setActiveTab] = useState<'upload' | 'notify' | 'history' | 'storage-config'>('upload');
+  const [activeTab, setActiveTab] = useState<
+    'upload' | 'licenses' | 'notify' | 'history' | 'storage-config'
+  >('upload');
 
   // APK Inspection & Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -703,6 +707,19 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
 
         <button
           type="button"
+          onClick={() => setActiveTab('licenses')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+            activeTab === 'licenses'
+              ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Key className="w-4 h-4" />
+          <span>License Management</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('notify')}
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
             activeTab === 'notify'
@@ -740,6 +757,9 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           <span>Cloud Storage &amp; Config</span>
         </button>
       </div>
+
+      {/* TAB: LICENSE MANAGEMENT */}
+      {activeTab === 'licenses' && <LicenseManager token={token} />}
 
       {/* TAB 1: UPLOAD & PUBLISH NEW RELEASE */}
       {activeTab === 'upload' && (
