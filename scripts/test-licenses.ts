@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc } from 'firebase/firestore';
@@ -109,12 +111,11 @@ async function runTests() {
   const protectedIds = new Set(preTestLicenses.map((l) => l.id));
   const preAA8D = preTestLicenses.find((l) => l.keyLastFour === 'AA8D' || l.maskedKey.endsWith('AA8D'));
   const preRC6K = preTestLicenses.find((l) => l.keyLastFour === 'RC6K' || l.maskedKey.endsWith('RC6K'));
-  assert.ok(preAA8D, 'Pre-check: Existing audit-test license record ending AA8D must exist in Firestore');
+  assert.equal(preAA8D, undefined, 'Pre-check: Deleted audit-test record ending AA8D must not exist in Firestore');
   assert.ok(preRC6K, 'Pre-check: Existing license record ending RC6K must exist in Firestore');
-  const preAA8DJson = JSON.stringify(preAA8D);
   const preRC6KJson = JSON.stringify(preRC6K);
   console.log(
-    `Pre-test Firestore snapshot: ${preTestLicenses.length} existing records preserved (${preAA8D.maskedKey} [${preAA8D.status}], ${preRC6K.maskedKey} [${preRC6K.status}]).\n`
+    `Pre-test Firestore snapshot: ${preTestLicenses.length} existing record(s) preserved (${preRC6K.maskedKey} [${preRC6K.status}]).\n`
   );
 
   try {
@@ -285,36 +286,137 @@ async function runTests() {
     console.log('  ✓ Passed pending-payment rejection check.');
 
     // ---------------------------------------------------------
-    // 5. MANUAL PAYMENT VERIFICATION & ACTIVATION
+    // 5. DIRECT SINGLE-CLICK PAYMENT VERIFICATION & ACTIVATION (NO MODAL)
     // ---------------------------------------------------------
-    console.log('Test 5: Manual payment verification by admin activates license...');
+    console.log('Test 5: Direct single-click "Verify Payment & Activate License" without extra confirmation modal...');
+    const licenseManagerSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/admin/LicenseManager.tsx'),
+      'utf-8'
+    );
+    assert.equal(
+      licenseManagerSource.includes('Manual Payment Verification'),
+      false,
+      'Extra Manual Payment Verification modal/form must be removed from LicenseManager.tsx'
+    );
+    assert.equal(
+      licenseManagerSource.includes('Verified Transaction / Payment Reference'),
+      false,
+      'Verified Transaction / Payment Reference modal input must be removed'
+    );
+    assert.equal(
+      licenseManagerSource.includes('I have independently checked'),
+      false,
+      'Second confirmation checkbox must be removed'
+    );
+    assert.equal(
+      licenseManagerSource.includes('Confirm & Activate'),
+      false,
+      'Confirm & Activate modal submit button must be removed'
+    );
+    assert.ok(
+      licenseManagerSource.includes('handleVerifyAndActivate(selectedLicense)'),
+      'Verify Payment & Activate License button must directly invoke handleVerifyAndActivate(selectedLicense)'
+    );
+
     assert.ok(Array.isArray(createdLic.auditLog) && createdLic.auditLog.length === 1, 'Initial paid license must have 1 auditLog entry');
     assert.equal(createdLic.auditLog[0].action, 'created', 'First auditLog entry must be created');
 
+    // Unauthorized activation attempt must be rejected
+    const unauthVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${createdLic.id}`,
+      body: {
+        action: 'verify_payment',
+      },
+    });
+    assert.equal(unauthVerifyRes.statusCode, 401, 'Unauthenticated verify_payment must return 401');
+
+    // Direct activation reusing the license's existing paymentReference and amount
     const verifyRes = await invokeHandler({
       method: 'POST',
       url: `/api/admin/licenses/${createdLic.id}`,
       headers: { Authorization: `Bearer ${adminToken}` },
       body: {
         action: 'verify_payment',
-        paymentReference: 'UTR9988776655',
-        amount: '999',
-        currency: 'INR',
-        verificationNote: 'Independently verified in bank portal',
+        paymentReference: createdLic.paymentReference || undefined,
+        amount: createdLic.amount || undefined,
+        currency: createdLic.currency || undefined,
       },
     });
-    assert.equal(verifyRes.statusCode, 200, 'Manual payment verification must succeed with 200');
+    assert.equal(verifyRes.statusCode, 200, 'Direct payment verification & activation must succeed with 200');
     assert.equal(verifyRes.json?.license?.status, 'active');
     assert.equal(verifyRes.json?.license?.paymentVerified, true);
+    assert.equal(verifyRes.json?.license?.paymentReference, 'UTR9988776655', 'Existing paymentReference must be reused');
+    assert.equal(verifyRes.json?.license?.amount, '999', 'Existing amount must be reused');
+    assert.equal(verifyRes.json?.license?.currency, 'INR', 'Existing currency must be reused');
     assert.equal(verifyRes.json?.license?.verifiedBy?.email, adminUser.email);
     assert.ok(verifyRes.json?.license?.verifiedAt, 'verifiedAt timestamp must be recorded');
+    assert.ok(verifyRes.json?.license?.activatedAt, 'activatedAt timestamp must be recorded upon activation');
     assert.ok(
       verifyRes.json?.license?.auditLog?.some(
         (e: any) => e.action === 'payment_verified' && typeof e.actor === 'string' && e.actor.includes(adminUser.email)
       ),
       'auditLog must record payment_verified action with admin identity'
     );
-    console.log('  ✓ Passed manual payment verification check.');
+
+    // Duplicate activation must be rejected with HTTP 400
+    const duplicateVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${createdLic.id}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        action: 'verify_payment',
+      },
+    });
+    assert.equal(duplicateVerifyRes.statusCode, 400, 'Duplicate verify_payment on active license must return 400');
+
+    // Direct activation when paymentReference is missing (null) must succeed without inventing a reference
+    const noRefCreateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        customerName: 'No Ref Customer',
+        customerEmail: 'noref@example.com',
+        licenseType: 'Lifetime',
+        amount: '300',
+        currency: 'INR',
+      },
+    });
+    assert.equal(noRefCreateRes.statusCode, 201);
+    const noRefLic = noRefCreateRes.json.license;
+    createdLicenseIds.push(noRefLic.id);
+    assert.equal(noRefLic.paymentReference, null, 'License created without paymentReference must have paymentReference = null');
+    assert.equal(noRefLic.status, 'pending_payment');
+
+    const noRefVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${noRefLic.id}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        action: 'verify_payment',
+        paymentReference: noRefLic.paymentReference || undefined,
+        amount: noRefLic.amount || undefined,
+        currency: noRefLic.currency || undefined,
+      },
+    });
+    assert.equal(noRefVerifyRes.statusCode, 200, 'Activation without paymentReference must succeed without blocking');
+    assert.equal(noRefVerifyRes.json?.license?.status, 'active');
+    assert.equal(noRefVerifyRes.json?.license?.paymentVerified, true);
+    assert.equal(
+      noRefVerifyRes.json?.license?.paymentReference,
+      null,
+      'Backend must NOT invent or fabricate a paymentReference when none exists'
+    );
+    assert.equal(noRefVerifyRes.json?.license?.amount, '300', 'Existing amount must be preserved');
+    assert.ok(noRefVerifyRes.json?.license?.activatedAt, 'activatedAt timestamp must be set');
+    assert.ok(
+      noRefVerifyRes.json?.license?.auditLog?.some(
+        (e: any) => e.action === 'payment_verified' && String(e.details).includes('No payment reference recorded')
+      ),
+      'auditLog must honestly record verification when no payment reference was recorded'
+    );
+    console.log('  ✓ Passed direct single-click payment verification & activation checks.');
 
     // ---------------------------------------------------------
     // 6. VALID, INVALID, COMPLIMENTARY, REVOKED & AUDIT TRAIL
@@ -691,9 +793,9 @@ async function runTests() {
   }
 
   // ---------------------------------------------------------
-  // 11. POST-TEST VERIFICATION OF EXISTING RECORDS (AA8D & RC6K)
+  // 11. POST-TEST VERIFICATION OF EXISTING RECORD (RC6K)
   // ---------------------------------------------------------
-  console.log('Test 11: Verifying existing Firestore records (AA8D & RC6K) remain 100% untouched...');
+  console.log('Test 11: Verifying existing Firestore record (RC6K) remains 100% untouched...');
   const postTestLicenses = await getAllLicenses();
   assert.equal(
     postTestLicenses.length,
@@ -702,11 +804,10 @@ async function runTests() {
   );
   const postAA8D = postTestLicenses.find((l) => l.keyLastFour === 'AA8D' || l.maskedKey.endsWith('AA8D'));
   const postRC6K = postTestLicenses.find((l) => l.keyLastFour === 'RC6K' || l.maskedKey.endsWith('RC6K'));
-  assert.ok(postAA8D, 'Existing audit-test record ending AA8D must still exist');
+  assert.equal(postAA8D, undefined, 'Deleted audit-test record ending AA8D must remain absent');
   assert.ok(postRC6K, 'Existing customer record ending RC6K must still exist');
-  assert.equal(JSON.stringify(postAA8D), preAA8DJson, 'Existing record ending AA8D must be byte-for-byte unchanged');
   assert.equal(JSON.stringify(postRC6K), preRC6KJson, 'Existing record ending RC6K must be byte-for-byte unchanged');
-  console.log(`  ✓ Verified ${postAA8D.maskedKey} (${postAA8D.status}) and ${postRC6K.maskedKey} (${postRC6K.status}) are completely unchanged.`);
+  console.log(`  ✓ Verified ${postRC6K.maskedKey} (${postRC6K.status}) is completely unchanged.`);
 
   console.log('\nALL 11 LICENSE MANAGEMENT & SECURITY HARDENING TEST SUITES PASSED SUCCESSFULLY!');
   process.exit(0);

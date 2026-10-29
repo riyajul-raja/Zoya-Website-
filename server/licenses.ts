@@ -593,7 +593,7 @@ export async function verifyLicensePayment(
         };
       }
 
-      if (existing.paymentVerified && existing.status === 'active') {
+      if (existing.status === 'active' || existing.paymentVerified) {
         return {
           success: false,
           status: 400,
@@ -603,15 +603,6 @@ export async function verifyLicensePayment(
 
       const providedRef = sanitizeText(input?.paymentReference, 120);
       const finalPaymentRef = providedRef || existing.paymentReference || null;
-
-      if (!finalPaymentRef) {
-        return {
-          success: false,
-          status: 400,
-          error:
-            'A payment reference / transaction ID is required before marking payment as verified.',
-        };
-      }
 
       let finalAmount = existing.amount;
       if (
@@ -637,15 +628,21 @@ export async function verifyLicensePayment(
 
       const nowIso = new Date().toISOString();
       const actorLabel = `${admin.name} <${admin.email}>`;
+      const refDetail = finalPaymentRef
+        ? `Ref: ${finalPaymentRef}`
+        : 'No payment reference recorded';
+      const amountDetail = finalAmount
+        ? `, Amount: ${finalCurrency || ''} ${finalAmount}`.trim()
+        : '';
 
       const auditEntry: LicenseAuditEntry = {
         id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
         action: 'payment_verified',
         timestamp: nowIso,
         actor: actorLabel,
-        details: `Payment independently verified by ${admin.name} (Ref: ${finalPaymentRef}${
-          finalAmount ? `, Amount: ${finalCurrency || ''} ${finalAmount}`.trim() : ''
-        }). Status changed to Active.${verificationNote ? ` Note: ${verificationNote}` : ''}`,
+        details: `Payment independently verified by ${admin.name} (${refDetail}${amountDetail}). Status changed to Active.${
+          verificationNote ? ` Note: ${verificationNote}` : ''
+        }`,
       };
 
       const updated: LicenseRecord = {
@@ -659,6 +656,7 @@ export async function verifyLicensePayment(
           name: admin.name,
         },
         verifiedAt: nowIso,
+        activatedAt: existing.activatedAt || nowIso,
         status: 'active',
         updatedAt: nowIso,
         auditLog: [...(existing.auditLog || []), auditEntry],
@@ -862,7 +860,9 @@ export async function validateLicenseForAndroid(
       }
 
       const nowIso = new Date().toISOString();
-      const isFirstActivation = !existing.activatedAt;
+      const isFirstActivation =
+        (existing.validationCount || 0) === 0 &&
+        !(existing.auditLog || []).some((e) => e.action === 'activated');
       const activatedAt = existing.activatedAt || nowIso;
 
       // Only populate linkedDevice when actual device metadata is sent by the client

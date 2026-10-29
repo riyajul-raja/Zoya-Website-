@@ -76,12 +76,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
   const [selectedLicenseId, setSelectedLicenseId] = useState<string | null>(null);
 
   // Verify Payment Action State
-  const [verifyingLicenseId, setVerifyingLicenseId] = useState<string | null>(null);
-  const [verifyPaymentRef, setVerifyPaymentRef] = useState('');
-  const [verifyAmount, setVerifyAmount] = useState('');
-  const [verifyCurrency, setVerifyCurrency] = useState('INR');
-  const [verifyNote, setVerifyNote] = useState('');
-  const [verifyConfirmedCheck, setVerifyConfirmedCheck] = useState(false);
   const [submittingVerify, setSubmittingVerify] = useState(false);
 
   // Revoke Action State
@@ -286,42 +280,15 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
     }
   };
 
-  const openVerifyPaymentPanel = (lic: LicenseRecord) => {
+  const handleVerifyAndActivate = async (lic: LicenseRecord) => {
+    if (!lic || lic.status !== 'pending_payment' || submittingVerify) return;
+
     setActionFeedback(null);
     setRevokingLicenseId(null);
-    setVerifyingLicenseId(lic.id);
-    setVerifyPaymentRef(lic.paymentReference || '');
-    setVerifyAmount(lic.amount || '');
-    setVerifyCurrency(lic.currency || 'INR');
-    setVerifyNote('');
-    setVerifyConfirmedCheck(false);
-  };
-
-  const handleConfirmVerifyPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!verifyingLicenseId || submittingVerify) return;
-
-    if (!verifyPaymentRef.trim()) {
-      setActionFeedback({
-        type: 'error',
-        text: 'Payment Reference / Transaction ID is required to verify payment.',
-      });
-      return;
-    }
-
-    if (!verifyConfirmedCheck) {
-      setActionFeedback({
-        type: 'error',
-        text: 'Please confirm that you have independently verified this payment transaction.',
-      });
-      return;
-    }
-
     setSubmittingVerify(true);
-    setActionFeedback(null);
 
     try {
-      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(verifyingLicenseId)}`, {
+      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(lic.id)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -329,10 +296,9 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
         },
         body: JSON.stringify({
           action: 'verify_payment',
-          paymentReference: verifyPaymentRef.trim(),
-          amount: verifyAmount.trim() || undefined,
-          currency: verifyCurrency.trim() || undefined,
-          verificationNote: verifyNote.trim() || undefined,
+          paymentReference: lic.paymentReference || undefined,
+          amount: lic.amount || undefined,
+          currency: lic.currency || undefined,
         }),
       });
 
@@ -348,7 +314,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
         throw new Error(data.error || `Failed to verify payment (${res.status}).`);
       }
 
-      setVerifyingLicenseId(null);
       setActionFeedback({
         type: 'success',
         text: data.message || 'Payment verified and license activated.',
@@ -366,7 +331,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
   const openRevokePanel = (lic: LicenseRecord) => {
     setActionFeedback(null);
-    setVerifyingLicenseId(null);
     setRevokingLicenseId(lic.id);
     setRevokeReason('');
   };
@@ -895,7 +859,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                     onClick={() => {
                       setSelectedLicenseId(lic.id);
                       setActionFeedback(null);
-                      setVerifyingLicenseId(null);
                       setRevokingLicenseId(null);
                     }}
                     className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -1141,111 +1104,25 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
               {/* Administrative Action Controls */}
               <div className="space-y-3 pt-1">
-                {selectedLicense.status === 'pending_payment' &&
-                  verifyingLicenseId !== selectedLicense.id && (
-                    <button
-                      type="button"
-                      onClick={() => openVerifyPaymentPanel(selectedLicense)}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all cursor-pointer"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Verify Payment &amp; Activate License</span>
-                    </button>
-                  )}
-
-                {/* Inline Payment Verification Form */}
-                {verifyingLicenseId === selectedLicense.id && (
-                  <form
-                    onSubmit={handleConfirmVerifyPayment}
-                    className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3 text-xs"
+                {selectedLicense.status === 'pending_payment' && (
+                  <button
+                    type="button"
+                    disabled={submittingVerify}
+                    onClick={() => handleVerifyAndActivate(selectedLicense)}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    <div className="font-bold text-emerald-300 uppercase tracking-wider text-[11px]">
-                      Manual Payment Verification
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-300 mb-1">
-                        Verified Transaction / Payment Reference <span className="text-emerald-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={120}
-                        value={verifyPaymentRef}
-                        onChange={(e) => setVerifyPaymentRef(e.target.value)}
-                        placeholder="Enter verified bank/UPI/transaction ID"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2">
-                        <label className="block text-[11px] text-slate-300 mb-1">Amount</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={verifyAmount}
-                          onChange={(e) => setVerifyAmount(e.target.value)}
-                          placeholder="999"
-                          className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] text-slate-300 mb-1">Currency</label>
-                        <input
-                          type="text"
-                          maxLength={8}
-                          value={verifyCurrency}
-                          onChange={(e) => setVerifyCurrency(e.target.value.toUpperCase())}
-                          className="w-full px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] text-slate-300 mb-1">
-                        Verification Note (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={240}
-                        value={verifyNote}
-                        onChange={(e) => setVerifyNote(e.target.value)}
-                        placeholder="e.g., Confirmed in bank statement"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-
-                    <label className="flex items-start gap-2 text-[11px] text-slate-200 cursor-pointer pt-1">
-                      <input
-                        type="checkbox"
-                        checked={verifyConfirmedCheck}
-                        onChange={(e) => setVerifyConfirmedCheck(e.target.checked)}
-                        className="mt-0.5 rounded accent-emerald-400"
-                      />
-                      <span>
-                        I have independently checked and verified that payment for this transaction has been received.
-                      </span>
-                    </label>
-
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="submit"
-                        disabled={submittingVerify}
-                        className="flex-1 py-2 px-3 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
-                      >
-                        {submittingVerify ? 'Verifying...' : 'Confirm & Activate'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setVerifyingLicenseId(null)}
-                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
+                    {submittingVerify ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Activating License...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Verify Payment &amp; Activate License</span>
+                      </>
+                    )}
+                  </button>
                 )}
 
                 {selectedLicense.status !== 'revoked' &&

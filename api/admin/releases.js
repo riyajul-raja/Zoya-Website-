@@ -1023,8 +1023,8 @@ var require_service_config = __commonJS({
       if (!("name" in obj) || !Array.isArray(obj.name)) {
         throw new Error("Invalid method config: invalid name array");
       }
-      for (const name5 of obj.name) {
-        result.name.push(validateName(name5));
+      for (const name6 of obj.name) {
+        result.name.push(validateName(name6));
       }
       if ("waitForReady" in obj) {
         if (typeof obj.waitForReady !== "boolean") {
@@ -1119,13 +1119,13 @@ var require_service_config = __commonJS({
       }
       const seenMethodNames = [];
       for (const methodConfig of result.methodConfig) {
-        for (const name5 of methodConfig.name) {
+        for (const name6 of methodConfig.name) {
           for (const seenName of seenMethodNames) {
-            if (name5.service === seenName.service && name5.method === seenName.method) {
-              throw new Error(`Invalid service config: duplicate name ${name5.service}/${name5.method}`);
+            if (name6.service === seenName.service && name6.method === seenName.method) {
+              throw new Error(`Invalid service config: duplicate name ${name6.service}/${name6.method}`);
             }
           }
-          seenMethodNames.push(name5);
+          seenMethodNames.push(name6);
         }
       }
       return result;
@@ -1725,20 +1725,20 @@ var require_resolving_load_balancer = __commonJS({
       "EMPTY"
     ];
     function hasMatchingName(service, method, methodConfig, matchLevel) {
-      for (const name5 of methodConfig.name) {
+      for (const name6 of methodConfig.name) {
         switch (matchLevel) {
           case "EMPTY":
-            if (!name5.service && !name5.method) {
+            if (!name6.service && !name6.method) {
               return true;
             }
             break;
           case "SERVICE":
-            if (name5.service === service && !name5.method) {
+            if (name6.service === service && !name6.method) {
               return true;
             }
             break;
           case "SERVICE_AND_METHOD":
-            if (name5.service === service && name5.method === method) {
+            if (name6.service === service && name6.method === method) {
               return true;
             }
         }
@@ -2993,13 +2993,13 @@ var require_make_client = __commonJS({
       }
       class ServiceClientImpl extends client_1.Client {
       }
-      Object.keys(methods).forEach((name5) => {
-        if (isPrototypePolluted(name5)) {
+      Object.keys(methods).forEach((name6) => {
+        if (isPrototypePolluted(name6)) {
           return;
         }
-        const attrs = methods[name5];
+        const attrs = methods[name6];
         let methodType;
-        if (typeof name5 === "string" && name5.charAt(0) === "$") {
+        if (typeof name6 === "string" && name6.charAt(0) === "$") {
           throw new Error("Method names cannot start with $");
         }
         if (attrs.requestStream) {
@@ -3018,10 +3018,10 @@ var require_make_client = __commonJS({
         const serialize = attrs.requestSerialize;
         const deserialize = attrs.responseDeserialize;
         const methodFunc = partial(requesterFuncs[methodType], attrs.path, serialize, deserialize);
-        ServiceClientImpl.prototype[name5] = methodFunc;
-        Object.assign(ServiceClientImpl.prototype[name5], attrs);
+        ServiceClientImpl.prototype[name6] = methodFunc;
+        Object.assign(ServiceClientImpl.prototype[name6], attrs);
         if (attrs.originalName && !isPrototypePolluted(attrs.originalName)) {
-          ServiceClientImpl.prototype[attrs.originalName] = ServiceClientImpl.prototype[name5];
+          ServiceClientImpl.prototype[attrs.originalName] = ServiceClientImpl.prototype[name6];
         }
       });
       ServiceClientImpl.service = methods;
@@ -5123,7 +5123,7 @@ var require_minimal = __commonJS({
     util.lcFirst = function lcFirst(str) {
       return str.charAt(0).toLowerCase() + str.substring(1);
     };
-    function newError(name5) {
+    function newError(name6) {
       function CustomError(message, properties) {
         if (!(this instanceof CustomError))
           return new CustomError(message, properties);
@@ -5146,7 +5146,7 @@ var require_minimal = __commonJS({
         },
         name: {
           get: function get() {
-            return name5;
+            return name6;
           },
           set: void 0,
           enumerable: false,
@@ -5180,9 +5180,9 @@ var require_minimal = __commonJS({
       };
     };
     util.oneOfSetter = function setOneOf(fieldNames) {
-      return function(name5) {
+      return function(name6) {
         for (var i = 0; i < fieldNames.length; ++i)
-          if (fieldNames[i] !== name5)
+          if (fieldNames[i] !== name6)
             delete this[fieldNames[i]];
       };
     };
@@ -5226,7 +5226,7 @@ var require_writer = __commonJS({
       this.next = void 0;
       this.val = val;
     }
-    function noop() {
+    function noop2() {
     }
     function State(writer) {
       this.head = writer.head;
@@ -5236,7 +5236,7 @@ var require_writer = __commonJS({
     }
     function Writer() {
       this.len = 0;
-      this.head = new Op(noop, 0, 0);
+      this.head = new Op(noop2, 0, 0);
       this.tail = this.head;
       this.states = null;
     }
@@ -5359,7 +5359,7 @@ var require_writer = __commonJS({
     };
     Writer.prototype.fork = function fork() {
       this.states = new State(this);
-      this.head = this.tail = new Op(noop, 0, 0);
+      this.head = this.tail = new Op(noop2, 0, 0);
       this.len = 0;
       return this;
     };
@@ -5370,7 +5370,7 @@ var require_writer = __commonJS({
         this.len = this.states.len;
         this.states = this.states.next;
       } else {
-        this.head = this.tail = new Op(noop, 0, 0);
+        this.head = this.tail = new Op(noop2, 0, 0);
         this.len = 0;
       }
       return this;
@@ -5896,15 +5896,15 @@ var require_codegen = __commonJS({
       return Codegen;
     }
     codegen.verbose = false;
-    function safeFunctionName(name5) {
-      if (!name5)
+    function safeFunctionName(name6) {
+      if (!name6)
         return "";
-      name5 = String(name5).replace(/[^\w$]/g, "");
-      if (!name5)
+      name6 = String(name6).replace(/[^\w$]/g, "");
+      if (!name6)
         return "";
-      if (/^\d/.test(name5))
-        name5 = "_" + name5;
-      return reservedRe.test(name5) ? name5 + "_" : name5;
+      if (/^\d/.test(name6))
+        name6 = "_" + name6;
+      return reservedRe.test(name6) ? name6 + "_" : name6;
     }
   }
 });
@@ -6073,9 +6073,9 @@ var require_namespace = __commonJS({
     var Type;
     var Service;
     var Enum;
-    Namespace.fromJSON = function fromJSON2(name5, json, depth) {
+    Namespace.fromJSON = function fromJSON2(name6, json, depth) {
       depth = util.checkDepth(depth);
-      return new Namespace(name5, json.options).addJSON(json.nested, depth);
+      return new Namespace(name6, json.options).addJSON(json.nested, depth);
     };
     function arrayToJSON(array2, toJSONOptions) {
       if (!(array2 && array2.length))
@@ -6094,16 +6094,16 @@ var require_namespace = __commonJS({
       }
       return false;
     };
-    Namespace.isReservedName = function isReservedName(reserved, name5) {
+    Namespace.isReservedName = function isReservedName(reserved, name6) {
       if (reserved) {
         for (var i = 0; i < reserved.length; ++i)
-          if (reserved[i] === name5)
+          if (reserved[i] === name6)
             return true;
       }
       return false;
     };
-    function Namespace(name5, options2) {
-      ReflectionObject.call(this, name5, options2);
+    function Namespace(name6, options2) {
+      ReflectionObject.call(this, name6, options2);
       this.nested = void 0;
       this._nestedArray = null;
       this._lookupCache = /* @__PURE__ */ Object.create(null);
@@ -6146,13 +6146,13 @@ var require_namespace = __commonJS({
       }
       return this;
     };
-    Namespace.prototype.get = function get(name5) {
-      return this.nested && Object.prototype.hasOwnProperty.call(this.nested, name5) ? this.nested[name5] : null;
+    Namespace.prototype.get = function get(name6) {
+      return this.nested && Object.prototype.hasOwnProperty.call(this.nested, name6) ? this.nested[name6] : null;
     };
-    Namespace.prototype.getEnum = function getEnum(name5) {
-      if (this.nested && Object.prototype.hasOwnProperty.call(this.nested, name5) && this.nested[name5] instanceof Enum)
-        return this.nested[name5].values;
-      throw Error("no such enum: " + name5);
+    Namespace.prototype.getEnum = function getEnum(name6) {
+      if (this.nested && Object.prototype.hasOwnProperty.call(this.nested, name6) && this.nested[name6] instanceof Enum)
+        return this.nested[name6].values;
+      throw Error("no such enum: " + name6);
     };
     Namespace.prototype.add = function add(object) {
       if (!(object instanceof Field2 && object.extend !== void 0 || object instanceof Type || object instanceof OneOf || object instanceof Enum || object instanceof Service || object instanceof Namespace))
@@ -6348,16 +6348,16 @@ var require_mapfield = __commonJS({
     ((MapField.prototype = Object.create(Field2.prototype)).constructor = MapField).className = "MapField";
     var types = require_types();
     var util = require_util();
-    function MapField(name5, id, keyType, type, options2, comment) {
-      Field2.call(this, name5, id, type, void 0, void 0, options2, comment);
+    function MapField(name6, id, keyType, type, options2, comment) {
+      Field2.call(this, name6, id, type, void 0, void 0, options2, comment);
       if (!util.isString(keyType))
         throw TypeError("keyType must be a string");
       this.keyType = keyType;
       this.resolvedKeyType = null;
       this.map = true;
     }
-    MapField.fromJSON = function fromJSON2(name5, json) {
-      return new MapField(name5, json.id, json.keyType, json.type, json.options, json.comment);
+    MapField.fromJSON = function fromJSON2(name6, json) {
+      return new MapField(name6, json.id, json.keyType, json.type, json.options, json.comment);
     };
     MapField.prototype.toJSON = function toJSON(toJSONOptions) {
       var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
@@ -6403,7 +6403,7 @@ var require_method = __commonJS({
     var ReflectionObject = require_object();
     ((Method.prototype = Object.create(ReflectionObject.prototype)).constructor = Method).className = "Method";
     var util = require_util();
-    function Method(name5, type, requestType, responseType, requestStream, responseStream, options2, comment, parsedOptions) {
+    function Method(name6, type, requestType, responseType, requestStream, responseStream, options2, comment, parsedOptions) {
       if (util.isObject(requestStream)) {
         options2 = requestStream;
         requestStream = responseStream = void 0;
@@ -6417,7 +6417,7 @@ var require_method = __commonJS({
         throw TypeError("requestType must be a string");
       if (!util.isString(responseType))
         throw TypeError("responseType must be a string");
-      ReflectionObject.call(this, name5, options2);
+      ReflectionObject.call(this, name6, options2);
       this.type = type || "rpc";
       this.requestType = requestType;
       this.requestStream = requestStream ? true : void 0;
@@ -6428,8 +6428,8 @@ var require_method = __commonJS({
       this.comment = comment;
       this.parsedOptions = parsedOptions;
     }
-    Method.fromJSON = function fromJSON2(name5, json) {
-      return new Method(name5, json.type, json.requestType, json.responseType, json.requestStream, json.responseStream, json.options, json.comment, json.parsedOptions);
+    Method.fromJSON = function fromJSON2(name6, json) {
+      return new Method(name6, json.type, json.requestType, json.responseType, json.requestStream, json.responseStream, json.options, json.comment, json.parsedOptions);
     };
     Method.prototype.toJSON = function toJSON(toJSONOptions) {
       var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
@@ -6473,14 +6473,14 @@ var require_service2 = __commonJS({
     var Method = require_method();
     var util = require_util();
     var rpc = require_rpc();
-    function Service(name5, options2) {
-      Namespace.call(this, name5, options2);
+    function Service(name6, options2) {
+      Namespace.call(this, name6, options2);
       this.methods = {};
       this._methodsArray = null;
     }
-    Service.fromJSON = function fromJSON2(name5, json, depth) {
+    Service.fromJSON = function fromJSON2(name6, json, depth) {
       depth = util.checkDepth(depth);
-      var service = new Service(name5, json.options);
+      var service = new Service(name6, json.options);
       if (json.methods)
         for (var names = Object.keys(json.methods), i = 0; i < names.length; ++i)
           service.add(Method.fromJSON(names[i], json.methods[names[i]]));
@@ -6518,8 +6518,8 @@ var require_service2 = __commonJS({
       service._methodsArray = null;
       return service;
     }
-    Service.prototype.get = function get(name5) {
-      return Object.prototype.hasOwnProperty.call(this.methods, name5) ? this.methods[name5] : Namespace.prototype.get.call(this, name5);
+    Service.prototype.get = function get(name6) {
+      return Object.prototype.hasOwnProperty.call(this.methods, name6) ? this.methods[name6] : Namespace.prototype.get.call(this, name6);
     };
     Service.prototype.resolveAll = function resolveAll() {
       if (!this._needsRecursiveResolve) return this;
@@ -7002,8 +7002,8 @@ var require_wrappers = __commonJS({
         if (depth > util.recursionLimit)
           throw Error("max depth exceeded");
         if (object && object["@type"]) {
-          var name5 = object["@type"].substring(object["@type"].lastIndexOf("/") + 1);
-          var type = this.lookup(name5);
+          var name6 = object["@type"].substring(object["@type"].lastIndexOf("/") + 1);
+          var type = this.lookup(name6);
           if (type) {
             var type_url = object["@type"].charAt(0) === "." ? object["@type"].slice(1) : object["@type"];
             if (type_url.indexOf("/") === -1) {
@@ -7024,11 +7024,11 @@ var require_wrappers = __commonJS({
           throw Error("max depth exceeded");
         var googleApi = "type.googleapis.com/";
         var prefix = "";
-        var name5 = "";
+        var name6 = "";
         if (options2 && options2.json && message.type_url && message.value) {
-          name5 = message.type_url.substring(message.type_url.lastIndexOf("/") + 1);
+          name6 = message.type_url.substring(message.type_url.lastIndexOf("/") + 1);
           prefix = message.type_url.substring(0, message.type_url.lastIndexOf("/") + 1);
-          var type = this.lookup(name5);
+          var type = this.lookup(name6);
           if (type)
             message = type.decode(message.value, void 0, void 0, depth + 1);
         }
@@ -7038,8 +7038,8 @@ var require_wrappers = __commonJS({
           if (prefix === "") {
             prefix = googleApi;
           }
-          name5 = prefix + messageName;
-          object["@type"] = name5;
+          name6 = prefix + messageName;
+          object["@type"] = name6;
           return object;
         }
         return this.toObject(message, options2, depth);
@@ -7069,9 +7069,9 @@ var require_type = __commonJS({
     var verifier = require_verifier();
     var converter = require_converter();
     var wrappers = require_wrappers();
-    function Type(name5, options2) {
-      name5 = name5.replace(/\W/g, "");
-      Namespace.call(this, name5, options2);
+    function Type(name6, options2) {
+      name6 = name6.replace(/\W/g, "");
+      Namespace.call(this, name6, options2);
       this.fields = {};
       this.oneofs = void 0;
       this.extensions = void 0;
@@ -7174,12 +7174,12 @@ var require_type = __commonJS({
       delete type.verify;
       return type;
     }
-    Type.fromJSON = function fromJSON2(name5, json, depth) {
+    Type.fromJSON = function fromJSON2(name6, json, depth) {
       if (depth === void 0)
         depth = 0;
       if (depth > util.nestingLimit)
         throw Error("max depth exceeded");
-      var type = new Type(name5, json.options);
+      var type = new Type(name6, json.options);
       type.extensions = json.extensions;
       type.reserved = json.reserved;
       var names = Object.keys(json.fields), i = 0;
@@ -7261,13 +7261,13 @@ var require_type = __commonJS({
       });
       return this;
     };
-    Type.prototype.get = function get(name5) {
-      if (Object.prototype.hasOwnProperty.call(this.fields, name5))
-        return this.fields[name5];
-      if (this.oneofs && Object.prototype.hasOwnProperty.call(this.oneofs, name5))
-        return this.oneofs[name5];
-      if (this.nested && Object.prototype.hasOwnProperty.call(this.nested, name5))
-        return this.nested[name5];
+    Type.prototype.get = function get(name6) {
+      if (Object.prototype.hasOwnProperty.call(this.fields, name6))
+        return this.fields[name6];
+      if (this.oneofs && Object.prototype.hasOwnProperty.call(this.oneofs, name6))
+        return this.oneofs[name6];
+      if (this.nested && Object.prototype.hasOwnProperty.call(this.nested, name6))
+        return this.nested[name6];
       return null;
     };
     Type.prototype.add = function add(object) {
@@ -7327,8 +7327,8 @@ var require_type = __commonJS({
     Type.prototype.isReservedId = function isReservedId(id) {
       return Namespace.isReservedId(this.reserved, id);
     };
-    Type.prototype.isReservedName = function isReservedName(name5) {
-      return Namespace.isReservedName(this.reserved, name5);
+    Type.prototype.isReservedName = function isReservedName(name6) {
+      return Namespace.isReservedName(this.reserved, name6);
     };
     Type.prototype.create = function create(properties) {
       return new this.ctor(properties);
@@ -7696,8 +7696,8 @@ var require_util = __commonJS({
       }
       return object;
     };
-    util.isReserved = function isReserved(name5) {
-      return reservedRe.test(name5);
+    util.isReserved = function isReserved(name6) {
+      return reservedRe.test(name6);
     };
     util.safeProp = function safeProp(prop) {
       if (!/^[$\w_]+$/.test(prop) || reservedRe.test(prop))
@@ -7970,14 +7970,14 @@ var require_field = __commonJS({
     var util = require_util();
     var Type;
     var ruleRe = /^required|optional|repeated$/;
-    Field2.fromJSON = function fromJSON2(name5, json) {
-      var field2 = new Field2(name5, json.id, json.type, json.rule, json.extend, json.options, json.comment);
+    Field2.fromJSON = function fromJSON2(name6, json) {
+      var field2 = new Field2(name6, json.id, json.type, json.rule, json.extend, json.options, json.comment);
       if (json.edition)
         field2._edition = json.edition;
       field2._defaultEdition = "proto3";
       return field2;
     };
-    function Field2(name5, id, type, rule, extend, options2, comment) {
+    function Field2(name6, id, type, rule, extend, options2, comment) {
       if (util.isObject(rule)) {
         comment = extend;
         options2 = rule;
@@ -7987,7 +7987,7 @@ var require_field = __commonJS({
         options2 = extend;
         extend = void 0;
       }
-      ReflectionObject.call(this, name5, options2);
+      ReflectionObject.call(this, name6, options2);
       if (!util.isInteger(id) || id < 0)
         throw TypeError("id must be a non-negative integer");
       if (!util.isString(type))
@@ -8049,8 +8049,8 @@ var require_field = __commonJS({
         this._features.field_presence !== "IMPLICIT";
       }
     });
-    Field2.prototype.setOption = function setOption(name5, value, ifNotSet) {
-      return ReflectionObject.prototype.setOption.call(this, name5, value, ifNotSet);
+    Field2.prototype.setOption = function setOption(name6, value, ifNotSet) {
+      return ReflectionObject.prototype.setOption.call(this, name6, value, ifNotSet);
     };
     Field2.prototype.toJSON = function toJSON(toJSONOptions) {
       var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
@@ -8164,20 +8164,20 @@ var require_oneof = __commonJS({
     ((OneOf.prototype = Object.create(ReflectionObject.prototype)).constructor = OneOf).className = "OneOf";
     var Field2 = require_field();
     var util = require_util();
-    function OneOf(name5, fieldNames, options2, comment) {
+    function OneOf(name6, fieldNames, options2, comment) {
       if (!Array.isArray(fieldNames)) {
         options2 = fieldNames;
         fieldNames = void 0;
       }
-      ReflectionObject.call(this, name5, options2);
+      ReflectionObject.call(this, name6, options2);
       if (!(fieldNames === void 0 || Array.isArray(fieldNames)))
         throw TypeError("fieldNames must be an Array");
       this.oneof = fieldNames || [];
       this.fieldsArray = [];
       this.comment = comment;
     }
-    OneOf.fromJSON = function fromJSON2(name5, json) {
-      return new OneOf(name5, json.oneof, json.options, json.comment);
+    OneOf.fromJSON = function fromJSON2(name6, json) {
+      return new OneOf(name6, json.oneof, json.options, json.comment);
     };
     OneOf.prototype.toJSON = function toJSON(toJSONOptions) {
       var keepComments = toJSONOptions ? Boolean(toJSONOptions.keepComments) : false;
@@ -8275,14 +8275,14 @@ var require_object = __commonJS({
     var editions2023Defaults = { enum_type: "OPEN", field_presence: "EXPLICIT", json_format: "ALLOW", message_encoding: "LENGTH_PREFIXED", repeated_field_encoding: "PACKED", utf8_validation: "VERIFY" };
     var proto2Defaults = { enum_type: "CLOSED", field_presence: "EXPLICIT", json_format: "LEGACY_BEST_EFFORT", message_encoding: "LENGTH_PREFIXED", repeated_field_encoding: "EXPANDED", utf8_validation: "NONE" };
     var proto3Defaults = { enum_type: "OPEN", field_presence: "IMPLICIT", json_format: "ALLOW", message_encoding: "LENGTH_PREFIXED", repeated_field_encoding: "PACKED", utf8_validation: "VERIFY" };
-    function ReflectionObject(name5, options2) {
-      if (!util.isString(name5))
+    function ReflectionObject(name6, options2) {
+      if (!util.isString(name6))
         throw TypeError("name must be a string");
       if (options2 && !util.isObject(options2))
         throw TypeError("options must be an object");
       this.options = options2;
       this.parsedOptions = null;
-      this.name = name5;
+      this.name = name6;
       this._edition = null;
       this._defaultEdition = "proto2";
       this._features = {};
@@ -8399,26 +8399,26 @@ var require_object = __commonJS({
     ReflectionObject.prototype._inferLegacyProtoFeatures = function _inferLegacyProtoFeatures() {
       return {};
     };
-    ReflectionObject.prototype.getOption = function getOption(name5) {
+    ReflectionObject.prototype.getOption = function getOption(name6) {
       if (this.options)
-        return this.options[name5];
+        return this.options[name6];
       return void 0;
     };
-    ReflectionObject.prototype.setOption = function setOption(name5, value, ifNotSet) {
-      if (name5 === "__proto__")
+    ReflectionObject.prototype.setOption = function setOption(name6, value, ifNotSet) {
+      if (name6 === "__proto__")
         return this;
       if (!this.options)
         this.options = {};
-      if (/^features\./.test(name5)) {
-        util.setProperty(this.options, name5, value, ifNotSet);
-      } else if (!ifNotSet || this.options[name5] === void 0) {
-        if (this.getOption(name5) !== value) this.resolved = false;
-        this.options[name5] = value;
+      if (/^features\./.test(name6)) {
+        util.setProperty(this.options, name6, value, ifNotSet);
+      } else if (!ifNotSet || this.options[name6] === void 0) {
+        if (this.getOption(name6) !== value) this.resolved = false;
+        this.options[name6] = value;
       }
       return this;
     };
-    ReflectionObject.prototype.setParsedOption = function setParsedOption(name5, value, propName) {
-      if (name5 === "__proto__")
+    ReflectionObject.prototype.setParsedOption = function setParsedOption(name6, value, propName) {
+      if (name6 === "__proto__")
         return this;
       if (!this.parsedOptions) {
         this.parsedOptions = [];
@@ -8426,19 +8426,19 @@ var require_object = __commonJS({
       var parsedOptions = this.parsedOptions;
       if (propName) {
         var opt = parsedOptions.find(function(opt2) {
-          return Object.prototype.hasOwnProperty.call(opt2, name5);
+          return Object.prototype.hasOwnProperty.call(opt2, name6);
         });
         if (opt) {
-          var newValue = opt[name5];
+          var newValue = opt[name6];
           util.setProperty(newValue, propName, value);
         } else {
           opt = {};
-          opt[name5] = util.setProperty({}, propName, value);
+          opt[name6] = util.setProperty({}, propName, value);
           parsedOptions.push(opt);
         }
       } else {
         var newOpt = {};
-        newOpt[name5] = value;
+        newOpt[name6] = value;
         parsedOptions.push(newOpt);
       }
       return this;
@@ -8476,8 +8476,8 @@ var require_enum = __commonJS({
     ((Enum.prototype = Object.create(ReflectionObject.prototype)).constructor = Enum).className = "Enum";
     var Namespace = require_namespace();
     var util = require_util();
-    function Enum(name5, values, options2, comment, comments, valuesOptions) {
-      ReflectionObject.call(this, name5, options2);
+    function Enum(name6, values, options2, comment, comments, valuesOptions) {
+      ReflectionObject.call(this, name6, options2);
       if (values && typeof values !== "object")
         throw TypeError("values must be an object");
       this.valuesById = {};
@@ -8502,8 +8502,8 @@ var require_enum = __commonJS({
       });
       return this;
     };
-    Enum.fromJSON = function fromJSON2(name5, json) {
-      var enm = new Enum(name5, json.values, json.options, json.comment, json.comments);
+    Enum.fromJSON = function fromJSON2(name6, json) {
+      var enm = new Enum(name6, json.values, json.options, json.comment, json.comments);
       enm.reserved = json.reserved;
       if (json.edition)
         enm._edition = json.edition;
@@ -8529,51 +8529,51 @@ var require_enum = __commonJS({
         keepComments ? this.comments : void 0
       ]);
     };
-    Enum.prototype.add = function add(name5, id, comment, options2) {
-      if (!util.isString(name5))
+    Enum.prototype.add = function add(name6, id, comment, options2) {
+      if (!util.isString(name6))
         throw TypeError("name must be a string");
       if (!util.isInteger(id))
         throw TypeError("id must be an integer");
-      if (name5 === "__proto__")
+      if (name6 === "__proto__")
         return this;
-      if (this.values[name5] !== void 0)
-        throw Error("duplicate name '" + name5 + "' in " + this);
+      if (this.values[name6] !== void 0)
+        throw Error("duplicate name '" + name6 + "' in " + this);
       if (this.isReservedId(id))
         throw Error("id " + id + " is reserved in " + this);
-      if (this.isReservedName(name5))
-        throw Error("name '" + name5 + "' is reserved in " + this);
+      if (this.isReservedName(name6))
+        throw Error("name '" + name6 + "' is reserved in " + this);
       if (this.valuesById[id] !== void 0) {
         if (!(this.options && this.options.allow_alias))
           throw Error("duplicate id " + id + " in " + this);
-        this.values[name5] = id;
+        this.values[name6] = id;
       } else
-        this.valuesById[this.values[name5] = id] = name5;
+        this.valuesById[this.values[name6] = id] = name6;
       if (options2) {
         if (this.valuesOptions === void 0)
           this.valuesOptions = {};
-        this.valuesOptions[name5] = options2 || null;
+        this.valuesOptions[name6] = options2 || null;
       }
-      this.comments[name5] = comment || null;
+      this.comments[name6] = comment || null;
       return this;
     };
-    Enum.prototype.remove = function remove(name5) {
-      if (!util.isString(name5))
+    Enum.prototype.remove = function remove(name6) {
+      if (!util.isString(name6))
         throw TypeError("name must be a string");
-      var val = this.values[name5];
+      var val = this.values[name6];
       if (val == null)
-        throw Error("name '" + name5 + "' does not exist in " + this);
+        throw Error("name '" + name6 + "' does not exist in " + this);
       delete this.valuesById[val];
-      delete this.values[name5];
-      delete this.comments[name5];
+      delete this.values[name6];
+      delete this.comments[name6];
       if (this.valuesOptions)
-        delete this.valuesOptions[name5];
+        delete this.valuesOptions[name6];
       return this;
     };
     Enum.prototype.isReservedId = function isReservedId(id) {
       return Namespace.isReservedId(this.reserved, id);
     };
-    Enum.prototype.isReservedName = function isReservedName(name5) {
-      return Namespace.isReservedName(this.reserved, name5);
+    Enum.prototype.isReservedName = function isReservedName(name6) {
+      return Namespace.isReservedName(this.reserved, name6);
     };
   }
 });
@@ -8961,8 +8961,8 @@ var require_parse = __commonJS({
       var ptr = root;
       var topLevelObjects = [];
       var topLevelOptions = {};
-      var applyCase = options2.keepCase ? function(name5) {
-        return name5;
+      var applyCase = options2.keepCase ? function(name6) {
+        return name6;
       } : util.camelCase;
       function resolveFileFeatures() {
         topLevelObjects.forEach((obj) => {
@@ -8973,11 +8973,11 @@ var require_parse = __commonJS({
           });
         });
       }
-      function illegal(token2, name5, insideTryCatch) {
+      function illegal(token2, name6, insideTryCatch) {
         var filename = parse.filename;
         if (!insideTryCatch)
           parse.filename = null;
-        return Error("illegal " + (name5 || "token") + " '" + token2 + "' (" + (filename ? filename + ", " : "") + "line " + tn.line + ")");
+        return Error("illegal " + (name6 || "token") + " '" + token2 + "' (" + (filename ? filename + ", " : "") + "line " + tn.line + ")");
       }
       function readString() {
         var values = [], token2;
@@ -9038,9 +9038,9 @@ var require_parse = __commonJS({
           }
         } while (skip(",", true));
         var dummy = { options: void 0 };
-        dummy.setOption = function(name5, value) {
+        dummy.setOption = function(name6, value) {
           if (this.options === void 0) this.options = {};
-          this.options[name5] = value;
+          this.options[name6] = value;
         };
         ifBlock(
           dummy,
@@ -9256,12 +9256,12 @@ var require_parse = __commonJS({
         }
         if (!typeRefRe.test(type))
           throw illegal(type, "type");
-        var name5 = next();
-        if (!nameRe.test(name5))
-          throw illegal(name5, "name");
-        name5 = applyCase(name5);
+        var name6 = next();
+        if (!nameRe.test(name6))
+          throw illegal(name6, "name");
+        name6 = applyCase(name6);
         skip("=");
-        var field2 = new Field2(name5, parseId(next()), type, rule, extend);
+        var field2 = new Field2(name6, parseId(next()), type, rule, extend);
         ifBlock(field2, function parseField_block(token2) {
           if (token2 === "option") {
             parseOption(field2, token2);
@@ -9272,7 +9272,7 @@ var require_parse = __commonJS({
           parseInlineOptions(field2);
         });
         if (rule === "proto3_optional") {
-          var oneof = new OneOf("_" + name5);
+          var oneof = new OneOf("_" + name6);
           field2.setOption("proto3_optional", true);
           oneof.add(field2);
           parent2.add(oneof);
@@ -9291,17 +9291,17 @@ var require_parse = __commonJS({
         if (edition >= 2023) {
           throw illegal("group");
         }
-        var name5 = next();
-        if (!nameRe.test(name5))
-          throw illegal(name5, "name");
-        var fieldName = util.lcFirst(name5);
-        if (name5 === fieldName)
-          name5 = util.ucFirst(name5);
+        var name6 = next();
+        if (!nameRe.test(name6))
+          throw illegal(name6, "name");
+        var fieldName = util.lcFirst(name6);
+        if (name6 === fieldName)
+          name6 = util.ucFirst(name6);
         skip("=");
         var id = parseId(next());
-        var type = new Type(name5);
+        var type = new Type(name6);
         type.group = true;
-        var field2 = new Field2(fieldName, id, name5, rule);
+        var field2 = new Field2(fieldName, id, name6, rule);
         field2.filename = parse.filename;
         ifBlock(type, function parseGroup_block(token2) {
           switch (token2) {
@@ -9346,11 +9346,11 @@ var require_parse = __commonJS({
         if (!typeRefRe.test(valueType))
           throw illegal(valueType, "type");
         skip(">");
-        var name5 = next();
-        if (!nameRe.test(name5))
-          throw illegal(name5, "name");
+        var name6 = next();
+        if (!nameRe.test(name6))
+          throw illegal(name6, "name");
         skip("=");
-        var field2 = new MapField(applyCase(name5), parseId(next()), keyType, valueType);
+        var field2 = new MapField(applyCase(name6), parseId(next()), keyType, valueType);
         ifBlock(field2, function parseMapField_block(token2) {
           if (token2 === "option") {
             parseOption(field2, token2);
@@ -9407,11 +9407,11 @@ var require_parse = __commonJS({
         var value = parseId(next(), true), dummy = {
           options: void 0
         };
-        dummy.getOption = function(name5) {
-          return this.options[name5];
+        dummy.getOption = function(name6) {
+          return this.options[name6];
         };
-        dummy.setOption = function(name5, value2) {
-          ReflectionObject.prototype.setOption.call(dummy, name5, value2);
+        dummy.setOption = function(name6, value2) {
+          ReflectionObject.prototype.setOption.call(dummy, name6, value2);
         };
         dummy.setParsedOption = function() {
           return void 0;
@@ -9457,13 +9457,13 @@ var require_parse = __commonJS({
           }
           token2 = next();
         }
-        var name5 = propName ? option.concat(propName) : option;
-        var optionValue = parseOptionValue(parent2, name5);
+        var name6 = propName ? option.concat(propName) : option;
+        var optionValue = parseOptionValue(parent2, name6);
         propName = propName && propName[0] === "." ? propName.slice(1) : propName;
         option = option && option[option.length - 1] === "." ? option.slice(0, -1) : option;
         setParsedOption(parent2, option, optionValue, propName);
       }
-      function parseOptionValue(parent2, name5, depth) {
+      function parseOptionValue(parent2, name6, depth) {
         if (depth === void 0)
           depth = 0;
         if (depth > util.recursionLimit)
@@ -9481,7 +9481,7 @@ var require_parse = __commonJS({
             var propName = token;
             skip(":", true);
             if (peek() === "{") {
-              value = parseOptionValue(parent2, name5 + "." + token, depth + 1);
+              value = parseOptionValue(parent2, name6 + "." + token, depth + 1);
             } else if (peek() === "[") {
               value = [];
               var lastValue;
@@ -9492,12 +9492,12 @@ var require_parse = __commonJS({
                 } while (skip(",", true));
                 skip("]");
                 if (typeof lastValue !== "undefined") {
-                  setOption(parent2, name5 + "." + token, lastValue);
+                  setOption(parent2, name6 + "." + token, lastValue);
                 }
               }
             } else {
               value = readValue(true);
-              setOption(parent2, name5 + "." + token, value);
+              setOption(parent2, name6 + "." + token, value);
             }
             var prevValue = objectResult[propName];
             if (prevValue)
@@ -9510,20 +9510,20 @@ var require_parse = __commonJS({
           return objectResult;
         }
         var simpleValue = readValue(true);
-        setOption(parent2, name5, simpleValue);
+        setOption(parent2, name6, simpleValue);
         return simpleValue;
       }
-      function setOption(parent2, name5, value) {
-        if (ptr === parent2 && /^features\./.test(name5)) {
-          topLevelOptions[name5] = value;
+      function setOption(parent2, name6, value) {
+        if (ptr === parent2 && /^features\./.test(name6)) {
+          topLevelOptions[name6] = value;
           return;
         }
         if (parent2.setOption)
-          parent2.setOption(name5, value);
+          parent2.setOption(name6, value);
       }
-      function setParsedOption(parent2, name5, value, propName) {
+      function setParsedOption(parent2, name6, value, propName) {
         if (parent2.setParsedOption)
-          parent2.setParsedOption(name5, value, propName);
+          parent2.setParsedOption(name6, value, propName);
       }
       function parseInlineOptions(parent2) {
         if (skip("[", true)) {
@@ -9561,7 +9561,7 @@ var require_parse = __commonJS({
         var type = token2;
         if (!nameRe.test(token2 = next()))
           throw illegal(token2, "name");
-        var name5 = token2, requestType, requestStream, responseType, responseStream;
+        var name6 = token2, requestType, requestStream, responseType, responseStream;
         skip("(");
         if (skip("stream", true))
           requestStream = true;
@@ -9577,7 +9577,7 @@ var require_parse = __commonJS({
           throw illegal(token2);
         responseType = token2;
         skip(")");
-        var method = new Method(name5, type, requestType, responseType, requestStream, responseStream);
+        var method = new Method(name6, type, requestType, responseType, requestStream, responseStream);
         method.comment = commentText;
         ifBlock(method, function parseMethod_block(token3) {
           if (token3 === "option") {
@@ -9667,12 +9667,12 @@ var require_common = __commonJS({
     "use strict";
     module.exports = common;
     var commonRe = /\/|\./;
-    function common(name5, json) {
-      if (!commonRe.test(name5)) {
-        name5 = "google/protobuf/" + name5 + ".proto";
+    function common(name6, json) {
+      if (!commonRe.test(name6)) {
+        name6 = "google/protobuf/" + name6 + ".proto";
         json = { nested: { google: { nested: { protobuf: { nested: json } } } } };
       }
-      common[name5] = json;
+      common[name6] = json;
     }
     common("any", {
       /**
@@ -11695,8 +11695,8 @@ var require_descriptor2 = __commonJS({
       var values = {};
       if (descriptor.value)
         for (var i = 0; i < descriptor.value.length; ++i) {
-          var name5 = descriptor.value[i].name, value = descriptor.value[i].number || 0;
-          values[name5 && name5.length ? name5 : "NAME" + value] = value;
+          var name6 = descriptor.value[i].name, value = descriptor.value[i].number || 0;
+          values[name6 && name6.length ? name6 : "NAME" + value] = value;
         }
       var enm = new Enum(
         descriptor.name && descriptor.name.length ? descriptor.name : "Enum" + unnamedEnumIndex++,
@@ -12451,11 +12451,11 @@ var require_src2 = __commonJS({
       oneofs: true,
       json: true
     };
-    function joinName(baseName, name5) {
+    function joinName(baseName, name6) {
       if (baseName === "") {
-        return name5;
+        return name6;
       } else {
-        return baseName + "." + name5;
+        return baseName + "." + name6;
       }
     }
     function isHandledReflectionObject(obj) {
@@ -12470,8 +12470,8 @@ var require_src2 = __commonJS({
         return [[objName, obj]];
       } else {
         if (isNamespaceBase(obj) && typeof obj.nested !== "undefined") {
-          return Object.keys(obj.nested).map((name5) => {
-            return getAllHandledReflectionObjects(obj.nested[name5], objName);
+          return Object.keys(obj.nested).map((name6) => {
+            return getAllHandledReflectionObjects(obj.nested[name6], objName);
           }).reduce((accumulator, currentValue) => accumulator.concat(currentValue), []);
         }
       }
@@ -12527,10 +12527,10 @@ var require_src2 = __commonJS({
         options: mapMethodOptions(method.parsedOptions)
       };
     }
-    function createServiceDefinition(service, name5, options2, fileDescriptors) {
+    function createServiceDefinition(service, name6, options2, fileDescriptors) {
       const def = {};
       for (const method of service.methodsArray) {
-        def[method.name] = createMethodDefinition(method, name5, options2, fileDescriptors);
+        def[method.name] = createMethodDefinition(method, name6, options2, fileDescriptors);
       }
       return def;
     }
@@ -12550,9 +12550,9 @@ var require_src2 = __commonJS({
         fileDescriptorProtos: fileDescriptors
       };
     }
-    function createDefinition(obj, name5, options2, fileDescriptors) {
+    function createDefinition(obj, name6, options2, fileDescriptors) {
       if (obj instanceof Protobuf.Service) {
-        return createServiceDefinition(obj, name5, options2, fileDescriptors);
+        return createServiceDefinition(obj, name6, options2, fileDescriptors);
       } else if (obj instanceof Protobuf.Type) {
         return createMessageDefinition(obj, fileDescriptors);
       } else if (obj instanceof Protobuf.Enum) {
@@ -12566,8 +12566,8 @@ var require_src2 = __commonJS({
       root.resolveAll();
       const descriptorList = root.toDescriptor("proto3").file;
       const bufferList = descriptorList.map((value) => Buffer.from(descriptor.FileDescriptorProto.encode(value).finish()));
-      for (const [name5, obj] of getAllHandledReflectionObjects(root, "")) {
-        def[name5] = createDefinition(obj, name5, options2, bufferList);
+      for (const [name6, obj] of getAllHandledReflectionObjects(root, "")) {
+        def[name6] = createDefinition(obj, name6, options2, bufferList);
       }
       return def;
     }
@@ -12812,17 +12812,17 @@ var require_channelz = __commonJS({
     var subchannels = [];
     var servers = [];
     var sockets = [];
-    function registerChannelzChannel(name5, getInfo, channelzEnabled) {
+    function registerChannelzChannel(name6, getInfo, channelzEnabled) {
       const id = getNextId();
-      const ref2 = { id, name: name5, kind: "channel" };
+      const ref2 = { id, name: name6, kind: "channel" };
       if (channelzEnabled) {
         channels[id] = { ref: ref2, getInfo };
       }
       return ref2;
     }
-    function registerChannelzSubchannel(name5, getInfo, channelzEnabled) {
+    function registerChannelzSubchannel(name6, getInfo, channelzEnabled) {
       const id = getNextId();
-      const ref2 = { id, name: name5, kind: "subchannel" };
+      const ref2 = { id, name: name6, kind: "subchannel" };
       if (channelzEnabled) {
         subchannels[id] = { ref: ref2, getInfo };
       }
@@ -12836,9 +12836,9 @@ var require_channelz = __commonJS({
       }
       return ref2;
     }
-    function registerChannelzSocket(name5, getInfo, channelzEnabled) {
+    function registerChannelzSocket(name6, getInfo, channelzEnabled) {
       const id = getNextId();
-      const ref2 = { id, name: name5, kind: "socket" };
+      const ref2 = { id, name: name6, kind: "socket" };
       if (channelzEnabled) {
         sockets[id] = { ref: ref2, getInfo };
       }
@@ -14024,9 +14024,9 @@ var require_subchannel_call = __commonJS({
     var constants_2 = require_constants();
     var TRACER_NAME = "subchannel_call";
     function getSystemErrorName(errno) {
-      for (const [name5, num] of Object.entries(os.constants.errno)) {
+      for (const [name6, num] of Object.entries(os.constants.errno)) {
         if (num === errno) {
-          return name5;
+          return name6;
         }
       }
       return "Unknown system error " + errno;
@@ -17726,7 +17726,7 @@ var require_server = __commonJS({
     var KEEPALIVE_TIMEOUT_MS = 2e4;
     var { HTTP2_HEADER_PATH } = http2.constants;
     var TRACER_NAME = "server";
-    function noop() {
+    function noop2() {
     }
     function getUnimplementedStatusResponse(methodName) {
       return {
@@ -17850,8 +17850,8 @@ var require_server = __commonJS({
         if (serviceKeys.length === 0) {
           throw new Error("Cannot add an empty service to a server");
         }
-        serviceKeys.forEach((name5) => {
-          const attrs = service[name5];
+        serviceKeys.forEach((name6) => {
+          const attrs = service[name6];
           let methodType;
           if (attrs.requestStream) {
             if (attrs.responseStream) {
@@ -17866,7 +17866,7 @@ var require_server = __commonJS({
               methodType = "unary";
             }
           }
-          let implFn = implementation[name5];
+          let implFn = implementation[name6];
           let impl;
           if (implFn === void 0 && typeof attrs.originalName === "string") {
             implFn = implementation[attrs.originalName];
@@ -17874,7 +17874,7 @@ var require_server = __commonJS({
           if (implFn !== void 0) {
             impl = implFn.bind(implementation);
           } else {
-            impl = getDefaultHandler(methodType, name5);
+            impl = getDefaultHandler(methodType, name6);
           }
           const success = this.register(attrs.path, impl, attrs.responseSerialize, attrs.requestDeserialize, methodType);
           if (success === false) {
@@ -17887,8 +17887,8 @@ var require_server = __commonJS({
           throw new Error("removeService() requires object as argument");
         }
         const serviceKeys = Object.keys(service);
-        serviceKeys.forEach((name5) => {
-          const attrs = service[name5];
+        serviceKeys.forEach((name6) => {
+          const attrs = service[name6];
           this.unregister(attrs.path);
         });
       }
@@ -17949,7 +17949,7 @@ var require_server = __commonJS({
           } else {
             http2Server = http2.createServer(serverOptions);
           }
-          http2Server.setTimeout(0, noop);
+          http2Server.setTimeout(0, noop2);
           this._setupHandlers(http2Server);
           return http2Server;
         };
@@ -18163,21 +18163,21 @@ var require_server = __commonJS({
           (0, channelz_1.unregisterChannelzRef)(this.channelzRef);
         }
       }
-      register(name5, handler2, serialize, deserialize, type) {
-        if (this.handlers.has(name5)) {
+      register(name6, handler2, serialize, deserialize, type) {
+        if (this.handlers.has(name6)) {
           return false;
         }
-        this.handlers.set(name5, {
+        this.handlers.set(name6, {
           func: handler2,
           serialize,
           deserialize,
           type,
-          path: name5
+          path: name6
         });
         return true;
       }
-      unregister(name5) {
-        return this.handlers.delete(name5);
+      unregister(name6) {
+        return this.handlers.delete(name6);
       }
       start() {
         if (this.http2ServerList.length === 0 || this.http2ServerList.every(({ server: http2Server }) => http2Server.listening !== true)) {
@@ -19960,13 +19960,16 @@ var require_src3 = __commonJS({
 });
 
 // server/apiHandler.ts
-import crypto6 from "crypto";
+import crypto7 from "crypto";
 import path3 from "path";
 
 // server/storage.ts
-import crypto2 from "crypto";
+import crypto3 from "crypto";
 import fs from "fs";
 import path from "path";
+
+// server/firebase.ts
+import crypto2 from "crypto";
 
 // node_modules/@firebase/util/dist/postinstall.mjs
 var getDefaultsFromPostinstall = () => void 0;
@@ -20374,6 +20377,11 @@ function getUA() {
     return "";
   }
 }
+function isMobileCordova() {
+  return typeof window !== "undefined" && // @ts-ignore Setting up an broadly applicable index signature for Window
+  // just to deal with this case would probably be a bad idea.
+  !!(window["cordova"] || window["phonegap"] || window["PhoneGap"]) && /ios|iphone|ipod|ipad|android|blackberry|iemobile/i.test(getUA());
+}
 function isNode() {
   const forceEnvironment = getDefaults()?.forceEnvironment;
   if (forceEnvironment === "node") {
@@ -20386,6 +20394,16 @@ function isNode() {
   } catch (e) {
     return false;
   }
+}
+function isCloudflareWorker() {
+  return typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+}
+function isBrowserExtension() {
+  const runtime = typeof chrome === "object" ? chrome.runtime : typeof browser === "object" ? browser.runtime : void 0;
+  return typeof runtime === "object" && runtime.id !== void 0;
+}
+function isReactNative() {
+  return typeof navigator === "object" && navigator["product"] === "ReactNative";
 }
 function isSafari() {
   return !isNode() && !!navigator.userAgent && navigator.userAgent.includes("Safari") && !navigator.userAgent.includes("Chrome");
@@ -20505,6 +20523,191 @@ function deepEqual(a, b) {
 function isObject(thing) {
   return thing !== null && typeof thing === "object";
 }
+function querystring(querystringParams) {
+  const params = [];
+  for (const [key, value] of Object.entries(querystringParams)) {
+    if (Array.isArray(value)) {
+      value.forEach((arrayVal) => {
+        params.push(encodeURIComponent(key) + "=" + encodeURIComponent(arrayVal));
+      });
+    } else {
+      params.push(encodeURIComponent(key) + "=" + encodeURIComponent(value));
+    }
+  }
+  return params.length ? "&" + params.join("&") : "";
+}
+function querystringDecode(querystring2) {
+  const obj = {};
+  const tokens = querystring2.replace(/^\?/, "").split("&");
+  tokens.forEach((token) => {
+    if (token) {
+      const [key, value] = token.split("=");
+      obj[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
+  });
+  return obj;
+}
+function extractQuerystring(url) {
+  const queryStart = url.indexOf("?");
+  if (!queryStart) {
+    return "";
+  }
+  const fragmentStart = url.indexOf("#", queryStart);
+  return url.substring(queryStart, fragmentStart > 0 ? fragmentStart : void 0);
+}
+function createSubscribe(executor, onNoObservers) {
+  const proxy = new ObserverProxy(executor, onNoObservers);
+  return proxy.subscribe.bind(proxy);
+}
+var ObserverProxy = class {
+  /**
+   * @param executor Function which can make calls to a single Observer
+   *     as a proxy.
+   * @param onNoObservers Callback when count of Observers goes to zero.
+   */
+  constructor(executor, onNoObservers) {
+    this.observers = [];
+    this.unsubscribes = [];
+    this.observerCount = 0;
+    this.task = Promise.resolve();
+    this.finalized = false;
+    this.onNoObservers = onNoObservers;
+    this.task.then(() => {
+      executor(this);
+    }).catch((e) => {
+      this.error(e);
+    });
+  }
+  next(value) {
+    this.forEachObserver((observer) => {
+      observer.next(value);
+    });
+  }
+  error(error) {
+    this.forEachObserver((observer) => {
+      observer.error(error);
+    });
+    this.close(error);
+  }
+  complete() {
+    this.forEachObserver((observer) => {
+      observer.complete();
+    });
+    this.close();
+  }
+  /**
+   * Subscribe function that can be used to add an Observer to the fan-out list.
+   *
+   * - We require that no event is sent to a subscriber synchronously to their
+   *   call to subscribe().
+   */
+  subscribe(nextOrObserver, error, complete) {
+    let observer;
+    if (nextOrObserver === void 0 && error === void 0 && complete === void 0) {
+      throw new Error("Missing Observer.");
+    }
+    if (implementsAnyMethods(nextOrObserver, [
+      "next",
+      "error",
+      "complete"
+    ])) {
+      observer = nextOrObserver;
+    } else {
+      observer = {
+        next: nextOrObserver,
+        error,
+        complete
+      };
+    }
+    if (observer.next === void 0) {
+      observer.next = noop;
+    }
+    if (observer.error === void 0) {
+      observer.error = noop;
+    }
+    if (observer.complete === void 0) {
+      observer.complete = noop;
+    }
+    const unsub = this.unsubscribeOne.bind(this, this.observers.length);
+    if (this.finalized) {
+      this.task.then(() => {
+        try {
+          if (this.finalError) {
+            observer.error(this.finalError);
+          } else {
+            observer.complete();
+          }
+        } catch (e) {
+        }
+        return;
+      });
+    }
+    this.observers.push(observer);
+    return unsub;
+  }
+  // Unsubscribe is synchronous - we guarantee that no events are sent to
+  // any unsubscribed Observer.
+  unsubscribeOne(i) {
+    if (this.observers === void 0 || this.observers[i] === void 0) {
+      return;
+    }
+    delete this.observers[i];
+    this.observerCount -= 1;
+    if (this.observerCount === 0 && this.onNoObservers !== void 0) {
+      this.onNoObservers(this);
+    }
+  }
+  forEachObserver(fn) {
+    if (this.finalized) {
+      return;
+    }
+    for (let i = 0; i < this.observers.length; i++) {
+      this.sendOne(i, fn);
+    }
+  }
+  // Call the Observer via one of it's callback function. We are careful to
+  // confirm that the observe has not been unsubscribed since this asynchronous
+  // function had been queued.
+  sendOne(i, fn) {
+    this.task.then(() => {
+      if (this.observers !== void 0 && this.observers[i] !== void 0) {
+        try {
+          fn(this.observers[i]);
+        } catch (e) {
+          if (typeof console !== "undefined" && console.error) {
+            console.error(e);
+          }
+        }
+      }
+    });
+  }
+  close(err) {
+    if (this.finalized) {
+      return;
+    }
+    this.finalized = true;
+    if (err !== void 0) {
+      this.finalError = err;
+    }
+    this.task.then(() => {
+      this.observers = void 0;
+      this.onNoObservers = void 0;
+    });
+  }
+};
+function implementsAnyMethods(obj, methods) {
+  if (typeof obj !== "object" || obj === null) {
+    return false;
+  }
+  for (const method of methods) {
+    if (method in obj && typeof obj[method] === "function") {
+      return true;
+    }
+  }
+  return false;
+}
+function noop() {
+}
 var MAX_VALUE_MILLIS = 4 * 60 * 60 * 1e3;
 function getModularInstance(service) {
   if (service && service._delegate) {
@@ -20537,8 +20740,8 @@ var Component = class {
    * @param instanceFactory Service factory responsible for creating the public interface
    * @param type whether the service provided by the component is public or private
    */
-  constructor(name5, instanceFactory, type) {
-    this.name = name5;
+  constructor(name6, instanceFactory, type) {
+    this.name = name6;
     this.instanceFactory = instanceFactory;
     this.type = type;
     this.multipleInstances = false;
@@ -20565,8 +20768,8 @@ var Component = class {
 };
 var DEFAULT_ENTRY_NAME = "[DEFAULT]";
 var Provider = class {
-  constructor(name5, container) {
-    this.name = name5;
+  constructor(name6, container) {
+    this.name = name6;
     this.container = container;
     this.component = null;
     this.instances = /* @__PURE__ */ new Map();
@@ -20769,8 +20972,8 @@ function isComponentEager(component) {
   return component.instantiationMode === "EAGER";
 }
 var ComponentContainer = class {
-  constructor(name5) {
-    this.name = name5;
+  constructor(name6) {
+    this.name = name6;
     this.providers = /* @__PURE__ */ new Map();
   }
   /**
@@ -20803,12 +21006,12 @@ var ComponentContainer = class {
    * Firebase SDKs providing services should extend NameServiceMapping interface to register
    * themselves.
    */
-  getProvider(name5) {
-    if (this.providers.has(name5)) {
-      return this.providers.get(name5);
+  getProvider(name6) {
+    if (this.providers.has(name6)) {
+      return this.providers.get(name6);
     }
-    const provider = new Provider(name5, this);
-    this.providers.set(name5, provider);
+    const provider = new Provider(name6, this);
+    this.providers.set(name6, provider);
     return provider;
   }
   getProviders() {
@@ -20862,8 +21065,8 @@ var Logger = class {
    *
    * @param name The name that the logs will be associated with
    */
-  constructor(name5) {
-    this.name = name5;
+  constructor(name6) {
+    this.name = name6;
     this._logLevel = defaultLogLevel;
     this._logHandler = defaultLogHandler;
     this._userLogHandler = null;
@@ -21066,8 +21269,8 @@ function wrap(value) {
 var unwrap = (value) => reverseTransformCache.get(value);
 
 // node_modules/idb/build/index.js
-function openDB(name5, version6, { blocked, upgrade, blocking, terminated } = {}) {
-  const request = indexedDB.open(name5, version6);
+function openDB(name6, version7, { blocked, upgrade, blocking, terminated } = {}) {
+  const request = indexedDB.open(name6, version7);
   const openPromise = wrap(request);
   if (upgrade) {
     request.addEventListener("upgradeneeded", (event) => {
@@ -21239,12 +21442,12 @@ function _registerComponent(component) {
   }
   return true;
 }
-function _getProvider(app, name5) {
+function _getProvider(app, name6) {
   const heartbeatController = app.container.getProvider("heartbeat").getImmediate({ optional: true });
   if (heartbeatController) {
     void heartbeatController.triggerHeartbeat();
   }
-  return app.container.getProvider(name5);
+  return app.container.getProvider(name6);
 }
 function _isFirebaseServerApp(obj) {
   if (obj === null || obj === void 0) {
@@ -21369,18 +21572,18 @@ var SDK_VERSION = version;
 function initializeApp(_options, rawConfig = {}) {
   let options2 = _options;
   if (typeof rawConfig !== "object") {
-    const name6 = rawConfig;
-    rawConfig = { name: name6 };
+    const name7 = rawConfig;
+    rawConfig = { name: name7 };
   }
   const config = {
     name: DEFAULT_ENTRY_NAME2,
     automaticDataCollectionEnabled: true,
     ...rawConfig
   };
-  const name5 = config.name;
-  if (typeof name5 !== "string" || !name5) {
+  const name6 = config.name;
+  if (typeof name6 !== "string" || !name6) {
     throw ERROR_FACTORY.create("bad-app-name", {
-      appName: String(name5)
+      appName: String(name6)
     });
   }
   options2 || (options2 = getDefaultAppConfig());
@@ -21390,18 +21593,18 @@ function initializeApp(_options, rawConfig = {}) {
       /* AppError.NO_OPTIONS */
     );
   }
-  const existingApp = _apps.get(name5);
+  const existingApp = _apps.get(name6);
   if (existingApp) {
     if (!deepEqual(options2, existingApp.options)) {
       throw ERROR_FACTORY.create("duplicate-app", {
-        appName: name5,
+        appName: name6,
         mismatchedParam: "options",
         oldValue: JSON.stringify(existingApp.options),
         newValue: JSON.stringify(options2)
       });
     } else if (!deepEqual(config, existingApp.config)) {
       throw ERROR_FACTORY.create("duplicate-app", {
-        appName: name5,
+        appName: name6,
         mismatchedParam: "config",
         oldValue: JSON.stringify(existingApp.config),
         newValue: JSON.stringify(config)
@@ -21410,37 +21613,37 @@ function initializeApp(_options, rawConfig = {}) {
       return existingApp;
     }
   }
-  const container = new ComponentContainer(name5);
+  const container = new ComponentContainer(name6);
   for (const component of _components.values()) {
     container.addComponent(component);
   }
   const newApp = new FirebaseAppImpl(options2, config, container);
-  _apps.set(name5, newApp);
+  _apps.set(name6, newApp);
   return newApp;
 }
-function getApp(name5 = DEFAULT_ENTRY_NAME2) {
-  const app = _apps.get(name5);
-  if (!app && name5 === DEFAULT_ENTRY_NAME2 && getDefaultAppConfig()) {
+function getApp(name6 = DEFAULT_ENTRY_NAME2) {
+  const app = _apps.get(name6);
+  if (!app && name6 === DEFAULT_ENTRY_NAME2 && getDefaultAppConfig()) {
     return initializeApp();
   }
   if (!app) {
-    throw ERROR_FACTORY.create("no-app", { appName: name5 });
+    throw ERROR_FACTORY.create("no-app", { appName: name6 });
   }
   return app;
 }
 function getApps() {
   return Array.from(_apps.values());
 }
-function registerVersion(libraryKeyOrName, version6, variant) {
+function registerVersion(libraryKeyOrName, version7, variant) {
   let library = PLATFORM_LOG_STRING[libraryKeyOrName] ?? libraryKeyOrName;
   if (variant) {
     library += `-${variant}`;
   }
   const libraryMismatch = library.match(/\s|\//);
-  const versionMismatch = version6.match(/\s|\//);
+  const versionMismatch = version7.match(/\s|\//);
   if (libraryMismatch || versionMismatch) {
     const warning = [
-      `Unable to register library "${library}" with version "${version6}":`
+      `Unable to register library "${library}" with version "${version7}":`
     ];
     if (libraryMismatch) {
       warning.push(`library name "${library}" contains illegal characters (whitespace or "/")`);
@@ -21449,14 +21652,14 @@ function registerVersion(libraryKeyOrName, version6, variant) {
       warning.push("and");
     }
     if (versionMismatch) {
-      warning.push(`version name "${version6}" contains illegal characters (whitespace or "/")`);
+      warning.push(`version name "${version7}" contains illegal characters (whitespace or "/")`);
     }
     logger.warn(warning.join(" "));
     return;
   }
   _registerComponent(new Component(
     `${library}-version`,
-    () => ({ library, version: version6 }),
+    () => ({ library, version: version7 }),
     "VERSION"
     /* ComponentType.VERSION */
   ));
@@ -23421,7 +23624,7 @@ var Matcher = class Matcher2 {
   getNamedGroups() {
     if (!this.hasMatch) throw new RE2JSGroupException("perhaps no match attempted");
     const result = /* @__PURE__ */ Object.create(null);
-    for (const name5 of Object.keys(this.namedGroups)) result[name5] = this.group(name5);
+    for (const name6 of Object.keys(this.namedGroups)) result[name6] = this.group(name6);
     return result;
   }
   /**
@@ -26689,35 +26892,35 @@ var Parser = class Parser2 {
     8490,
     1
   ]));
-  static unicodeTable(name5) {
-    if (name5 === "Any") return {
+  static unicodeTable(name6) {
+    if (name6 === "Any") return {
       tab: Parser2.ANY_TABLE,
       fold: Parser2.ANY_TABLE,
       sign: 1
     };
-    if (name5 === "Ascii") return {
+    if (name6 === "Ascii") return {
       tab: Parser2.ASCII_TABLE,
       fold: Parser2.ASCII_FOLD_TABLE,
       sign: 1
     };
-    if (name5 === "Assigned") return {
+    if (name6 === "Assigned") return {
       tab: UnicodeTables.CATEGORIES.get("Cn"),
       fold: UnicodeTables.CATEGORIES.get("Cn"),
       sign: -1
     };
-    if (name5 === "Lc") return {
+    if (name6 === "Lc") return {
       tab: UnicodeTables.CATEGORIES.get("LC"),
       fold: UnicodeTables.FOLD_CATEGORIES.get("LC"),
       sign: 1
     };
-    if (UnicodeTables.CATEGORIES.has(name5)) return {
-      tab: UnicodeTables.CATEGORIES.get(name5),
-      fold: UnicodeTables.FOLD_CATEGORIES.get(name5),
+    if (UnicodeTables.CATEGORIES.has(name6)) return {
+      tab: UnicodeTables.CATEGORIES.get(name6),
+      fold: UnicodeTables.FOLD_CATEGORIES.get(name6),
       sign: 1
     };
-    if (UnicodeTables.SCRIPTS.has(name5)) return {
-      tab: UnicodeTables.SCRIPTS.get(name5),
-      fold: UnicodeTables.FOLD_SCRIPT.get(name5),
+    if (UnicodeTables.SCRIPTS.has(name6)) return {
+      tab: UnicodeTables.SCRIPTS.get(name6),
+      fold: UnicodeTables.FOLD_SCRIPT.get(name6),
       sign: 1
     };
     return null;
@@ -26772,10 +26975,10 @@ var Parser = class Parser2 {
     if (min < 0 || min > 1e3 || max === -2 || max > 1e3 || max >= 0 && min > max) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_REPEAT_SIZE, t.from(start2));
     return min << 16 | max & Unicode.MAX_BMP;
   }
-  static isValidCaptureName(name5) {
-    if (name5.length === 0) return false;
-    for (let i = 0; i < name5.length; i++) {
-      const c = name5.codePointAt(i);
+  static isValidCaptureName(name6) {
+    if (name6.length === 0) return false;
+    for (let i = 0; i < name6.length; i++) {
+      const c = name6.codePointAt(i);
       if (c !== Codepoint.CODES.get("_") && !Utils.isalnum(c)) return false;
     }
     return true;
@@ -27490,15 +27693,15 @@ var Parser = class Parser2 {
       const begin = s.charAt(2) === "P" ? 4 : 3;
       const end = s.indexOf(">");
       if (end < 0) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_NAMED_CAPTURE, s);
-      const name5 = s.substring(begin, end);
-      t.skipString(name5);
+      const name6 = s.substring(begin, end);
+      t.skipString(name6);
       t.skip(begin + 1);
-      if (!Parser2.isValidCaptureName(name5)) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_NAMED_CAPTURE, s.substring(0, end + 1));
+      if (!Parser2.isValidCaptureName(name6)) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_NAMED_CAPTURE, s.substring(0, end + 1));
       const re = this.op(Regexp.Op.LEFT_PAREN);
       re.cap = ++this.numCap;
-      if (this.namedGroups[name5]) throw new RE2JSSyntaxException(Parser2.ERR_DUPLICATE_NAMED_CAPTURE, name5);
-      this.namedGroups[name5] = this.numCap;
-      re.name = name5;
+      if (this.namedGroups[name6]) throw new RE2JSSyntaxException(Parser2.ERR_DUPLICATE_NAMED_CAPTURE, name6);
+      this.namedGroups[name6] = this.numCap;
+      re.name = name6;
       return;
     }
     t.skip(2);
@@ -27627,10 +27830,10 @@ var Parser = class Parser2 {
     const cls = t.rest();
     const i = cls.indexOf(":]");
     if (i < 0) return false;
-    const name5 = cls.substring(0, i + 2);
-    t.skipString(name5);
-    const g = POSIX_GROUPS.has(name5) ? POSIX_GROUPS.get(name5) : null;
-    if (g === null) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_CHAR_RANGE, name5);
+    const name6 = cls.substring(0, i + 2);
+    t.skipString(name6);
+    const g = POSIX_GROUPS.has(name6) ? POSIX_GROUPS.get(name6) : null;
+    if (g === null) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_CHAR_RANGE, name6);
     cc.appendGroup(g, (this.flags & RE2Flags.FOLD_CASE) !== 0);
     return true;
   }
@@ -27646,8 +27849,8 @@ var Parser = class Parser2 {
       throw new RE2JSSyntaxException(Parser2.ERR_INVALID_CHAR_RANGE, t.rest());
     }
     c = t.pop();
-    let name5;
-    if (c !== Codepoint.CODES.get("{")) name5 = Utils.runeToString(c);
+    let name6;
+    if (c !== Codepoint.CODES.get("{")) name6 = Utils.runeToString(c);
     else {
       const rest = t.rest();
       const end = rest.indexOf("}");
@@ -27655,15 +27858,15 @@ var Parser = class Parser2 {
         t.rewindTo(startPos);
         throw new RE2JSSyntaxException(Parser2.ERR_INVALID_CHAR_RANGE, t.rest());
       }
-      name5 = rest.substring(0, end);
-      t.skipString(name5);
+      name6 = rest.substring(0, end);
+      t.skipString(name6);
       t.skip(1);
     }
-    if (!(name5.length === 0) && name5.codePointAt(0) === Codepoint.CODES.get("^")) {
+    if (!(name6.length === 0) && name6.codePointAt(0) === Codepoint.CODES.get("^")) {
       sign = 0 - sign;
-      name5 = name5.substring(1);
+      name6 = name6.substring(1);
     }
-    const pair = Parser2.unicodeTable(name5);
+    const pair = Parser2.unicodeTable(name6);
     if (pair === null) throw new RE2JSSyntaxException(Parser2.ERR_INVALID_CHAR_RANGE, t.from(startPos));
     if (pair.sign < 0) sign = 0 - sign;
     const tab = pair.tab;
@@ -28822,8 +29025,8 @@ var RE2JS = class RE2JS2 {
 // node_modules/@firebase/firestore/dist/common-C1sORuFu.node.mjs
 var version3 = "13.0.0";
 var SDK_VERSION2 = version3;
-function setSDKVersion(version6) {
-  SDK_VERSION2 = version6;
+function setSDKVersion(version7) {
+  SDK_VERSION2 = version7;
 }
 function formatJSON(value) {
   return inspect(value, { depth: 100 });
@@ -29955,8 +30158,8 @@ var DocumentKey = class _DocumentKey {
   static fromPath(path4) {
     return new _DocumentKey(ResourcePath.fromString(path4));
   }
-  static fromName(name5) {
-    return new _DocumentKey(ResourcePath.fromString(name5).popFirst(5));
+  static fromName(name6) {
+    return new _DocumentKey(ResourcePath.fromString(name6).popFirst(5));
   }
   static empty() {
     return new _DocumentKey(ResourcePath.emptyPath());
@@ -32746,8 +32949,8 @@ function fieldTransformsAreEqual(left, right) {
   return false;
 }
 var MutationResult = class {
-  constructor(version6, transformResults) {
-    this.version = version6;
+  constructor(version7, transformResults) {
+    this.version = version7;
     this.transformResults = transformResults;
   }
 };
@@ -32765,8 +32968,8 @@ var Precondition = class _Precondition {
     return new _Precondition(void 0, exists);
   }
   /** Creates a new Precondition based on a version a document exists at. */
-  static updateTime(version6) {
-    return new _Precondition(version6);
+  static updateTime(version7) {
+    return new _Precondition(version7);
   }
   /** Returns whether this Precondition is empty. */
   get isNone() {
@@ -33351,10 +33554,10 @@ var SnapshotVersion = class _SnapshotVersion {
   }
 };
 var MutableDocument = class _MutableDocument {
-  constructor(key, documentType, version6, readTime, createTime, data, documentState) {
+  constructor(key, documentType, version7, readTime, createTime, data, documentState) {
     this.key = key;
     this.documentType = documentType;
-    this.version = version6;
+    this.version = version7;
     this.readTime = readTime;
     this.createTime = createTime;
     this.data = data;
@@ -33383,12 +33586,12 @@ var MutableDocument = class _MutableDocument {
    * Creates a new document that is known to exist with the given data at the
    * given version.
    */
-  static newFoundDocument(documentKey, version6, createTime, value) {
+  static newFoundDocument(documentKey, version7, createTime, value) {
     return new _MutableDocument(
       documentKey,
       1,
       /* version */
-      version6,
+      version7,
       /* readTime */
       SnapshotVersion.min(),
       /* createTime */
@@ -33399,12 +33602,12 @@ var MutableDocument = class _MutableDocument {
     );
   }
   /** Creates a new document that is known to not exist at the given version. */
-  static newNoDocument(documentKey, version6) {
+  static newNoDocument(documentKey, version7) {
     return new _MutableDocument(
       documentKey,
       2,
       /* version */
-      version6,
+      version7,
       /* readTime */
       SnapshotVersion.min(),
       /* createTime */
@@ -33419,12 +33622,12 @@ var MutableDocument = class _MutableDocument {
    * whose data is not known (e.g. a document that was updated without a known
    * base document).
    */
-  static newUnknownDocument(documentKey, version6) {
+  static newUnknownDocument(documentKey, version7) {
     return new _MutableDocument(
       documentKey,
       3,
       /* version */
-      version6,
+      version7,
       /* readTime */
       SnapshotVersion.min(),
       /* createTime */
@@ -33438,11 +33641,11 @@ var MutableDocument = class _MutableDocument {
    * Changes the document type to indicate that it exists and that its version
    * and data are known.
    */
-  convertToFoundDocument(version6, value) {
+  convertToFoundDocument(version7, value) {
     if (this.createTime.isEqual(SnapshotVersion.min()) && (this.documentType === 2 || this.documentType === 0)) {
-      this.createTime = version6;
+      this.createTime = version7;
     }
-    this.version = version6;
+    this.version = version7;
     this.documentType = 1;
     this.data = value;
     this.documentState = 0;
@@ -33452,8 +33655,8 @@ var MutableDocument = class _MutableDocument {
    * Changes the document type to indicate that it doesn't exist at the given
    * version.
    */
-  convertToNoDocument(version6) {
-    this.version = version6;
+  convertToNoDocument(version7) {
+    this.version = version7;
     this.documentType = 2;
     this.data = ObjectValue.empty();
     this.documentState = 0;
@@ -33464,8 +33667,8 @@ var MutableDocument = class _MutableDocument {
    * that its data is not known (e.g. a document that was updated without a known
    * base document).
    */
-  convertToUnknownDocument(version6) {
-    this.version = version6;
+  convertToUnknownDocument(version7) {
+    this.version = version7;
     this.documentType = 3;
     this.data = ObjectValue.empty();
     this.documentState = 2;
@@ -34909,12 +35112,12 @@ function fromBytes(serializer, value) {
     return ByteString.fromUint8Array(value ? value : new Uint8Array());
   }
 }
-function toVersion(serializer, version6) {
-  return toTimestamp(serializer, version6.toTimestamp());
+function toVersion(serializer, version7) {
+  return toTimestamp(serializer, version7.toTimestamp());
 }
-function fromVersion(version6) {
-  hardAssert(!!version6, 49232);
-  return SnapshotVersion.fromTimestamp(fromTimestamp(version6));
+function fromVersion(version7) {
+  hardAssert(!!version7, 49232);
+  return SnapshotVersion.fromTimestamp(fromTimestamp(version7));
 }
 function toResourceName(databaseId, path4) {
   return toResourcePath(databaseId, path4).canonicalString();
@@ -34923,16 +35126,16 @@ function toResourcePath(databaseId, path4) {
   const resourcePath = fullyQualifiedPrefixPath(databaseId).child("documents");
   return path4 === void 0 ? resourcePath : resourcePath.child(path4);
 }
-function fromResourceName(name5) {
-  const resource = ResourcePath.fromString(name5);
+function fromResourceName(name6) {
+  const resource = ResourcePath.fromString(name6);
   hardAssert(isValidResourceName(resource), 10190, { key: resource.toString() });
   return resource;
 }
 function toName(serializer, key) {
   return toResourceName(serializer.databaseId, key.path);
 }
-function fromName(serializer, name5) {
-  const resource = fromResourceName(name5);
+function fromName(serializer, name6) {
+  const resource = fromResourceName(name6);
   if (resource.get(1) !== serializer.databaseId.projectId) {
     throw new FirestoreError(Code.INVALID_ARGUMENT, "Tried to deserialize key from different project: " + resource.get(1) + " vs " + serializer.databaseId.projectId);
   }
@@ -34944,8 +35147,8 @@ function fromName(serializer, name5) {
 function toQueryPath(serializer, path4) {
   return toResourceName(serializer.databaseId, path4);
 }
-function fromQueryPath(name5) {
-  const resourceName = fromResourceName(name5);
+function fromQueryPath(name6) {
+  const resourceName = fromResourceName(name6);
   if (resourceName.length === 4) {
     return ResourcePath.emptyPath();
   }
@@ -34995,12 +35198,12 @@ function fromWatchChange(serializer, change) {
     assertPresent(entityChange.document.name);
     assertPresent(entityChange.document.updateTime);
     const key = fromName(serializer, entityChange.document.name);
-    const version6 = fromVersion(entityChange.document.updateTime);
+    const version7 = fromVersion(entityChange.document.updateTime);
     const createTime = entityChange.document.createTime ? fromVersion(entityChange.document.createTime) : SnapshotVersion.min();
     const data = new ObjectValue({
       mapValue: { fields: entityChange.document.fields }
     });
-    const doc3 = MutableDocument.newFoundDocument(key, version6, createTime, data);
+    const doc3 = MutableDocument.newFoundDocument(key, version7, createTime, data);
     const updatedTargetIds = entityChange.targetIds || [];
     const removedTargetIds = entityChange.removedTargetIds || [];
     watchChange = new DocumentWatchChange(updatedTargetIds, removedTargetIds, doc3.key, doc3);
@@ -35009,8 +35212,8 @@ function fromWatchChange(serializer, change) {
     const docDelete = change.documentDelete;
     assertPresent(docDelete.document);
     const key = fromName(serializer, docDelete.document);
-    const version6 = docDelete.readTime ? fromVersion(docDelete.readTime) : SnapshotVersion.min();
-    const doc3 = MutableDocument.newNoDocument(key, version6);
+    const version7 = docDelete.readTime ? fromVersion(docDelete.readTime) : SnapshotVersion.min();
+    const doc3 = MutableDocument.newNoDocument(key, version7);
     const removedTargetIds = docDelete.removedTargetIds || [];
     watchChange = new DocumentWatchChange([], removedTargetIds, doc3.key, doc3);
   } else if ("documentRemove" in change) {
@@ -35103,11 +35306,11 @@ function toPrecondition(serializer, precondition) {
   }
 }
 function fromWriteResult(proto, commitTime) {
-  let version6 = proto.updateTime ? fromVersion(proto.updateTime) : fromVersion(commitTime);
-  if (version6.isEqual(SnapshotVersion.min())) {
-    version6 = fromVersion(commitTime);
+  let version7 = proto.updateTime ? fromVersion(proto.updateTime) : fromVersion(commitTime);
+  if (version7.isEqual(SnapshotVersion.min())) {
+    version7 = fromVersion(commitTime);
   }
-  return new MutationResult(version6, proto.transformResults || []);
+  return new MutationResult(version7, proto.transformResults || []);
 }
 function fromWriteResults(protos2, commitTime) {
   if (protos2 && protos2.length > 0) {
@@ -35987,7 +36190,7 @@ var FirebaseAuthCredentialsProvider = class {
         await guardedChangeListener(this.currentUser);
       });
     };
-    const registerAuth = (auth) => {
+    const registerAuth2 = (auth) => {
       logDebug("FirebaseAuthCredentialsProvider", "Auth detected");
       this.auth = auth;
       if (this.tokenListener) {
@@ -35995,12 +36198,12 @@ var FirebaseAuthCredentialsProvider = class {
         awaitNextToken();
       }
     };
-    this.authProvider.onInit((auth) => registerAuth(auth));
+    this.authProvider.onInit((auth) => registerAuth2(auth));
     setTimeout(() => {
       if (!this.auth) {
         const auth = this.authProvider.getImmediate({ optional: true });
         if (auth) {
-          registerAuth(auth);
+          registerAuth2(auth);
         } else {
           logDebug("FirebaseAuthCredentialsProvider", "Auth not yet detected");
           nextToken.resolve();
@@ -41779,8 +41982,8 @@ var PersistencePromise = class _PersistencePromise {
 };
 function getAndroidVersion(ua) {
   const androidVersionRegex = ua.match(/Android ([\d.]+)/i);
-  const version6 = androidVersionRegex ? androidVersionRegex[1].split(".").slice(0, 2).join(".") : "-1";
-  return Number(version6);
+  const version7 = androidVersionRegex ? androidVersionRegex[1].split(".").slice(0, 2).join(".") : "-1";
+  return Number(version7);
 }
 function isIndexedDbTransactionError(e) {
   return e.name === "IndexedDbTransactionError";
@@ -44535,13 +44738,13 @@ var Expression = class {
    * @returns A new {@link @firebase/firestore/pipelines#AliasedExpression} that wraps this
    *     expression and associates it with the provided alias.
    */
-  as(name5) {
-    return new AliasedExpression(this, name5, "as");
+  as(name6) {
+    return new AliasedExpression(this, name6, "as");
   }
 };
 var AggregateFunction = class _AggregateFunction {
-  constructor(name5, params) {
-    this.name = name5;
+  constructor(name6, params) {
+    this.name = name6;
     this.params = params;
     this.exprType = "AggregateFunction";
     this._protoValueType = "ProtoValue";
@@ -44550,8 +44753,8 @@ var AggregateFunction = class _AggregateFunction {
    * @internal
    * @private
    */
-  static _create(name5, params, methodName) {
-    const af = new _AggregateFunction(name5, params);
+  static _create(name6, params, methodName) {
+    const af = new _AggregateFunction(name6, params);
     af._methodName = methodName;
     return af;
   }
@@ -44570,8 +44773,8 @@ var AggregateFunction = class _AggregateFunction {
    * @returns A new {@link @firebase/firestore/pipelines#AliasedAggregate} that wraps this
    *     AggregateFunction and associates it with the provided alias.
    */
-  as(name5) {
-    return new AliasedAggregate(this, name5, "as");
+  as(name6) {
+    return new AliasedAggregate(this, name6, "as");
   }
   /**
    * @private
@@ -44795,9 +44998,9 @@ var FunctionExpression = class extends Expression {
   /**
    * @hideconstructor
    */
-  constructor(name5, params, methodName, options2) {
+  constructor(name6, params, methodName, options2) {
     super();
-    this.name = name5;
+    this.name = name6;
     this.params = params;
     this.expressionType = "Function";
     this._optionsProto = void 0;
@@ -47717,8 +47920,8 @@ var RealtimePipeline = class _RealtimePipeline {
    * @private
    * @internal
    */
-  readUserData(name5, expressionMap) {
-    const context = this.userDataReader.createContext(3, name5);
+  readUserData(name6, expressionMap) {
+    const context = this.userDataReader.createContext(3, name6);
     if (isUserData(expressionMap)) {
       expressionMap._readUserData(context);
     } else if (Array.isArray(expressionMap)) {
@@ -53169,9 +53372,9 @@ var AbstractUserDataWriter = class {
     const normalizedValue = normalizeTimestamp(value);
     return new Timestamp(normalizedValue.seconds, normalizedValue.nanos);
   }
-  convertDocumentKey(name5, expectedDatabaseId) {
-    const resourcePath = ResourcePath.fromString(name5);
-    hardAssert(isValidResourceName(resourcePath), 9688, { name: name5 });
+  convertDocumentKey(name6, expectedDatabaseId) {
+    const resourcePath = ResourcePath.fromString(name6);
+    hardAssert(isValidResourceName(resourcePath), 9688, { name: name6 });
     const databaseId = new DatabaseId(resourcePath.get(1), resourcePath.get(3));
     const key = new DocumentKey(resourcePath.popFirst(5));
     if (!databaseId.isEqual(expectedDatabaseId)) {
@@ -53188,8 +53391,8 @@ var ExpUserDataWriter = class extends AbstractUserDataWriter {
   convertBytes(bytes) {
     return new Bytes(bytes);
   }
-  convertReference(name5) {
-    const key = this.convertDocumentKey(name5, this.firestore._databaseId);
+  convertReference(name6) {
+    const key = this.convertDocumentKey(name6, this.firestore._databaseId);
     return new DocumentReference(
       this.firestore,
       /* converter= */
@@ -54041,8 +54244,8 @@ function invalidArgument(message) {
 function appDeleted() {
   return new StorageError(StorageErrorCode.APP_DELETED, "The Firebase app was deleted.");
 }
-function invalidRootOperation(name5) {
-  return new StorageError(StorageErrorCode.INVALID_ROOT_OPERATION, "The operation '" + name5 + "' cannot be performed on a root reference, create a non-root reference using child, such as .child('file.png').");
+function invalidRootOperation(name6) {
+  return new StorageError(StorageErrorCode.INVALID_ROOT_OPERATION, "The operation '" + name6 + "' cannot be performed on a root reference, create a non-root reference using child, such as .child('file.png').");
 }
 function internalError(message) {
   throw new StorageError(StorageErrorCode.INTERNAL_ERROR, "Internal error: " + message);
@@ -54093,10 +54296,10 @@ var Location = class _Location {
     function httpModify(loc) {
       loc.path_ = decodeURIComponent(loc.path);
     }
-    const version6 = "v[A-Za-z0-9_]+";
+    const version7 = "v[A-Za-z0-9_]+";
     const firebaseStorageHost = host.replace(/[.]/g, "\\.");
     const firebaseStoragePath = "(/([^?#]*).*)?$";
-    const firebaseStorageRegExp = new RegExp(`^https?://${firebaseStorageHost}/${version6}/b/${bucketDomain}/o${firebaseStoragePath}`, "i");
+    const firebaseStorageRegExp = new RegExp(`^https?://${firebaseStorageHost}/${version7}/b/${bucketDomain}/o${firebaseStoragePath}`, "i");
     const firebaseStorageIndices = { bucket: 1, path: 3 };
     const cloudStorageHost = host === DEFAULT_HOST2 ? "(?:storage.googleapis.com|storage.cloud.google.com)" : host;
     const cloudStoragePath = "([^?#]*)";
@@ -54701,9 +54904,9 @@ var Reference = class _Reference {
   /**
    * Utility function to throw an error in methods that do not accept a root reference.
    */
-  _throwIfRoot(name5) {
+  _throwIfRoot(name6) {
     if (this._location.path === "") {
-      throw invalidRootOperation(name5);
+      throw invalidRootOperation(name6);
     }
   }
 };
@@ -54966,6 +55169,3749 @@ function registerStorage() {
 }
 registerStorage();
 
+// node_modules/@firebase/auth/dist/node-esm/totp-15CrSsqZ.js
+function _prodErrorMap() {
+  return {
+    [
+      "dependent-sdk-initialized-before-auth"
+      /* AuthErrorCode.DEPENDENT_SDK_INIT_BEFORE_AUTH */
+    ]: "Another Firebase SDK was initialized and is trying to use Auth before Auth is initialized. Please be sure to call `initializeAuth` or `getAuth` before starting any other Firebase SDK."
+  };
+}
+var prodErrorMap = _prodErrorMap;
+var _DEFAULT_AUTH_ERROR_FACTORY = new ErrorFactory("auth", "Firebase", _prodErrorMap());
+var logClient2 = new Logger("@firebase/auth");
+function _logWarn(msg, ...args) {
+  if (logClient2.logLevel <= LogLevel.WARN) {
+    logClient2.warn(`Auth (${SDK_VERSION}): ${msg}`, ...args);
+  }
+}
+function _logError(msg, ...args) {
+  if (logClient2.logLevel <= LogLevel.ERROR) {
+    logClient2.error(`Auth (${SDK_VERSION}): ${msg}`, ...args);
+  }
+}
+function _fail2(authOrCode, ...rest) {
+  throw createErrorInternal(authOrCode, ...rest);
+}
+function _createError(authOrCode, ...rest) {
+  return createErrorInternal(authOrCode, ...rest);
+}
+function _errorWithCustomMessage(auth, code, message) {
+  const errorMap = {
+    ...prodErrorMap(),
+    [code]: message
+  };
+  const factory2 = new ErrorFactory("auth", "Firebase", errorMap);
+  return factory2.create(code, {
+    appName: auth.name
+  });
+}
+function _serverAppCurrentUserOperationNotSupportedError(auth) {
+  return _errorWithCustomMessage(auth, "operation-not-supported-in-this-environment", "Operations that alter the current user are not supported in conjunction with FirebaseServerApp");
+}
+function createErrorInternal(authOrCode, ...rest) {
+  if (typeof authOrCode !== "string") {
+    const code = rest[0];
+    const fullParams = [...rest.slice(1)];
+    if (fullParams[0]) {
+      fullParams[0].appName = authOrCode.name;
+    }
+    return authOrCode._errorFactory.create(code, ...fullParams);
+  }
+  return _DEFAULT_AUTH_ERROR_FACTORY.create(authOrCode, ...rest);
+}
+function _assert(assertion, authOrCode, ...rest) {
+  if (!assertion) {
+    throw createErrorInternal(authOrCode, ...rest);
+  }
+}
+function debugFail(failure) {
+  const message = `INTERNAL ASSERTION FAILED: ` + failure;
+  _logError(message);
+  throw new Error(message);
+}
+function debugAssert2(assertion, message) {
+  if (!assertion) {
+    debugFail(message);
+  }
+}
+function _isHttpOrHttps() {
+  return _getCurrentScheme() === "http:" || _getCurrentScheme() === "https:";
+}
+function _getCurrentScheme() {
+  return typeof self !== "undefined" && self.location?.protocol || null;
+}
+function _isOnline() {
+  if (typeof navigator !== "undefined" && navigator && "onLine" in navigator && typeof navigator.onLine === "boolean" && // Apply only for traditional web apps and Chrome extensions.
+  // This is especially true for Cordova apps which have unreliable
+  // navigator.onLine behavior unless cordova-plugin-network-information is
+  // installed which overwrites the native navigator.onLine value and
+  // defines navigator.connection.
+  (_isHttpOrHttps() || isBrowserExtension() || "connection" in navigator)) {
+    return navigator.onLine;
+  }
+  return true;
+}
+function _getUserLanguage() {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+  const navigatorLanguage = navigator;
+  return (
+    // Most reliable, but only supported in Chrome/Firefox.
+    navigatorLanguage.languages && navigatorLanguage.languages[0] || // Supported in most browsers, but returns the language of the browser
+    // UI, not the language set in browser settings.
+    navigatorLanguage.language || // Couldn't determine language.
+    null
+  );
+}
+var Delay = class {
+  constructor(shortDelay, longDelay) {
+    this.shortDelay = shortDelay;
+    this.longDelay = longDelay;
+    debugAssert2(longDelay > shortDelay, "Short delay should be less than long delay!");
+    this.isMobile = isMobileCordova() || isReactNative();
+  }
+  get() {
+    if (!_isOnline()) {
+      return Math.min(5e3, this.shortDelay);
+    }
+    return this.isMobile ? this.longDelay : this.shortDelay;
+  }
+};
+function _emulatorUrl(config, path4) {
+  debugAssert2(config.emulator, "Emulator should always be set here");
+  const { url } = config.emulator;
+  if (!path4) {
+    return url;
+  }
+  return `${url}${path4.startsWith("/") ? path4.slice(1) : path4}`;
+}
+var FetchProvider = class {
+  static initialize(fetchImpl, headersImpl, responseImpl) {
+    this.fetchImpl = fetchImpl;
+    if (headersImpl) {
+      this.headersImpl = headersImpl;
+    }
+    if (responseImpl) {
+      this.responseImpl = responseImpl;
+    }
+  }
+  static fetch() {
+    if (this.fetchImpl) {
+      return this.fetchImpl;
+    }
+    if (typeof self !== "undefined" && "fetch" in self) {
+      return self.fetch;
+    }
+    if (typeof globalThis !== "undefined" && globalThis.fetch) {
+      return globalThis.fetch;
+    }
+    if (typeof fetch !== "undefined") {
+      return fetch;
+    }
+    debugFail("Could not find fetch implementation, make sure you call FetchProvider.initialize() with an appropriate polyfill");
+  }
+  static headers() {
+    if (this.headersImpl) {
+      return this.headersImpl;
+    }
+    if (typeof self !== "undefined" && "Headers" in self) {
+      return self.Headers;
+    }
+    if (typeof globalThis !== "undefined" && globalThis.Headers) {
+      return globalThis.Headers;
+    }
+    if (typeof Headers !== "undefined") {
+      return Headers;
+    }
+    debugFail("Could not find Headers implementation, make sure you call FetchProvider.initialize() with an appropriate polyfill");
+  }
+  static response() {
+    if (this.responseImpl) {
+      return this.responseImpl;
+    }
+    if (typeof self !== "undefined" && "Response" in self) {
+      return self.Response;
+    }
+    if (typeof globalThis !== "undefined" && globalThis.Response) {
+      return globalThis.Response;
+    }
+    if (typeof Response !== "undefined") {
+      return Response;
+    }
+    debugFail("Could not find Response implementation, make sure you call FetchProvider.initialize() with an appropriate polyfill");
+  }
+};
+var SERVER_ERROR_MAP = {
+  // Custom token errors.
+  [
+    "CREDENTIAL_MISMATCH"
+    /* ServerError.CREDENTIAL_MISMATCH */
+  ]: "custom-token-mismatch",
+  // This can only happen if the SDK sends a bad request.
+  [
+    "MISSING_CUSTOM_TOKEN"
+    /* ServerError.MISSING_CUSTOM_TOKEN */
+  ]: "internal-error",
+  // Create Auth URI errors.
+  [
+    "INVALID_IDENTIFIER"
+    /* ServerError.INVALID_IDENTIFIER */
+  ]: "invalid-email",
+  // This can only happen if the SDK sends a bad request.
+  [
+    "MISSING_CONTINUE_URI"
+    /* ServerError.MISSING_CONTINUE_URI */
+  ]: "internal-error",
+  // Sign in with email and password errors (some apply to sign up too).
+  [
+    "INVALID_PASSWORD"
+    /* ServerError.INVALID_PASSWORD */
+  ]: "wrong-password",
+  // This can only happen if the SDK sends a bad request.
+  [
+    "MISSING_PASSWORD"
+    /* ServerError.MISSING_PASSWORD */
+  ]: "missing-password",
+  // Thrown if Email Enumeration Protection is enabled in the project and the email or password is
+  // invalid.
+  [
+    "INVALID_LOGIN_CREDENTIALS"
+    /* ServerError.INVALID_LOGIN_CREDENTIALS */
+  ]: "invalid-credential",
+  // Sign up with email and password errors.
+  [
+    "EMAIL_EXISTS"
+    /* ServerError.EMAIL_EXISTS */
+  ]: "email-already-in-use",
+  [
+    "PASSWORD_LOGIN_DISABLED"
+    /* ServerError.PASSWORD_LOGIN_DISABLED */
+  ]: "operation-not-allowed",
+  // Verify assertion for sign in with credential errors:
+  [
+    "INVALID_IDP_RESPONSE"
+    /* ServerError.INVALID_IDP_RESPONSE */
+  ]: "invalid-credential",
+  [
+    "INVALID_PENDING_TOKEN"
+    /* ServerError.INVALID_PENDING_TOKEN */
+  ]: "invalid-credential",
+  [
+    "FEDERATED_USER_ID_ALREADY_LINKED"
+    /* ServerError.FEDERATED_USER_ID_ALREADY_LINKED */
+  ]: "credential-already-in-use",
+  // This can only happen if the SDK sends a bad request.
+  [
+    "MISSING_REQ_TYPE"
+    /* ServerError.MISSING_REQ_TYPE */
+  ]: "internal-error",
+  // Send Password reset email errors:
+  [
+    "EMAIL_NOT_FOUND"
+    /* ServerError.EMAIL_NOT_FOUND */
+  ]: "user-not-found",
+  [
+    "RESET_PASSWORD_EXCEED_LIMIT"
+    /* ServerError.RESET_PASSWORD_EXCEED_LIMIT */
+  ]: "too-many-requests",
+  [
+    "EXPIRED_OOB_CODE"
+    /* ServerError.EXPIRED_OOB_CODE */
+  ]: "expired-action-code",
+  [
+    "INVALID_OOB_CODE"
+    /* ServerError.INVALID_OOB_CODE */
+  ]: "invalid-action-code",
+  // This can only happen if the SDK sends a bad request.
+  [
+    "MISSING_OOB_CODE"
+    /* ServerError.MISSING_OOB_CODE */
+  ]: "internal-error",
+  // Operations that require ID token in request:
+  [
+    "CREDENTIAL_TOO_OLD_LOGIN_AGAIN"
+    /* ServerError.CREDENTIAL_TOO_OLD_LOGIN_AGAIN */
+  ]: "requires-recent-login",
+  [
+    "INVALID_ID_TOKEN"
+    /* ServerError.INVALID_ID_TOKEN */
+  ]: "invalid-user-token",
+  [
+    "TOKEN_EXPIRED"
+    /* ServerError.TOKEN_EXPIRED */
+  ]: "user-token-expired",
+  [
+    "USER_NOT_FOUND"
+    /* ServerError.USER_NOT_FOUND */
+  ]: "user-token-expired",
+  // Other errors.
+  [
+    "TOO_MANY_ATTEMPTS_TRY_LATER"
+    /* ServerError.TOO_MANY_ATTEMPTS_TRY_LATER */
+  ]: "too-many-requests",
+  [
+    "PASSWORD_DOES_NOT_MEET_REQUIREMENTS"
+    /* ServerError.PASSWORD_DOES_NOT_MEET_REQUIREMENTS */
+  ]: "password-does-not-meet-requirements",
+  // Phone Auth related errors.
+  [
+    "INVALID_CODE"
+    /* ServerError.INVALID_CODE */
+  ]: "invalid-verification-code",
+  [
+    "INVALID_SESSION_INFO"
+    /* ServerError.INVALID_SESSION_INFO */
+  ]: "invalid-verification-id",
+  [
+    "INVALID_TEMPORARY_PROOF"
+    /* ServerError.INVALID_TEMPORARY_PROOF */
+  ]: "invalid-credential",
+  [
+    "MISSING_SESSION_INFO"
+    /* ServerError.MISSING_SESSION_INFO */
+  ]: "missing-verification-id",
+  [
+    "SESSION_EXPIRED"
+    /* ServerError.SESSION_EXPIRED */
+  ]: "code-expired",
+  // Other action code errors when additional settings passed.
+  // MISSING_CONTINUE_URI is getting mapped to INTERNAL_ERROR above.
+  // This is OK as this error will be caught by client side validation.
+  [
+    "MISSING_ANDROID_PACKAGE_NAME"
+    /* ServerError.MISSING_ANDROID_PACKAGE_NAME */
+  ]: "missing-android-pkg-name",
+  [
+    "UNAUTHORIZED_DOMAIN"
+    /* ServerError.UNAUTHORIZED_DOMAIN */
+  ]: "unauthorized-continue-uri",
+  // getProjectConfig errors when clientId is passed.
+  [
+    "INVALID_OAUTH_CLIENT_ID"
+    /* ServerError.INVALID_OAUTH_CLIENT_ID */
+  ]: "invalid-oauth-client-id",
+  // User actions (sign-up or deletion) disabled errors.
+  [
+    "ADMIN_ONLY_OPERATION"
+    /* ServerError.ADMIN_ONLY_OPERATION */
+  ]: "admin-restricted-operation",
+  // Multi factor related errors.
+  [
+    "INVALID_MFA_PENDING_CREDENTIAL"
+    /* ServerError.INVALID_MFA_PENDING_CREDENTIAL */
+  ]: "invalid-multi-factor-session",
+  [
+    "MFA_ENROLLMENT_NOT_FOUND"
+    /* ServerError.MFA_ENROLLMENT_NOT_FOUND */
+  ]: "multi-factor-info-not-found",
+  [
+    "MISSING_MFA_ENROLLMENT_ID"
+    /* ServerError.MISSING_MFA_ENROLLMENT_ID */
+  ]: "missing-multi-factor-info",
+  [
+    "MISSING_MFA_PENDING_CREDENTIAL"
+    /* ServerError.MISSING_MFA_PENDING_CREDENTIAL */
+  ]: "missing-multi-factor-session",
+  [
+    "SECOND_FACTOR_EXISTS"
+    /* ServerError.SECOND_FACTOR_EXISTS */
+  ]: "second-factor-already-in-use",
+  [
+    "SECOND_FACTOR_LIMIT_EXCEEDED"
+    /* ServerError.SECOND_FACTOR_LIMIT_EXCEEDED */
+  ]: "maximum-second-factor-count-exceeded",
+  // Blocking functions related errors.
+  [
+    "BLOCKING_FUNCTION_ERROR_RESPONSE"
+    /* ServerError.BLOCKING_FUNCTION_ERROR_RESPONSE */
+  ]: "internal-error",
+  // Recaptcha related errors.
+  [
+    "RECAPTCHA_NOT_ENABLED"
+    /* ServerError.RECAPTCHA_NOT_ENABLED */
+  ]: "recaptcha-not-enabled",
+  [
+    "MISSING_RECAPTCHA_TOKEN"
+    /* ServerError.MISSING_RECAPTCHA_TOKEN */
+  ]: "missing-recaptcha-token",
+  [
+    "INVALID_RECAPTCHA_TOKEN"
+    /* ServerError.INVALID_RECAPTCHA_TOKEN */
+  ]: "invalid-recaptcha-token",
+  [
+    "INVALID_RECAPTCHA_ACTION"
+    /* ServerError.INVALID_RECAPTCHA_ACTION */
+  ]: "invalid-recaptcha-action",
+  [
+    "MISSING_CLIENT_TYPE"
+    /* ServerError.MISSING_CLIENT_TYPE */
+  ]: "missing-client-type",
+  [
+    "MISSING_RECAPTCHA_VERSION"
+    /* ServerError.MISSING_RECAPTCHA_VERSION */
+  ]: "missing-recaptcha-version",
+  [
+    "INVALID_RECAPTCHA_VERSION"
+    /* ServerError.INVALID_RECAPTCHA_VERSION */
+  ]: "invalid-recaptcha-version",
+  [
+    "INVALID_REQ_TYPE"
+    /* ServerError.INVALID_REQ_TYPE */
+  ]: "invalid-req-type"
+  /* AuthErrorCode.INVALID_REQ_TYPE */
+};
+var CookieAuthProxiedEndpoints = [
+  "/v1/accounts:signInWithCustomToken",
+  "/v1/accounts:signInWithEmailLink",
+  "/v1/accounts:signInWithIdp",
+  "/v1/accounts:signInWithPassword",
+  "/v1/accounts:signInWithPhoneNumber",
+  "/v1/token"
+  /* Endpoint.TOKEN */
+];
+var DEFAULT_API_TIMEOUT_MS = new Delay(3e4, 6e4);
+function _addTidIfNecessary(auth, request) {
+  if (auth.tenantId && !request.tenantId) {
+    return {
+      ...request,
+      tenantId: auth.tenantId
+    };
+  }
+  return request;
+}
+async function _performApiRequest(auth, method, path4, request, customErrorMap = {}) {
+  return _performFetchWithErrorHandling(auth, customErrorMap, async () => {
+    let body = {};
+    let params = {};
+    if (request) {
+      if (method === "GET") {
+        params = request;
+      } else {
+        body = {
+          body: JSON.stringify(request)
+        };
+      }
+    }
+    const query = querystring({
+      ...params,
+      key: auth.config.apiKey
+    }).slice(1);
+    const headers = await auth._getAdditionalHeaders();
+    headers[
+      "Content-Type"
+      /* HttpHeader.CONTENT_TYPE */
+    ] = "application/json";
+    if (auth.languageCode) {
+      headers[
+        "X-Firebase-Locale"
+        /* HttpHeader.X_FIREBASE_LOCALE */
+      ] = auth.languageCode;
+    }
+    const fetchArgs = {
+      method,
+      headers,
+      ...body
+    };
+    if (!isCloudflareWorker()) {
+      fetchArgs.referrerPolicy = "strict-origin-when-cross-origin";
+    }
+    if (auth.emulatorConfig && isCloudWorkstation(auth.emulatorConfig.host)) {
+      fetchArgs.credentials = "include";
+    }
+    return FetchProvider.fetch()(await _getFinalTarget(auth, auth.config.apiHost, path4, query), fetchArgs);
+  });
+}
+async function _performFetchWithErrorHandling(auth, customErrorMap, fetchFn) {
+  auth._canInitEmulator = false;
+  const errorMap = { ...SERVER_ERROR_MAP, ...customErrorMap };
+  try {
+    const networkTimeout = new NetworkTimeout(auth);
+    const response = await Promise.race([
+      fetchFn(),
+      networkTimeout.promise
+    ]);
+    networkTimeout.clearNetworkTimeout();
+    const json = await response.json();
+    if ("needConfirmation" in json) {
+      throw _makeTaggedError(auth, "account-exists-with-different-credential", json);
+    }
+    if (response.ok && !("errorMessage" in json)) {
+      return json;
+    } else {
+      const errorMessage = response.ok ? json.errorMessage : json.error.message;
+      const [serverErrorCode, serverErrorMessage] = errorMessage.split(" : ");
+      if (serverErrorCode === "FEDERATED_USER_ID_ALREADY_LINKED") {
+        throw _makeTaggedError(auth, "credential-already-in-use", json);
+      } else if (serverErrorCode === "EMAIL_EXISTS") {
+        throw _makeTaggedError(auth, "email-already-in-use", json);
+      } else if (serverErrorCode === "USER_DISABLED") {
+        throw _makeTaggedError(auth, "user-disabled", json);
+      }
+      const authError = errorMap[serverErrorCode] || serverErrorCode.toLowerCase().replace(/[_\s]+/g, "-");
+      if (serverErrorMessage) {
+        throw _errorWithCustomMessage(auth, authError, serverErrorMessage);
+      } else {
+        _fail2(auth, authError);
+      }
+    }
+  } catch (e) {
+    if (e instanceof FirebaseError) {
+      throw e;
+    }
+    _fail2(auth, "network-request-failed", { "message": String(e) });
+  }
+}
+async function _performSignInRequest(auth, method, path4, request, customErrorMap = {}) {
+  const serverResponse = await _performApiRequest(auth, method, path4, request, customErrorMap);
+  if ("mfaPendingCredential" in serverResponse) {
+    _fail2(auth, "multi-factor-auth-required", {
+      _serverResponse: serverResponse
+    });
+  }
+  return serverResponse;
+}
+async function _getFinalTarget(auth, host, path4, query) {
+  const base = `${host}${path4}?${query}`;
+  const authInternal = auth;
+  const finalTarget = authInternal.config.emulator ? _emulatorUrl(auth.config, base) : `${auth.config.apiScheme}://${base}`;
+  if (CookieAuthProxiedEndpoints.includes(path4)) {
+    await authInternal._persistenceManagerAvailable;
+    if (authInternal._getPersistenceType() === "COOKIE") {
+      const cookiePersistence = authInternal._getPersistence();
+      return cookiePersistence._getFinalTarget(finalTarget).toString();
+    }
+  }
+  return finalTarget;
+}
+function _parseEnforcementState(enforcementStateStr) {
+  switch (enforcementStateStr) {
+    case "ENFORCE":
+      return "ENFORCE";
+    case "AUDIT":
+      return "AUDIT";
+    case "OFF":
+      return "OFF";
+    default:
+      return "ENFORCEMENT_STATE_UNSPECIFIED";
+  }
+}
+var NetworkTimeout = class {
+  clearNetworkTimeout() {
+    clearTimeout(this.timer);
+  }
+  constructor(auth) {
+    this.auth = auth;
+    this.timer = null;
+    this.promise = new Promise((_, reject) => {
+      this.timer = setTimeout(() => {
+        return reject(_createError(
+          this.auth,
+          "network-request-failed"
+          /* AuthErrorCode.NETWORK_REQUEST_FAILED */
+        ));
+      }, DEFAULT_API_TIMEOUT_MS.get());
+    });
+  }
+};
+function _makeTaggedError(auth, code, response) {
+  const errorParams = {
+    appName: auth.name
+  };
+  if (response.email) {
+    errorParams.email = response.email;
+  }
+  if (response.phoneNumber) {
+    errorParams.phoneNumber = response.phoneNumber;
+  }
+  const error = _createError(auth, code, errorParams);
+  error.customData._tokenResponse = response;
+  return error;
+}
+function isEnterprise(grecaptcha) {
+  return grecaptcha !== void 0 && grecaptcha.enterprise !== void 0;
+}
+var RecaptchaConfig = class {
+  constructor(response) {
+    this.siteKey = "";
+    this.recaptchaEnforcementState = [];
+    if (response.recaptchaKey === void 0) {
+      throw new Error("recaptchaKey undefined");
+    }
+    this.siteKey = response.recaptchaKey.split("/")[3];
+    this.recaptchaEnforcementState = response.recaptchaEnforcementState;
+  }
+  /**
+   * Returns the reCAPTCHA Enterprise enforcement state for the given provider.
+   *
+   * @param providerStr - The provider whose enforcement state is to be returned.
+   * @returns The reCAPTCHA Enterprise enforcement state for the given provider.
+   */
+  getProviderEnforcementState(providerStr) {
+    if (!this.recaptchaEnforcementState || this.recaptchaEnforcementState.length === 0) {
+      return null;
+    }
+    for (const recaptchaEnforcementState of this.recaptchaEnforcementState) {
+      if (recaptchaEnforcementState.provider && recaptchaEnforcementState.provider === providerStr) {
+        return _parseEnforcementState(recaptchaEnforcementState.enforcementState);
+      }
+    }
+    return null;
+  }
+  /**
+   * Returns true if the reCAPTCHA Enterprise enforcement state for the provider is set to ENFORCE or AUDIT.
+   *
+   * @param providerStr - The provider whose enablement state is to be returned.
+   * @returns Whether or not reCAPTCHA Enterprise protection is enabled for the given provider.
+   */
+  isProviderEnabled(providerStr) {
+    return this.getProviderEnforcementState(providerStr) === "ENFORCE" || this.getProviderEnforcementState(providerStr) === "AUDIT";
+  }
+  /**
+   * Returns true if reCAPTCHA Enterprise protection is enabled in at least one provider, otherwise
+   * returns false.
+   *
+   * @returns Whether or not reCAPTCHA Enterprise protection is enabled for at least one provider.
+   */
+  isAnyProviderEnabled() {
+    return this.isProviderEnabled(
+      "EMAIL_PASSWORD_PROVIDER"
+      /* RecaptchaAuthProvider.EMAIL_PASSWORD_PROVIDER */
+    ) || this.isProviderEnabled(
+      "PHONE_PROVIDER"
+      /* RecaptchaAuthProvider.PHONE_PROVIDER */
+    );
+  }
+};
+async function getRecaptchaConfig(auth, request) {
+  return _performApiRequest(auth, "GET", "/v2/recaptchaConfig", _addTidIfNecessary(auth, request));
+}
+async function deleteAccount(auth, request) {
+  return _performApiRequest(auth, "POST", "/v1/accounts:delete", request);
+}
+async function getAccountInfo(auth, request) {
+  return _performApiRequest(auth, "POST", "/v1/accounts:lookup", request);
+}
+function utcTimestampToDateString(utcTimestamp) {
+  if (!utcTimestamp) {
+    return void 0;
+  }
+  try {
+    const date = new Date(Number(utcTimestamp));
+    if (!isNaN(date.getTime())) {
+      return date.toUTCString();
+    }
+  } catch (e) {
+  }
+  return void 0;
+}
+async function getIdTokenResult(user, forceRefresh = false) {
+  const userInternal = getModularInstance(user);
+  const token = await userInternal.getIdToken(forceRefresh);
+  const claims = _parseToken(token);
+  _assert(
+    claims && claims.exp && claims.auth_time && claims.iat,
+    userInternal.auth,
+    "internal-error"
+    /* AuthErrorCode.INTERNAL_ERROR */
+  );
+  const firebase = typeof claims.firebase === "object" ? claims.firebase : void 0;
+  const signInProvider = firebase?.["sign_in_provider"];
+  return {
+    claims,
+    token,
+    authTime: utcTimestampToDateString(secondsStringToMilliseconds(claims.auth_time)),
+    issuedAtTime: utcTimestampToDateString(secondsStringToMilliseconds(claims.iat)),
+    expirationTime: utcTimestampToDateString(secondsStringToMilliseconds(claims.exp)),
+    signInProvider: signInProvider || null,
+    signInSecondFactor: firebase?.["sign_in_second_factor"] || null
+  };
+}
+function secondsStringToMilliseconds(seconds) {
+  return Number(seconds) * 1e3;
+}
+function _parseToken(token) {
+  const [algorithm, payload, signature] = token.split(".");
+  if (algorithm === void 0 || payload === void 0 || signature === void 0) {
+    _logError("JWT malformed, contained fewer than 3 sections");
+    return null;
+  }
+  try {
+    const decoded = base64Decode(payload);
+    if (!decoded) {
+      _logError("Failed to decode base64 JWT payload");
+      return null;
+    }
+    return JSON.parse(decoded);
+  } catch (e) {
+    _logError("Caught error parsing JWT payload as JSON", e?.toString());
+    return null;
+  }
+}
+function _tokenExpiresIn(token) {
+  const parsedToken = _parseToken(token);
+  _assert(
+    parsedToken,
+    "internal-error"
+    /* AuthErrorCode.INTERNAL_ERROR */
+  );
+  _assert(
+    typeof parsedToken.exp !== "undefined",
+    "internal-error"
+    /* AuthErrorCode.INTERNAL_ERROR */
+  );
+  _assert(
+    typeof parsedToken.iat !== "undefined",
+    "internal-error"
+    /* AuthErrorCode.INTERNAL_ERROR */
+  );
+  return Number(parsedToken.exp) - Number(parsedToken.iat);
+}
+async function _logoutIfInvalidated(user, promise, bypassAuthState = false) {
+  if (bypassAuthState) {
+    return promise;
+  }
+  try {
+    return await promise;
+  } catch (e) {
+    if (e instanceof FirebaseError && isUserInvalidated(e)) {
+      if (user.auth.currentUser === user) {
+        await user.auth.signOut();
+      }
+    }
+    throw e;
+  }
+}
+function isUserInvalidated({ code }) {
+  return code === `auth/${"user-disabled"}` || code === `auth/${"user-token-expired"}`;
+}
+var ProactiveRefresh = class {
+  constructor(user) {
+    this.user = user;
+    this.isRunning = false;
+    this.timerId = null;
+    this.errorBackoff = 3e4;
+  }
+  _start() {
+    if (this.isRunning) {
+      return;
+    }
+    this.isRunning = true;
+    this.schedule();
+  }
+  _stop() {
+    if (!this.isRunning) {
+      return;
+    }
+    this.isRunning = false;
+    if (this.timerId !== null) {
+      clearTimeout(this.timerId);
+    }
+  }
+  getInterval(wasError) {
+    if (wasError) {
+      const interval = this.errorBackoff;
+      this.errorBackoff = Math.min(
+        this.errorBackoff * 2,
+        96e4
+        /* Duration.RETRY_BACKOFF_MAX */
+      );
+      return interval;
+    } else {
+      this.errorBackoff = 3e4;
+      const expTime = this.user.stsTokenManager.expirationTime ?? 0;
+      const interval = expTime - Date.now() - 3e5;
+      return Math.max(0, interval);
+    }
+  }
+  schedule(wasError = false) {
+    if (!this.isRunning) {
+      return;
+    }
+    const interval = this.getInterval(wasError);
+    this.timerId = setTimeout(async () => {
+      await this.iteration();
+    }, interval);
+  }
+  async iteration() {
+    try {
+      await this.user.getIdToken(true);
+    } catch (e) {
+      if (e?.code === `auth/${"network-request-failed"}`) {
+        this.schedule(
+          /* wasError */
+          true
+        );
+      }
+      return;
+    }
+    this.schedule();
+  }
+};
+var UserMetadata = class {
+  constructor(createdAt, lastLoginAt) {
+    this.createdAt = createdAt;
+    this.lastLoginAt = lastLoginAt;
+    this._initializeTime();
+  }
+  _initializeTime() {
+    this.lastSignInTime = utcTimestampToDateString(this.lastLoginAt);
+    this.creationTime = utcTimestampToDateString(this.createdAt);
+  }
+  _copy(metadata) {
+    this.createdAt = metadata.createdAt;
+    this.lastLoginAt = metadata.lastLoginAt;
+    this._initializeTime();
+  }
+  toJSON() {
+    return {
+      createdAt: this.createdAt,
+      lastLoginAt: this.lastLoginAt
+    };
+  }
+};
+async function _reloadWithoutSaving(user) {
+  const auth = user.auth;
+  const idToken = await user.getIdToken();
+  const response = await _logoutIfInvalidated(user, getAccountInfo(auth, { idToken }));
+  _assert(
+    response?.users.length,
+    auth,
+    "internal-error"
+    /* AuthErrorCode.INTERNAL_ERROR */
+  );
+  const coreAccount = response.users[0];
+  user._notifyReloadListener(coreAccount);
+  const newProviderData = coreAccount.providerUserInfo?.length ? extractProviderData(coreAccount.providerUserInfo) : [];
+  const providerData = mergeProviderData(user.providerData, newProviderData);
+  const oldIsAnonymous = user.isAnonymous;
+  const newIsAnonymous = !(user.email && coreAccount.passwordHash) && !providerData?.length;
+  const isAnonymous = !oldIsAnonymous ? false : newIsAnonymous;
+  const updates = {
+    uid: coreAccount.localId,
+    displayName: coreAccount.displayName || null,
+    photoURL: coreAccount.photoUrl || null,
+    email: coreAccount.email || null,
+    emailVerified: coreAccount.emailVerified || false,
+    phoneNumber: coreAccount.phoneNumber || null,
+    tenantId: coreAccount.tenantId || null,
+    providerData,
+    metadata: new UserMetadata(coreAccount.createdAt, coreAccount.lastLoginAt),
+    isAnonymous
+  };
+  Object.assign(user, updates);
+}
+async function reload(user) {
+  const userInternal = getModularInstance(user);
+  await _reloadWithoutSaving(userInternal);
+  await userInternal.auth._persistUserIfCurrent(userInternal);
+  userInternal.auth._notifyListenersIfCurrent(userInternal);
+}
+function mergeProviderData(original, newData) {
+  const deduped = original.filter((o) => !newData.some((n) => n.providerId === o.providerId));
+  return [...deduped, ...newData];
+}
+function extractProviderData(providers) {
+  return providers.map(({ providerId, ...provider }) => {
+    return {
+      providerId,
+      uid: provider.rawId || "",
+      displayName: provider.displayName || null,
+      email: provider.email || null,
+      phoneNumber: provider.phoneNumber || null,
+      photoURL: provider.photoUrl || null
+    };
+  });
+}
+async function requestStsToken(auth, refreshToken) {
+  const response = await _performFetchWithErrorHandling(auth, {}, async () => {
+    const body = querystring({
+      "grant_type": "refresh_token",
+      "refresh_token": refreshToken
+    }).slice(1);
+    const { tokenApiHost, apiKey } = auth.config;
+    const url = await _getFinalTarget(auth, tokenApiHost, "/v1/token", `key=${apiKey}`);
+    const headers = await auth._getAdditionalHeaders();
+    headers[
+      "Content-Type"
+      /* HttpHeader.CONTENT_TYPE */
+    ] = "application/x-www-form-urlencoded";
+    const options2 = {
+      method: "POST",
+      headers,
+      body
+    };
+    if (auth.emulatorConfig && isCloudWorkstation(auth.emulatorConfig.host)) {
+      options2.credentials = "include";
+    }
+    return FetchProvider.fetch()(url, options2);
+  });
+  return {
+    accessToken: response.access_token,
+    expiresIn: response.expires_in,
+    refreshToken: response.refresh_token
+  };
+}
+async function revokeToken(auth, request) {
+  return _performApiRequest(auth, "POST", "/v2/accounts:revokeToken", _addTidIfNecessary(auth, request));
+}
+var StsTokenManager = class _StsTokenManager {
+  constructor() {
+    this.refreshToken = null;
+    this.accessToken = null;
+    this.expirationTime = null;
+  }
+  get isExpired() {
+    return !this.expirationTime || Date.now() > this.expirationTime - 3e4;
+  }
+  updateFromServerResponse(response) {
+    _assert(
+      response.idToken,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    _assert(
+      typeof response.idToken !== "undefined",
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    _assert(
+      typeof response.refreshToken !== "undefined",
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    const expiresIn = "expiresIn" in response && typeof response.expiresIn !== "undefined" ? Number(response.expiresIn) : _tokenExpiresIn(response.idToken);
+    this.updateTokensAndExpiration(response.idToken, response.refreshToken, expiresIn);
+  }
+  updateFromIdToken(idToken) {
+    _assert(
+      idToken.length !== 0,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    const expiresIn = _tokenExpiresIn(idToken);
+    this.updateTokensAndExpiration(idToken, null, expiresIn);
+  }
+  async getToken(auth, forceRefresh = false) {
+    if (!forceRefresh && this.accessToken && !this.isExpired) {
+      return this.accessToken;
+    }
+    _assert(
+      this.refreshToken,
+      auth,
+      "user-token-expired"
+      /* AuthErrorCode.TOKEN_EXPIRED */
+    );
+    if (this.refreshToken) {
+      await this.refresh(auth, this.refreshToken);
+      return this.accessToken;
+    }
+    return null;
+  }
+  clearRefreshToken() {
+    this.refreshToken = null;
+  }
+  async refresh(auth, oldToken) {
+    const { accessToken, refreshToken, expiresIn } = await requestStsToken(auth, oldToken);
+    this.updateTokensAndExpiration(accessToken, refreshToken, Number(expiresIn));
+  }
+  updateTokensAndExpiration(accessToken, refreshToken, expiresInSec) {
+    this.refreshToken = refreshToken || null;
+    this.accessToken = accessToken || null;
+    this.expirationTime = Date.now() + expiresInSec * 1e3;
+  }
+  static fromJSON(appName, object) {
+    const { refreshToken, accessToken, expirationTime } = object;
+    const manager = new _StsTokenManager();
+    if (refreshToken) {
+      _assert(typeof refreshToken === "string", "internal-error", {
+        appName
+      });
+      manager.refreshToken = refreshToken;
+    }
+    if (accessToken) {
+      _assert(typeof accessToken === "string", "internal-error", {
+        appName
+      });
+      manager.accessToken = accessToken;
+    }
+    if (expirationTime) {
+      _assert(typeof expirationTime === "number", "internal-error", {
+        appName
+      });
+      manager.expirationTime = expirationTime;
+    }
+    return manager;
+  }
+  toJSON() {
+    return {
+      refreshToken: this.refreshToken,
+      accessToken: this.accessToken,
+      expirationTime: this.expirationTime
+    };
+  }
+  _assign(stsTokenManager) {
+    this.accessToken = stsTokenManager.accessToken;
+    this.refreshToken = stsTokenManager.refreshToken;
+    this.expirationTime = stsTokenManager.expirationTime;
+  }
+  _clone() {
+    return Object.assign(new _StsTokenManager(), this.toJSON());
+  }
+  _performRefresh() {
+    return debugFail("not implemented");
+  }
+};
+function assertStringOrUndefined(assertion, appName) {
+  _assert(typeof assertion === "string" || typeof assertion === "undefined", "internal-error", { appName });
+}
+var UserImpl = class _UserImpl {
+  constructor({ uid, auth, stsTokenManager, ...opt }) {
+    this.providerId = "firebase";
+    this.proactiveRefresh = new ProactiveRefresh(this);
+    this.reloadUserInfo = null;
+    this.reloadListener = null;
+    this.uid = uid;
+    this.auth = auth;
+    this.stsTokenManager = stsTokenManager;
+    this.accessToken = stsTokenManager.accessToken;
+    this.displayName = opt.displayName || null;
+    this.email = opt.email || null;
+    this.emailVerified = opt.emailVerified || false;
+    this.phoneNumber = opt.phoneNumber || null;
+    this.photoURL = opt.photoURL || null;
+    this.isAnonymous = opt.isAnonymous || false;
+    this.tenantId = opt.tenantId || null;
+    this.providerData = opt.providerData ? [...opt.providerData] : [];
+    this.metadata = new UserMetadata(opt.createdAt || void 0, opt.lastLoginAt || void 0);
+  }
+  async getIdToken(forceRefresh) {
+    const accessToken = await _logoutIfInvalidated(this, this.stsTokenManager.getToken(this.auth, forceRefresh));
+    _assert(
+      accessToken,
+      this.auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    if (this.accessToken !== accessToken) {
+      this.accessToken = accessToken;
+      await this.auth._persistUserIfCurrent(this);
+      this.auth._notifyListenersIfCurrent(this);
+    }
+    return accessToken;
+  }
+  getIdTokenResult(forceRefresh) {
+    return getIdTokenResult(this, forceRefresh);
+  }
+  reload() {
+    return reload(this);
+  }
+  _assign(user) {
+    if (this === user) {
+      return;
+    }
+    _assert(
+      this.uid === user.uid,
+      this.auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    this.displayName = user.displayName;
+    this.photoURL = user.photoURL;
+    this.email = user.email;
+    this.emailVerified = user.emailVerified;
+    this.phoneNumber = user.phoneNumber;
+    this.isAnonymous = user.isAnonymous;
+    this.tenantId = user.tenantId;
+    this.providerData = user.providerData.map((userInfo) => ({ ...userInfo }));
+    this.metadata._copy(user.metadata);
+    this.stsTokenManager._assign(user.stsTokenManager);
+  }
+  _clone(auth) {
+    const newUser = new _UserImpl({
+      ...this,
+      auth,
+      stsTokenManager: this.stsTokenManager._clone()
+    });
+    newUser.metadata._copy(this.metadata);
+    return newUser;
+  }
+  _onReload(callback) {
+    _assert(
+      !this.reloadListener,
+      this.auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    this.reloadListener = callback;
+    if (this.reloadUserInfo) {
+      this._notifyReloadListener(this.reloadUserInfo);
+      this.reloadUserInfo = null;
+    }
+  }
+  _notifyReloadListener(userInfo) {
+    if (this.reloadListener) {
+      this.reloadListener(userInfo);
+    } else {
+      this.reloadUserInfo = userInfo;
+    }
+  }
+  _startProactiveRefresh() {
+    this.proactiveRefresh._start();
+  }
+  _stopProactiveRefresh() {
+    this.proactiveRefresh._stop();
+  }
+  async _updateTokensIfNecessary(response, reload2 = false) {
+    let tokensRefreshed = false;
+    if (response.idToken && response.idToken !== this.stsTokenManager.accessToken) {
+      this.stsTokenManager.updateFromServerResponse(response);
+      tokensRefreshed = true;
+    }
+    if (reload2) {
+      await _reloadWithoutSaving(this);
+    }
+    await this.auth._persistUserIfCurrent(this);
+    if (tokensRefreshed) {
+      this.auth._notifyListenersIfCurrent(this);
+    }
+  }
+  async delete() {
+    if (_isFirebaseServerApp(this.auth.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(this.auth));
+    }
+    const idToken = await this.getIdToken();
+    await _logoutIfInvalidated(this, deleteAccount(this.auth, { idToken }));
+    this.stsTokenManager.clearRefreshToken();
+    return this.auth.signOut();
+  }
+  toJSON() {
+    return {
+      uid: this.uid,
+      email: this.email || void 0,
+      emailVerified: this.emailVerified,
+      displayName: this.displayName || void 0,
+      isAnonymous: this.isAnonymous,
+      photoURL: this.photoURL || void 0,
+      phoneNumber: this.phoneNumber || void 0,
+      tenantId: this.tenantId || void 0,
+      providerData: this.providerData.map((userInfo) => ({ ...userInfo })),
+      stsTokenManager: this.stsTokenManager.toJSON(),
+      // Redirect event ID must be maintained in case there is a pending
+      // redirect event.
+      _redirectEventId: this._redirectEventId,
+      ...this.metadata.toJSON(),
+      // Required for compatibility with the legacy SDK (go/firebase-auth-sdk-persistence-parsing):
+      apiKey: this.auth.config.apiKey,
+      appName: this.auth.name
+      // Missing authDomain will be tolerated by the legacy SDK.
+      // stsTokenManager.apiKey isn't actually required (despite the legacy SDK persisting it).
+    };
+  }
+  get refreshToken() {
+    return this.stsTokenManager.refreshToken || "";
+  }
+  static _fromJSON(auth, object) {
+    const displayName = object.displayName ?? void 0;
+    const email = object.email ?? void 0;
+    const phoneNumber = object.phoneNumber ?? void 0;
+    const photoURL = object.photoURL ?? void 0;
+    const tenantId = object.tenantId ?? void 0;
+    const _redirectEventId = object._redirectEventId ?? void 0;
+    const createdAt = object.createdAt ?? void 0;
+    const lastLoginAt = object.lastLoginAt ?? void 0;
+    const { uid, emailVerified, isAnonymous, providerData, stsTokenManager: plainObjectTokenManager } = object;
+    _assert(
+      uid && plainObjectTokenManager,
+      auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    const stsTokenManager = StsTokenManager.fromJSON(this.name, plainObjectTokenManager);
+    _assert(
+      typeof uid === "string",
+      auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    assertStringOrUndefined(displayName, auth.name);
+    assertStringOrUndefined(email, auth.name);
+    _assert(
+      typeof emailVerified === "boolean",
+      auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    _assert(
+      typeof isAnonymous === "boolean",
+      auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    assertStringOrUndefined(phoneNumber, auth.name);
+    assertStringOrUndefined(photoURL, auth.name);
+    assertStringOrUndefined(tenantId, auth.name);
+    assertStringOrUndefined(_redirectEventId, auth.name);
+    assertStringOrUndefined(createdAt, auth.name);
+    assertStringOrUndefined(lastLoginAt, auth.name);
+    const user = new _UserImpl({
+      uid,
+      auth,
+      email,
+      emailVerified,
+      displayName,
+      isAnonymous,
+      photoURL,
+      phoneNumber,
+      tenantId,
+      stsTokenManager,
+      createdAt,
+      lastLoginAt
+    });
+    if (providerData && Array.isArray(providerData)) {
+      user.providerData = providerData.map((userInfo) => ({ ...userInfo }));
+    }
+    if (_redirectEventId) {
+      user._redirectEventId = _redirectEventId;
+    }
+    return user;
+  }
+  /**
+   * Initialize a User from an idToken server response
+   * @param auth
+   * @param idTokenResponse
+   */
+  static async _fromIdTokenResponse(auth, idTokenResponse, isAnonymous = false) {
+    const stsTokenManager = new StsTokenManager();
+    stsTokenManager.updateFromServerResponse(idTokenResponse);
+    const user = new _UserImpl({
+      uid: idTokenResponse.localId,
+      auth,
+      stsTokenManager,
+      isAnonymous
+    });
+    await _reloadWithoutSaving(user);
+    return user;
+  }
+  /**
+   * Initialize a User from an idToken server response
+   * @param auth
+   * @param idTokenResponse
+   */
+  static async _fromGetAccountInfoResponse(auth, response, idToken) {
+    const coreAccount = response.users[0];
+    _assert(
+      coreAccount.localId !== void 0,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    const providerData = coreAccount.providerUserInfo !== void 0 ? extractProviderData(coreAccount.providerUserInfo) : [];
+    const isAnonymous = !(coreAccount.email && coreAccount.passwordHash) && !providerData?.length;
+    const stsTokenManager = new StsTokenManager();
+    stsTokenManager.updateFromIdToken(idToken);
+    const user = new _UserImpl({
+      uid: coreAccount.localId,
+      auth,
+      stsTokenManager,
+      isAnonymous
+    });
+    const updates = {
+      uid: coreAccount.localId,
+      displayName: coreAccount.displayName || null,
+      photoURL: coreAccount.photoUrl || null,
+      email: coreAccount.email || null,
+      emailVerified: coreAccount.emailVerified || false,
+      phoneNumber: coreAccount.phoneNumber || null,
+      tenantId: coreAccount.tenantId || null,
+      providerData,
+      metadata: new UserMetadata(coreAccount.createdAt, coreAccount.lastLoginAt),
+      isAnonymous: !(coreAccount.email && coreAccount.passwordHash) && !providerData?.length
+    };
+    Object.assign(user, updates);
+    return user;
+  }
+};
+var instanceCache = /* @__PURE__ */ new Map();
+function _getInstance(cls) {
+  debugAssert2(cls instanceof Function, "Expected a class definition");
+  let instance = instanceCache.get(cls);
+  if (instance) {
+    debugAssert2(instance instanceof cls, "Instance stored in cache mismatched with class");
+    return instance;
+  }
+  instance = new cls();
+  instanceCache.set(cls, instance);
+  return instance;
+}
+var InMemoryPersistence = class {
+  constructor() {
+    this.type = "NONE";
+    this.storage = {};
+  }
+  async _isAvailable() {
+    return true;
+  }
+  async _set(key, value) {
+    this.storage[key] = value;
+  }
+  async _get(key) {
+    const value = this.storage[key];
+    return value === void 0 ? null : value;
+  }
+  async _remove(key) {
+    delete this.storage[key];
+  }
+  _addListener(_key, _listener) {
+    return;
+  }
+  _removeListener(_key, _listener) {
+    return;
+  }
+};
+InMemoryPersistence.type = "NONE";
+var inMemoryPersistence = InMemoryPersistence;
+function _persistenceKeyName(key, apiKey, appName) {
+  return `${"firebase"}:${key}:${apiKey}:${appName}`;
+}
+var PersistenceUserManager = class _PersistenceUserManager {
+  constructor(persistence, auth, userKey) {
+    this.persistence = persistence;
+    this.auth = auth;
+    this.userKey = userKey;
+    const { config, name: name6 } = this.auth;
+    this.fullUserKey = _persistenceKeyName(this.userKey, config.apiKey, name6);
+    this.fullPersistenceKey = _persistenceKeyName("persistence", config.apiKey, name6);
+    this.boundEventHandler = auth._onStorageEvent.bind(auth);
+    try {
+      this.persistence._addListener(this.fullUserKey, this.boundEventHandler);
+    } catch {
+    }
+  }
+  setCurrentUser(user) {
+    return this.persistence._set(this.fullUserKey, user.toJSON());
+  }
+  async getCurrentUser() {
+    const blob = await this.persistence._get(this.fullUserKey);
+    if (!blob) {
+      return null;
+    }
+    if (typeof blob === "string") {
+      const response = await getAccountInfo(this.auth, { idToken: blob }).catch(() => void 0);
+      if (!response) {
+        return null;
+      }
+      return UserImpl._fromGetAccountInfoResponse(this.auth, response, blob);
+    }
+    return UserImpl._fromJSON(this.auth, blob);
+  }
+  removeCurrentUser() {
+    return this.persistence._remove(this.fullUserKey);
+  }
+  savePersistenceForRedirect() {
+    return this.persistence._set(this.fullPersistenceKey, this.persistence.type);
+  }
+  async setPersistence(newPersistence) {
+    if (this.persistence === newPersistence) {
+      return;
+    }
+    const currentUser = await this.getCurrentUser();
+    await this.removeCurrentUser();
+    this.persistence = newPersistence;
+    if (currentUser) {
+      return this.setCurrentUser(currentUser);
+    }
+  }
+  delete() {
+    try {
+      this.persistence._removeListener(this.fullUserKey, this.boundEventHandler);
+    } catch {
+    }
+  }
+  static async create(auth, persistenceHierarchy, userKey = "authUser") {
+    if (!persistenceHierarchy.length) {
+      return new _PersistenceUserManager(_getInstance(inMemoryPersistence), auth, userKey);
+    }
+    const availablePersistences = (await Promise.all(persistenceHierarchy.map(async (persistence) => {
+      try {
+        if (await persistence._isAvailable()) {
+          return persistence;
+        }
+      } catch {
+        return void 0;
+      }
+      return void 0;
+    }))).filter((persistence) => persistence);
+    let selectedPersistence = availablePersistences[0] || _getInstance(inMemoryPersistence);
+    const key = _persistenceKeyName(userKey, auth.config.apiKey, auth.name);
+    let userToMigrate = null;
+    for (const persistence of persistenceHierarchy) {
+      try {
+        const blob = await persistence._get(key);
+        if (blob) {
+          let user;
+          if (typeof blob === "string") {
+            const response = await getAccountInfo(auth, {
+              idToken: blob
+            }).catch(() => void 0);
+            if (!response) {
+              break;
+            }
+            user = await UserImpl._fromGetAccountInfoResponse(auth, response, blob);
+          } else {
+            user = UserImpl._fromJSON(auth, blob);
+          }
+          if (persistence !== selectedPersistence) {
+            userToMigrate = user;
+          }
+          selectedPersistence = persistence;
+          break;
+        }
+      } catch {
+      }
+    }
+    const migrationHierarchy = availablePersistences.filter((p) => p._shouldAllowMigration);
+    if (!selectedPersistence._shouldAllowMigration || !migrationHierarchy.length) {
+      return new _PersistenceUserManager(selectedPersistence, auth, userKey);
+    }
+    selectedPersistence = migrationHierarchy[0];
+    if (userToMigrate) {
+      await selectedPersistence._set(key, userToMigrate.toJSON());
+    }
+    await Promise.all(persistenceHierarchy.map(async (persistence) => {
+      if (persistence !== selectedPersistence) {
+        try {
+          await persistence._remove(key);
+        } catch {
+        }
+      }
+    }));
+    return new _PersistenceUserManager(selectedPersistence, auth, userKey);
+  }
+};
+function _getBrowserName(userAgent) {
+  const ua = userAgent.toLowerCase();
+  if (ua.includes("opera/") || ua.includes("opr/") || ua.includes("opios/")) {
+    return "Opera";
+  } else if (_isIEMobile(ua)) {
+    return "IEMobile";
+  } else if (ua.includes("msie") || ua.includes("trident/")) {
+    return "IE";
+  } else if (ua.includes("edge/")) {
+    return "Edge";
+  } else if (_isFirefox(ua)) {
+    return "Firefox";
+  } else if (ua.includes("silk/")) {
+    return "Silk";
+  } else if (_isBlackBerry(ua)) {
+    return "Blackberry";
+  } else if (_isWebOS(ua)) {
+    return "Webos";
+  } else if (_isSafari(ua)) {
+    return "Safari";
+  } else if ((ua.includes("chrome/") || _isChromeIOS(ua)) && !ua.includes("edge/")) {
+    return "Chrome";
+  } else if (_isAndroid(ua)) {
+    return "Android";
+  } else {
+    const re = /([a-zA-Z\d\.]+)\/[a-zA-Z\d\.]*$/;
+    const matches = userAgent.match(re);
+    if (matches?.length === 2) {
+      return matches[1];
+    }
+  }
+  return "Other";
+}
+function _isFirefox(ua = getUA()) {
+  return /firefox\//i.test(ua);
+}
+function _isSafari(userAgent = getUA()) {
+  const ua = userAgent.toLowerCase();
+  return ua.includes("safari/") && !ua.includes("chrome/") && !ua.includes("crios/") && !ua.includes("android");
+}
+function _isChromeIOS(ua = getUA()) {
+  return /crios\//i.test(ua);
+}
+function _isIEMobile(ua = getUA()) {
+  return /iemobile/i.test(ua);
+}
+function _isAndroid(ua = getUA()) {
+  return /android/i.test(ua);
+}
+function _isBlackBerry(ua = getUA()) {
+  return /blackberry/i.test(ua);
+}
+function _isWebOS(ua = getUA()) {
+  return /webos/i.test(ua);
+}
+function _getClientVersion(clientPlatform, frameworks = []) {
+  let reportedPlatform;
+  switch (clientPlatform) {
+    case "Browser":
+      reportedPlatform = _getBrowserName(getUA());
+      break;
+    case "Worker":
+      reportedPlatform = `${_getBrowserName(getUA())}-${clientPlatform}`;
+      break;
+    default:
+      reportedPlatform = clientPlatform;
+  }
+  const reportedFrameworks = frameworks.length ? frameworks.join(",") : "FirebaseCore-web";
+  return `${reportedPlatform}/${"JsCore"}/${SDK_VERSION}/${reportedFrameworks}`;
+}
+var AuthMiddlewareQueue = class {
+  constructor(auth) {
+    this.auth = auth;
+    this.queue = [];
+  }
+  pushCallback(callback, onAbort) {
+    const wrappedCallback = (user) => new Promise((resolve, reject) => {
+      try {
+        const result = callback(user);
+        resolve(result);
+      } catch (e) {
+        reject(e);
+      }
+    });
+    wrappedCallback.onAbort = onAbort;
+    this.queue.push(wrappedCallback);
+    const index = this.queue.length - 1;
+    return () => {
+      this.queue[index] = () => Promise.resolve();
+    };
+  }
+  async runMiddleware(nextUser) {
+    if (this.auth.currentUser === nextUser) {
+      return;
+    }
+    const onAbortStack = [];
+    try {
+      for (const beforeStateCallback of this.queue) {
+        await beforeStateCallback(nextUser);
+        if (beforeStateCallback.onAbort) {
+          onAbortStack.push(beforeStateCallback.onAbort);
+        }
+      }
+    } catch (e) {
+      onAbortStack.reverse();
+      for (const onAbort of onAbortStack) {
+        try {
+          onAbort();
+        } catch (_) {
+        }
+      }
+      throw this.auth._errorFactory.create("login-blocked", {
+        originalMessage: e?.message
+      });
+    }
+  }
+};
+async function _getPasswordPolicy(auth, request = {}) {
+  return _performApiRequest(auth, "GET", "/v2/passwordPolicy", _addTidIfNecessary(auth, request));
+}
+var MINIMUM_MIN_PASSWORD_LENGTH = 6;
+var PasswordPolicyImpl = class {
+  constructor(response) {
+    const responseOptions = response.customStrengthOptions;
+    this.customStrengthOptions = {};
+    this.customStrengthOptions.minPasswordLength = responseOptions.minPasswordLength ?? MINIMUM_MIN_PASSWORD_LENGTH;
+    if (responseOptions.maxPasswordLength) {
+      this.customStrengthOptions.maxPasswordLength = responseOptions.maxPasswordLength;
+    }
+    if (responseOptions.containsLowercaseCharacter !== void 0) {
+      this.customStrengthOptions.containsLowercaseLetter = responseOptions.containsLowercaseCharacter;
+    }
+    if (responseOptions.containsUppercaseCharacter !== void 0) {
+      this.customStrengthOptions.containsUppercaseLetter = responseOptions.containsUppercaseCharacter;
+    }
+    if (responseOptions.containsNumericCharacter !== void 0) {
+      this.customStrengthOptions.containsNumericCharacter = responseOptions.containsNumericCharacter;
+    }
+    if (responseOptions.containsNonAlphanumericCharacter !== void 0) {
+      this.customStrengthOptions.containsNonAlphanumericCharacter = responseOptions.containsNonAlphanumericCharacter;
+    }
+    this.enforcementState = response.enforcementState;
+    if (this.enforcementState === "ENFORCEMENT_STATE_UNSPECIFIED") {
+      this.enforcementState = "OFF";
+    }
+    this.allowedNonAlphanumericCharacters = response.allowedNonAlphanumericCharacters?.join("") ?? "";
+    this.forceUpgradeOnSignin = response.forceUpgradeOnSignin ?? false;
+    this.schemaVersion = response.schemaVersion;
+  }
+  validatePassword(password) {
+    const status = {
+      isValid: true,
+      passwordPolicy: this
+    };
+    this.validatePasswordLengthOptions(password, status);
+    this.validatePasswordCharacterOptions(password, status);
+    status.isValid && (status.isValid = status.meetsMinPasswordLength ?? true);
+    status.isValid && (status.isValid = status.meetsMaxPasswordLength ?? true);
+    status.isValid && (status.isValid = status.containsLowercaseLetter ?? true);
+    status.isValid && (status.isValid = status.containsUppercaseLetter ?? true);
+    status.isValid && (status.isValid = status.containsNumericCharacter ?? true);
+    status.isValid && (status.isValid = status.containsNonAlphanumericCharacter ?? true);
+    return status;
+  }
+  /**
+   * Validates that the password meets the length options for the policy.
+   *
+   * @param password Password to validate.
+   * @param status Validation status.
+   */
+  validatePasswordLengthOptions(password, status) {
+    const minPasswordLength = this.customStrengthOptions.minPasswordLength;
+    const maxPasswordLength = this.customStrengthOptions.maxPasswordLength;
+    if (minPasswordLength) {
+      status.meetsMinPasswordLength = password.length >= minPasswordLength;
+    }
+    if (maxPasswordLength) {
+      status.meetsMaxPasswordLength = password.length <= maxPasswordLength;
+    }
+  }
+  /**
+   * Validates that the password meets the character options for the policy.
+   *
+   * @param password Password to validate.
+   * @param status Validation status.
+   */
+  validatePasswordCharacterOptions(password, status) {
+    this.updatePasswordCharacterOptionsStatuses(
+      status,
+      /* containsLowercaseCharacter= */
+      false,
+      /* containsUppercaseCharacter= */
+      false,
+      /* containsNumericCharacter= */
+      false,
+      /* containsNonAlphanumericCharacter= */
+      false
+    );
+    let passwordChar;
+    for (let i = 0; i < password.length; i++) {
+      passwordChar = password.charAt(i);
+      this.updatePasswordCharacterOptionsStatuses(
+        status,
+        /* containsLowercaseCharacter= */
+        passwordChar >= "a" && passwordChar <= "z",
+        /* containsUppercaseCharacter= */
+        passwordChar >= "A" && passwordChar <= "Z",
+        /* containsNumericCharacter= */
+        passwordChar >= "0" && passwordChar <= "9",
+        /* containsNonAlphanumericCharacter= */
+        this.allowedNonAlphanumericCharacters.includes(passwordChar)
+      );
+    }
+  }
+  /**
+   * Updates the running validation status with the statuses for the character options.
+   * Expected to be called each time a character is processed to update each option status
+   * based on the current character.
+   *
+   * @param status Validation status.
+   * @param containsLowercaseCharacter Whether the character is a lowercase letter.
+   * @param containsUppercaseCharacter Whether the character is an uppercase letter.
+   * @param containsNumericCharacter Whether the character is a numeric character.
+   * @param containsNonAlphanumericCharacter Whether the character is a non-alphanumeric character.
+   */
+  updatePasswordCharacterOptionsStatuses(status, containsLowercaseCharacter, containsUppercaseCharacter, containsNumericCharacter, containsNonAlphanumericCharacter) {
+    if (this.customStrengthOptions.containsLowercaseLetter) {
+      status.containsLowercaseLetter || (status.containsLowercaseLetter = containsLowercaseCharacter);
+    }
+    if (this.customStrengthOptions.containsUppercaseLetter) {
+      status.containsUppercaseLetter || (status.containsUppercaseLetter = containsUppercaseCharacter);
+    }
+    if (this.customStrengthOptions.containsNumericCharacter) {
+      status.containsNumericCharacter || (status.containsNumericCharacter = containsNumericCharacter);
+    }
+    if (this.customStrengthOptions.containsNonAlphanumericCharacter) {
+      status.containsNonAlphanumericCharacter || (status.containsNonAlphanumericCharacter = containsNonAlphanumericCharacter);
+    }
+  }
+};
+var AuthImpl = class {
+  constructor(app, heartbeatServiceProvider, appCheckServiceProvider, config) {
+    this.app = app;
+    this.heartbeatServiceProvider = heartbeatServiceProvider;
+    this.appCheckServiceProvider = appCheckServiceProvider;
+    this.config = config;
+    this.currentUser = null;
+    this.emulatorConfig = null;
+    this.operations = Promise.resolve();
+    this.authStateSubscription = new Subscription(this);
+    this.idTokenSubscription = new Subscription(this);
+    this.beforeStateQueue = new AuthMiddlewareQueue(this);
+    this.redirectUser = null;
+    this.isProactiveRefreshEnabled = false;
+    this.EXPECTED_PASSWORD_POLICY_SCHEMA_VERSION = 1;
+    this._canInitEmulator = true;
+    this._isInitialized = false;
+    this._deleted = false;
+    this._initializationPromise = null;
+    this._popupRedirectResolver = null;
+    this._errorFactory = _DEFAULT_AUTH_ERROR_FACTORY;
+    this._agentRecaptchaConfig = null;
+    this._tenantRecaptchaConfigs = {};
+    this._projectPasswordPolicy = null;
+    this._tenantPasswordPolicies = {};
+    this._resolvePersistenceManagerAvailable = void 0;
+    this.lastNotifiedUid = void 0;
+    this.languageCode = null;
+    this.tenantId = null;
+    this.settings = { appVerificationDisabledForTesting: false };
+    this.frameworks = [];
+    this.name = app.name;
+    this.clientVersion = config.sdkClientVersion;
+    this._persistenceManagerAvailable = new Promise((resolve) => this._resolvePersistenceManagerAvailable = resolve);
+  }
+  _initializeWithPersistence(persistenceHierarchy, popupRedirectResolver) {
+    if (popupRedirectResolver) {
+      this._popupRedirectResolver = _getInstance(popupRedirectResolver);
+    }
+    this._initializationPromise = this.queue(async () => {
+      if (this._deleted) {
+        return;
+      }
+      try {
+        this.persistenceManager = await PersistenceUserManager.create(this, persistenceHierarchy);
+      } catch (e) {
+        _logWarn(`Failed to initialize persistence: ${e}`);
+        this.persistenceManager = await PersistenceUserManager.create(this, []);
+      } finally {
+        this._resolvePersistenceManagerAvailable?.();
+      }
+      if (this._deleted) {
+        return;
+      }
+      if (this._popupRedirectResolver?._shouldInitProactively) {
+        try {
+          await this._popupRedirectResolver._initialize(this);
+        } catch (e) {
+        }
+      }
+      try {
+        await this.initializeCurrentUser(popupRedirectResolver);
+      } catch (e) {
+        _logWarn(`Failed to initialize current user: ${e}`);
+        await this.directlySetCurrentUser(null).catch(() => {
+        });
+      }
+      this.lastNotifiedUid = this.currentUser?.uid || null;
+      if (this._deleted) {
+        return;
+      }
+      this._isInitialized = true;
+    });
+    return this._initializationPromise;
+  }
+  /**
+   * If the persistence is changed in another window, the user manager will let us know
+   */
+  async _onStorageEvent() {
+    if (this._deleted) {
+      return;
+    }
+    const user = await this.assertedPersistence.getCurrentUser();
+    if (!this.currentUser && !user) {
+      return;
+    }
+    if (this.currentUser && user && this.currentUser.uid === user.uid) {
+      this._currentUser._assign(user);
+      await this.currentUser.getIdToken();
+      return;
+    }
+    await this._updateCurrentUser(
+      user,
+      /* skipBeforeStateCallbacks */
+      true
+    );
+  }
+  async initializeCurrentUserFromIdToken(idToken) {
+    try {
+      const response = await getAccountInfo(this, { idToken });
+      const user = await UserImpl._fromGetAccountInfoResponse(this, response, idToken);
+      await this.directlySetCurrentUser(user);
+    } catch (err) {
+      console.warn("FirebaseServerApp could not login user with provided authIdToken: ", err);
+      await this.directlySetCurrentUser(null);
+    }
+  }
+  async initializeCurrentUser(popupRedirectResolver) {
+    if (_isFirebaseServerApp(this.app)) {
+      const idToken = this.app.settings.authIdToken;
+      if (idToken) {
+        return new Promise((resolve) => {
+          setTimeout(() => this.initializeCurrentUserFromIdToken(idToken).then(resolve, resolve));
+        });
+      } else {
+        return this.directlySetCurrentUser(null);
+      }
+    }
+    const previouslyStoredUser = await this.assertedPersistence.getCurrentUser();
+    let futureCurrentUser = previouslyStoredUser;
+    let needsTocheckMiddleware = false;
+    if (popupRedirectResolver && this.config.authDomain) {
+      await this.getOrInitRedirectPersistenceManager();
+      const redirectUserEventId = this.redirectUser?._redirectEventId;
+      const storedUserEventId = futureCurrentUser?._redirectEventId;
+      const result = await this.tryRedirectSignIn(popupRedirectResolver);
+      if ((!redirectUserEventId || redirectUserEventId === storedUserEventId) && result?.user) {
+        futureCurrentUser = result.user;
+        needsTocheckMiddleware = true;
+      }
+    }
+    if (!futureCurrentUser) {
+      return this.directlySetCurrentUser(null);
+    }
+    if (!futureCurrentUser._redirectEventId) {
+      if (needsTocheckMiddleware) {
+        try {
+          await this.beforeStateQueue.runMiddleware(futureCurrentUser);
+        } catch (e) {
+          futureCurrentUser = previouslyStoredUser;
+          this._popupRedirectResolver._overrideRedirectResult(this, () => Promise.reject(e));
+        }
+      }
+      if (futureCurrentUser) {
+        return this.reloadAndSetCurrentUserOrClear(futureCurrentUser);
+      } else {
+        return this.directlySetCurrentUser(null);
+      }
+    }
+    _assert(
+      this._popupRedirectResolver,
+      this,
+      "argument-error"
+      /* AuthErrorCode.ARGUMENT_ERROR */
+    );
+    await this.getOrInitRedirectPersistenceManager();
+    if (this.redirectUser && this.redirectUser._redirectEventId === futureCurrentUser._redirectEventId) {
+      return this.directlySetCurrentUser(futureCurrentUser);
+    }
+    return this.reloadAndSetCurrentUserOrClear(futureCurrentUser);
+  }
+  async tryRedirectSignIn(redirectResolver) {
+    let result = null;
+    try {
+      result = await this._popupRedirectResolver._completeRedirectFn(this, redirectResolver, true);
+    } catch (e) {
+      await this._setRedirectUser(null);
+    }
+    return result;
+  }
+  async reloadAndSetCurrentUserOrClear(user) {
+    try {
+      await _reloadWithoutSaving(user);
+    } catch (e) {
+      const code = e?.code;
+      if (code !== `auth/${"network-request-failed"}` && code !== `auth/${"too-many-requests"}` && !code?.startsWith(`auth/${"quota-exceeded"}`)) {
+        return this.directlySetCurrentUser(null);
+      }
+    }
+    return this.directlySetCurrentUser(user);
+  }
+  useDeviceLanguage() {
+    this.languageCode = _getUserLanguage();
+  }
+  async _delete() {
+    this._deleted = true;
+  }
+  async updateCurrentUser(userExtern) {
+    if (_isFirebaseServerApp(this.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(this));
+    }
+    const user = userExtern ? getModularInstance(userExtern) : null;
+    if (user) {
+      _assert(
+        user.auth.config.apiKey === this.config.apiKey,
+        this,
+        "invalid-user-token"
+        /* AuthErrorCode.INVALID_AUTH */
+      );
+    }
+    return this._updateCurrentUser(user && user._clone(this));
+  }
+  async _updateCurrentUser(user, skipBeforeStateCallbacks = false) {
+    if (this._deleted) {
+      return;
+    }
+    if (user) {
+      _assert(
+        this.tenantId === user.tenantId,
+        this,
+        "tenant-id-mismatch"
+        /* AuthErrorCode.TENANT_ID_MISMATCH */
+      );
+    }
+    if (!skipBeforeStateCallbacks) {
+      await this.beforeStateQueue.runMiddleware(user);
+    }
+    return this.queue(async () => {
+      await this.directlySetCurrentUser(user);
+      this.notifyAuthListeners();
+    });
+  }
+  async signOut() {
+    if (_isFirebaseServerApp(this.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(this));
+    }
+    await this.beforeStateQueue.runMiddleware(null);
+    if (this.redirectPersistenceManager || this._popupRedirectResolver) {
+      await this._setRedirectUser(null);
+    }
+    return this._updateCurrentUser(
+      null,
+      /* skipBeforeStateCallbacks */
+      true
+    );
+  }
+  setPersistence(persistence) {
+    if (_isFirebaseServerApp(this.app)) {
+      return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(this));
+    }
+    return this.queue(async () => {
+      await this.assertedPersistence.setPersistence(_getInstance(persistence));
+    });
+  }
+  _getRecaptchaConfig() {
+    if (this.tenantId == null) {
+      return this._agentRecaptchaConfig;
+    } else {
+      return this._tenantRecaptchaConfigs[this.tenantId];
+    }
+  }
+  async validatePassword(password) {
+    if (!this._getPasswordPolicyInternal()) {
+      await this._updatePasswordPolicy();
+    }
+    const passwordPolicy = this._getPasswordPolicyInternal();
+    if (passwordPolicy.schemaVersion !== this.EXPECTED_PASSWORD_POLICY_SCHEMA_VERSION) {
+      return Promise.reject(this._errorFactory.create("unsupported-password-policy-schema-version", {}));
+    }
+    return passwordPolicy.validatePassword(password);
+  }
+  _getPasswordPolicyInternal() {
+    if (this.tenantId === null) {
+      return this._projectPasswordPolicy;
+    } else {
+      return this._tenantPasswordPolicies[this.tenantId];
+    }
+  }
+  async _updatePasswordPolicy() {
+    const response = await _getPasswordPolicy(this);
+    const passwordPolicy = new PasswordPolicyImpl(response);
+    if (this.tenantId === null) {
+      this._projectPasswordPolicy = passwordPolicy;
+    } else {
+      this._tenantPasswordPolicies[this.tenantId] = passwordPolicy;
+    }
+  }
+  _getPersistenceType() {
+    return this.assertedPersistence.persistence.type;
+  }
+  _getPersistence() {
+    return this.assertedPersistence.persistence;
+  }
+  _updateErrorMap(errorMap) {
+    this._errorFactory = new ErrorFactory("auth", "Firebase", errorMap());
+  }
+  onAuthStateChanged(nextOrObserver, error, completed) {
+    return this.registerStateListener(this.authStateSubscription, nextOrObserver, error, completed);
+  }
+  beforeAuthStateChanged(callback, onAbort) {
+    return this.beforeStateQueue.pushCallback(callback, onAbort);
+  }
+  onIdTokenChanged(nextOrObserver, error, completed) {
+    return this.registerStateListener(this.idTokenSubscription, nextOrObserver, error, completed);
+  }
+  authStateReady() {
+    return new Promise((resolve, reject) => {
+      if (this.currentUser) {
+        resolve();
+      } else {
+        const unsubscribe = this.onAuthStateChanged(() => {
+          unsubscribe();
+          resolve();
+        }, reject);
+      }
+    });
+  }
+  /**
+   * Revokes the given access token. Currently only supports Apple OAuth access tokens.
+   */
+  async revokeAccessToken(token) {
+    if (this.currentUser) {
+      const idToken = await this.currentUser.getIdToken();
+      const request = {
+        providerId: "apple.com",
+        tokenType: "ACCESS_TOKEN",
+        token,
+        idToken
+      };
+      if (this.tenantId != null) {
+        request.tenantId = this.tenantId;
+      }
+      await revokeToken(this, request);
+    }
+  }
+  toJSON() {
+    return {
+      apiKey: this.config.apiKey,
+      authDomain: this.config.authDomain,
+      appName: this.name,
+      currentUser: this._currentUser?.toJSON()
+    };
+  }
+  async _setRedirectUser(user, popupRedirectResolver) {
+    const redirectManager = await this.getOrInitRedirectPersistenceManager(popupRedirectResolver);
+    return user === null ? redirectManager.removeCurrentUser() : redirectManager.setCurrentUser(user);
+  }
+  async getOrInitRedirectPersistenceManager(popupRedirectResolver) {
+    if (!this.redirectPersistenceManager) {
+      const resolver = popupRedirectResolver && _getInstance(popupRedirectResolver) || this._popupRedirectResolver;
+      _assert(
+        resolver,
+        this,
+        "argument-error"
+        /* AuthErrorCode.ARGUMENT_ERROR */
+      );
+      this.redirectPersistenceManager = await PersistenceUserManager.create(
+        this,
+        [_getInstance(resolver._redirectPersistence)],
+        "redirectUser"
+        /* KeyName.REDIRECT_USER */
+      );
+      this.redirectUser = await this.redirectPersistenceManager.getCurrentUser();
+    }
+    return this.redirectPersistenceManager;
+  }
+  async _redirectUserForId(id) {
+    if (this._isInitialized) {
+      await this.queue(async () => {
+      });
+    }
+    if (this._currentUser?._redirectEventId === id) {
+      return this._currentUser;
+    }
+    if (this.redirectUser?._redirectEventId === id) {
+      return this.redirectUser;
+    }
+    return null;
+  }
+  async _persistUserIfCurrent(user) {
+    if (user === this.currentUser) {
+      return this.queue(async () => this.directlySetCurrentUser(user));
+    }
+  }
+  /** Notifies listeners only if the user is current */
+  _notifyListenersIfCurrent(user) {
+    if (user === this.currentUser) {
+      this.notifyAuthListeners();
+    }
+  }
+  _key() {
+    return `${this.config.authDomain}:${this.config.apiKey}:${this.name}`;
+  }
+  _startProactiveRefresh() {
+    this.isProactiveRefreshEnabled = true;
+    if (this.currentUser) {
+      this._currentUser._startProactiveRefresh();
+    }
+  }
+  _stopProactiveRefresh() {
+    this.isProactiveRefreshEnabled = false;
+    if (this.currentUser) {
+      this._currentUser._stopProactiveRefresh();
+    }
+  }
+  /** Returns the current user cast as the internal type */
+  get _currentUser() {
+    return this.currentUser;
+  }
+  notifyAuthListeners() {
+    if (!this._isInitialized) {
+      return;
+    }
+    this.idTokenSubscription.next(this.currentUser);
+    const currentUid = this.currentUser?.uid ?? null;
+    if (this.lastNotifiedUid !== currentUid) {
+      this.lastNotifiedUid = currentUid;
+      this.authStateSubscription.next(this.currentUser);
+    }
+  }
+  registerStateListener(subscription, nextOrObserver, error, completed) {
+    if (this._deleted) {
+      return () => {
+      };
+    }
+    const cb = typeof nextOrObserver === "function" ? nextOrObserver : nextOrObserver.next.bind(nextOrObserver);
+    let isUnsubscribed = false;
+    const promise = this._isInitialized ? Promise.resolve() : this._initializationPromise;
+    _assert(
+      promise,
+      this,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    promise.then(() => {
+      if (isUnsubscribed) {
+        return;
+      }
+      cb(this.currentUser);
+    }).catch((err) => {
+      if (isUnsubscribed) {
+        return;
+      }
+      if (typeof nextOrObserver !== "function" && nextOrObserver.error) {
+        nextOrObserver.error(err);
+      } else if (error) {
+        error(err);
+      } else {
+        throw err;
+      }
+    });
+    if (typeof nextOrObserver === "function") {
+      const unsubscribe = subscription.addObserver(nextOrObserver, error, completed);
+      return () => {
+        isUnsubscribed = true;
+        unsubscribe();
+      };
+    } else {
+      const unsubscribe = subscription.addObserver(nextOrObserver);
+      return () => {
+        isUnsubscribed = true;
+        unsubscribe();
+      };
+    }
+  }
+  /**
+   * Unprotected (from race conditions) method to set the current user. This
+   * should only be called from within a queued callback. This is necessary
+   * because the queue shouldn't rely on another queued callback.
+   */
+  async directlySetCurrentUser(user) {
+    if (this.currentUser && this.currentUser !== user) {
+      this._currentUser._stopProactiveRefresh();
+    }
+    if (user && this.isProactiveRefreshEnabled) {
+      user._startProactiveRefresh();
+    }
+    this.currentUser = user;
+    if (this.persistenceManager) {
+      try {
+        if (user) {
+          await this.persistenceManager.setCurrentUser(user);
+        } else {
+          await this.persistenceManager.removeCurrentUser();
+        }
+      } catch (e) {
+        const originalMessage = e?.message || String(e);
+        const error = _errorWithCustomMessage(this, "internal-error", `An internal AuthError has occurred: ${originalMessage}`);
+        error.customData = { originalError: e };
+        throw error;
+      }
+    }
+  }
+  queue(action) {
+    this.operations = this.operations.then(action, action);
+    return this.operations;
+  }
+  get assertedPersistence() {
+    _assert(
+      this.persistenceManager,
+      this,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    return this.persistenceManager;
+  }
+  _logFramework(framework) {
+    if (!framework || this.frameworks.includes(framework)) {
+      return;
+    }
+    this.frameworks.push(framework);
+    this.frameworks.sort();
+    this.clientVersion = _getClientVersion(this.config.clientPlatform, this._getFrameworks());
+  }
+  _getFrameworks() {
+    return this.frameworks;
+  }
+  async _getAdditionalHeaders() {
+    const headers = {
+      [
+        "X-Client-Version"
+        /* HttpHeader.X_CLIENT_VERSION */
+      ]: this.clientVersion
+    };
+    if (this.app.options.appId) {
+      headers[
+        "X-Firebase-gmpid"
+        /* HttpHeader.X_FIREBASE_GMPID */
+      ] = this.app.options.appId;
+    }
+    const heartbeatsHeader = await this.heartbeatServiceProvider.getImmediate({
+      optional: true
+    })?.getHeartbeatsHeader();
+    if (heartbeatsHeader) {
+      headers[
+        "X-Firebase-Client"
+        /* HttpHeader.X_FIREBASE_CLIENT */
+      ] = heartbeatsHeader;
+    }
+    const appCheckToken = await this._getAppCheckToken();
+    if (appCheckToken) {
+      headers[
+        "X-Firebase-AppCheck"
+        /* HttpHeader.X_FIREBASE_APP_CHECK */
+      ] = appCheckToken;
+    }
+    return headers;
+  }
+  async _getAppCheckToken() {
+    if (_isFirebaseServerApp(this.app) && this.app.settings.appCheckToken) {
+      return this.app.settings.appCheckToken;
+    }
+    const appCheckTokenResult = await this.appCheckServiceProvider.getImmediate({ optional: true })?.getToken();
+    if (appCheckTokenResult?.error) {
+      _logWarn(`Error while retrieving App Check token: ${appCheckTokenResult.error}`);
+    }
+    return appCheckTokenResult?.token;
+  }
+};
+function _castAuth(auth) {
+  return getModularInstance(auth);
+}
+var Subscription = class {
+  constructor(auth) {
+    this.auth = auth;
+    this.observer = null;
+    this.addObserver = createSubscribe((observer) => this.observer = observer);
+  }
+  get next() {
+    _assert(
+      this.observer,
+      this.auth,
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    return this.observer.next.bind(this.observer);
+  }
+};
+var externalJSProvider = {
+  async loadJS() {
+    throw new Error("Unable to load external scripts");
+  },
+  recaptchaV2Script: "",
+  recaptchaEnterpriseScript: "",
+  gapiScript: ""
+};
+function _loadJS(url) {
+  return externalJSProvider.loadJS(url);
+}
+function _recaptchaEnterpriseScriptUrl() {
+  return externalJSProvider.recaptchaEnterpriseScript;
+}
+var MockGreCAPTCHATopLevel = class {
+  constructor() {
+    this.enterprise = new MockGreCAPTCHA();
+  }
+  ready(callback) {
+    callback();
+  }
+  execute(_siteKey, _options) {
+    return Promise.resolve("token");
+  }
+  render(_container, _parameters) {
+    return "";
+  }
+};
+var MockGreCAPTCHA = class {
+  ready(callback) {
+    callback();
+  }
+  execute(_siteKey, _options) {
+    return Promise.resolve("token");
+  }
+  render(_container, _parameters) {
+    return "";
+  }
+};
+var RECAPTCHA_ENTERPRISE_VERIFIER_TYPE = "recaptcha-enterprise";
+var FAKE_TOKEN = "NO_RECAPTCHA";
+var RECAPTCHA_ENTERPRISE_ONLOAD_CALLBACK_NAME = "onFirebaseAuthREInstanceReady";
+var RecaptchaEnterpriseVerifier = class _RecaptchaEnterpriseVerifier {
+  /**
+   *
+   * @param authExtern - The corresponding Firebase {@link Auth} instance.
+   *
+   */
+  constructor(authExtern) {
+    this.type = RECAPTCHA_ENTERPRISE_VERIFIER_TYPE;
+    this.auth = _castAuth(authExtern);
+  }
+  /**
+   * Executes the verification process.
+   *
+   * @returns A Promise for a token that can be used to assert the validity of a request.
+   */
+  async verify(action = "verify", forceRefresh = false) {
+    async function retrieveSiteKey(auth) {
+      if (!forceRefresh) {
+        if (auth.tenantId == null && auth._agentRecaptchaConfig != null) {
+          return auth._agentRecaptchaConfig.siteKey;
+        }
+        if (auth.tenantId != null && auth._tenantRecaptchaConfigs[auth.tenantId] !== void 0) {
+          return auth._tenantRecaptchaConfigs[auth.tenantId].siteKey;
+        }
+      }
+      return new Promise(async (resolve, reject) => {
+        getRecaptchaConfig(auth, {
+          clientType: "CLIENT_TYPE_WEB",
+          version: "RECAPTCHA_ENTERPRISE"
+          /* RecaptchaVersion.ENTERPRISE */
+        }).then((response) => {
+          if (response.recaptchaKey === void 0) {
+            reject(new Error("recaptcha Enterprise site key undefined"));
+          } else {
+            const config = new RecaptchaConfig(response);
+            if (auth.tenantId == null) {
+              auth._agentRecaptchaConfig = config;
+            } else {
+              auth._tenantRecaptchaConfigs[auth.tenantId] = config;
+            }
+            return resolve(config.siteKey);
+          }
+        }).catch((error) => {
+          reject(error);
+        });
+      });
+    }
+    function retrieveRecaptchaToken(siteKey, resolve, reject) {
+      const grecaptcha = window.grecaptcha;
+      if (isEnterprise(grecaptcha)) {
+        grecaptcha.enterprise.ready(() => {
+          grecaptcha.enterprise.execute(siteKey, { action }).then((token) => {
+            resolve(token);
+          }).catch(() => {
+            resolve(FAKE_TOKEN);
+          });
+        });
+      } else {
+        reject(Error("No reCAPTCHA enterprise script loaded."));
+      }
+    }
+    if (this.auth.settings.appVerificationDisabledForTesting) {
+      const mockRecaptcha = new MockGreCAPTCHATopLevel();
+      return mockRecaptcha.execute("siteKey", { action: "verify" });
+    }
+    return new Promise((resolve, reject) => {
+      retrieveSiteKey(this.auth).then(async (siteKey) => {
+        if (!forceRefresh && isEnterprise(window.grecaptcha) && // If download has already been initiated, do not trigger another
+        // download, await the promise here.
+        _RecaptchaEnterpriseVerifier.scriptInjectionDeferred) {
+          await _RecaptchaEnterpriseVerifier.scriptInjectionDeferred.promise;
+          retrieveRecaptchaToken(siteKey, resolve, reject);
+        } else {
+          if (typeof window === "undefined") {
+            reject(new Error("RecaptchaVerifier is only supported in browser"));
+            return;
+          }
+          let url = _recaptchaEnterpriseScriptUrl();
+          if (url.length !== 0) {
+            url += siteKey + `&onload=${RECAPTCHA_ENTERPRISE_ONLOAD_CALLBACK_NAME}`;
+          }
+          _RecaptchaEnterpriseVerifier.scriptInjectionDeferred = new Deferred();
+          window[RECAPTCHA_ENTERPRISE_ONLOAD_CALLBACK_NAME] = () => {
+            _RecaptchaEnterpriseVerifier.scriptInjectionDeferred?.resolve();
+          };
+          _loadJS(url).then(() => _RecaptchaEnterpriseVerifier.scriptInjectionDeferred?.promise).then(() => {
+            retrieveRecaptchaToken(siteKey, resolve, reject);
+          }).catch((error) => {
+            reject(error);
+          });
+        }
+      }).catch((error) => {
+        reject(error);
+      });
+    });
+  }
+};
+RecaptchaEnterpriseVerifier.scriptInjectionDeferred = null;
+async function injectRecaptchaFields(auth, request, action, isCaptchaResp = false, isFakeToken = false) {
+  const verifier = new RecaptchaEnterpriseVerifier(auth);
+  let captchaResponse;
+  if (isFakeToken) {
+    captchaResponse = FAKE_TOKEN;
+  } else {
+    try {
+      captchaResponse = await verifier.verify(action);
+    } catch (error) {
+      captchaResponse = await verifier.verify(action, true);
+    }
+  }
+  const newRequest = { ...request };
+  if (action === "mfaSmsEnrollment" || action === "mfaSmsSignIn") {
+    if ("phoneEnrollmentInfo" in newRequest) {
+      const phoneNumber = newRequest.phoneEnrollmentInfo.phoneNumber;
+      const recaptchaToken = newRequest.phoneEnrollmentInfo.recaptchaToken;
+      Object.assign(newRequest, {
+        "phoneEnrollmentInfo": {
+          phoneNumber,
+          recaptchaToken,
+          captchaResponse,
+          "clientType": "CLIENT_TYPE_WEB",
+          "recaptchaVersion": "RECAPTCHA_ENTERPRISE"
+          /* RecaptchaVersion.ENTERPRISE */
+        }
+      });
+    } else if ("phoneSignInInfo" in newRequest) {
+      const recaptchaToken = newRequest.phoneSignInInfo.recaptchaToken;
+      Object.assign(newRequest, {
+        "phoneSignInInfo": {
+          recaptchaToken,
+          captchaResponse,
+          "clientType": "CLIENT_TYPE_WEB",
+          "recaptchaVersion": "RECAPTCHA_ENTERPRISE"
+          /* RecaptchaVersion.ENTERPRISE */
+        }
+      });
+    }
+    return newRequest;
+  }
+  if (!isCaptchaResp) {
+    Object.assign(newRequest, { captchaResponse });
+  } else {
+    Object.assign(newRequest, { "captchaResp": captchaResponse });
+  }
+  Object.assign(newRequest, {
+    "clientType": "CLIENT_TYPE_WEB"
+    /* RecaptchaClientType.WEB */
+  });
+  Object.assign(newRequest, {
+    "recaptchaVersion": "RECAPTCHA_ENTERPRISE"
+    /* RecaptchaVersion.ENTERPRISE */
+  });
+  return newRequest;
+}
+async function handleRecaptchaFlow(authInstance, request, actionName, actionMethod, recaptchaAuthProvider) {
+  {
+    if (authInstance._getRecaptchaConfig()?.isProviderEnabled(
+      "EMAIL_PASSWORD_PROVIDER"
+      /* RecaptchaAuthProvider.EMAIL_PASSWORD_PROVIDER */
+    )) {
+      const requestWithRecaptcha = await injectRecaptchaFields(
+        authInstance,
+        request,
+        actionName,
+        actionName === "getOobCode"
+        /* RecaptchaActionName.GET_OOB_CODE */
+      );
+      return actionMethod(authInstance, requestWithRecaptcha);
+    } else {
+      return actionMethod(authInstance, request).catch(async (error) => {
+        if (error.code === `auth/${"missing-recaptcha-token"}`) {
+          console.log(`${actionName} is protected by reCAPTCHA Enterprise for this project. Automatically triggering the reCAPTCHA flow and restarting the flow.`);
+          const requestWithRecaptcha = await injectRecaptchaFields(
+            authInstance,
+            request,
+            actionName,
+            actionName === "getOobCode"
+            /* RecaptchaActionName.GET_OOB_CODE */
+          );
+          return actionMethod(authInstance, requestWithRecaptcha);
+        } else {
+          return Promise.reject(error);
+        }
+      });
+    }
+  }
+}
+function initializeAuth(app, deps) {
+  const provider = _getProvider(app, "auth");
+  if (provider.isInitialized()) {
+    const auth2 = provider.getImmediate();
+    const initialOptions = provider.getOptions();
+    if (deepEqual(initialOptions, deps ?? {})) {
+      return auth2;
+    } else {
+      _fail2(
+        auth2,
+        "already-initialized"
+        /* AuthErrorCode.ALREADY_INITIALIZED */
+      );
+    }
+  }
+  const auth = provider.initialize({ options: deps });
+  return auth;
+}
+function _initializeAuthInstance(auth, deps) {
+  const persistence = deps?.persistence || [];
+  const hierarchy = (Array.isArray(persistence) ? persistence : [persistence]).map(_getInstance);
+  if (deps?.errorMap) {
+    auth._updateErrorMap(deps.errorMap);
+  }
+  auth._initializeWithPersistence(hierarchy, deps?.popupRedirectResolver);
+}
+function connectAuthEmulator(auth, url, options2) {
+  const authInternal = _castAuth(auth);
+  _assert(
+    /^https?:\/\//.test(url),
+    authInternal,
+    "invalid-emulator-scheme"
+    /* AuthErrorCode.INVALID_EMULATOR_SCHEME */
+  );
+  const disableWarnings = !!options2?.disableWarnings;
+  const protocol = extractProtocol(url);
+  const { host, port } = extractHostAndPort(url);
+  const portStr = port === null ? "" : `:${port}`;
+  const emulator = { url: `${protocol}//${host}${portStr}/` };
+  const emulatorConfig = Object.freeze({
+    host,
+    port,
+    protocol: protocol.replace(":", ""),
+    options: Object.freeze({ disableWarnings })
+  });
+  if (!authInternal._canInitEmulator) {
+    _assert(
+      authInternal.config.emulator && authInternal.emulatorConfig,
+      authInternal,
+      "emulator-config-failed"
+      /* AuthErrorCode.EMULATOR_CONFIG_FAILED */
+    );
+    _assert(
+      deepEqual(emulator, authInternal.config.emulator) && deepEqual(emulatorConfig, authInternal.emulatorConfig),
+      authInternal,
+      "emulator-config-failed"
+      /* AuthErrorCode.EMULATOR_CONFIG_FAILED */
+    );
+    return;
+  }
+  authInternal.config.emulator = emulator;
+  authInternal.emulatorConfig = emulatorConfig;
+  authInternal.settings.appVerificationDisabledForTesting = true;
+  if (isCloudWorkstation(host)) {
+    void pingServer(`${protocol}//${host}${portStr}`);
+  } else if (!disableWarnings) {
+    emitEmulatorWarning();
+  }
+}
+function extractProtocol(url) {
+  const protocolEnd = url.indexOf(":");
+  return protocolEnd < 0 ? "" : url.substr(0, protocolEnd + 1);
+}
+function extractHostAndPort(url) {
+  const protocol = extractProtocol(url);
+  const authority = /(\/\/)?([^?#/]+)/.exec(url.substr(protocol.length));
+  if (!authority) {
+    return { host: "", port: null };
+  }
+  const hostAndPort = authority[2].split("@").pop() || "";
+  const bracketedIPv6 = /^(\[[^\]]+\])(:|$)/.exec(hostAndPort);
+  if (bracketedIPv6) {
+    const host = bracketedIPv6[1];
+    return { host, port: parsePort(hostAndPort.substr(host.length + 1)) };
+  } else {
+    const [host, port] = hostAndPort.split(":");
+    return { host, port: parsePort(port) };
+  }
+}
+function parsePort(portStr) {
+  if (!portStr) {
+    return null;
+  }
+  const port = Number(portStr);
+  if (isNaN(port)) {
+    return null;
+  }
+  return port;
+}
+function emitEmulatorWarning() {
+  function attachBanner() {
+    const el = document.createElement("p");
+    const sty = el.style;
+    el.innerText = "Running in emulator mode. Do not use with production credentials.";
+    sty.position = "fixed";
+    sty.width = "100%";
+    sty.backgroundColor = "#ffffff";
+    sty.border = ".1em solid #000000";
+    sty.color = "#b50000";
+    sty.bottom = "0px";
+    sty.left = "0px";
+    sty.margin = "0px";
+    sty.zIndex = "10000";
+    sty.textAlign = "center";
+    el.classList.add("firebase-emulator-warning");
+    document.body.appendChild(el);
+  }
+  if (typeof console !== "undefined" && typeof console.info === "function") {
+    console.info("WARNING: You are using the Auth Emulator, which is intended for local testing only.  Do not use with production credentials.");
+  }
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      window.addEventListener("DOMContentLoaded", attachBanner);
+    } else {
+      attachBanner();
+    }
+  }
+}
+var AuthCredential = class {
+  /** @internal */
+  constructor(providerId, signInMethod) {
+    this.providerId = providerId;
+    this.signInMethod = signInMethod;
+  }
+  /**
+   * Returns a JSON-serializable representation of this object.
+   *
+   * @returns a JSON-serializable representation of this object.
+   */
+  toJSON() {
+    return debugFail("not implemented");
+  }
+  /** @internal */
+  _getIdTokenResponse(_auth) {
+    return debugFail("not implemented");
+  }
+  /** @internal */
+  _linkToIdToken(_auth, _idToken) {
+    return debugFail("not implemented");
+  }
+  /** @internal */
+  _getReauthenticationResolver(_auth) {
+    return debugFail("not implemented");
+  }
+};
+async function linkEmailPassword(auth, request) {
+  return _performApiRequest(auth, "POST", "/v1/accounts:signUp", request);
+}
+async function signInWithPassword(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signInWithPassword", _addTidIfNecessary(auth, request));
+}
+async function signInWithEmailLink$1(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signInWithEmailLink", _addTidIfNecessary(auth, request));
+}
+async function signInWithEmailLinkForLinking(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signInWithEmailLink", _addTidIfNecessary(auth, request));
+}
+var EmailAuthCredential = class _EmailAuthCredential extends AuthCredential {
+  /** @internal */
+  constructor(_email, _password, signInMethod, _tenantId = null) {
+    super("password", signInMethod);
+    this._email = _email;
+    this._password = _password;
+    this._tenantId = _tenantId;
+  }
+  /** @internal */
+  static _fromEmailAndPassword(email, password) {
+    return new _EmailAuthCredential(
+      email,
+      password,
+      "password"
+      /* SignInMethod.EMAIL_PASSWORD */
+    );
+  }
+  /** @internal */
+  static _fromEmailAndCode(email, oobCode, tenantId = null) {
+    return new _EmailAuthCredential(email, oobCode, "emailLink", tenantId);
+  }
+  /** {@inheritdoc AuthCredential.toJSON} */
+  toJSON() {
+    return {
+      email: this._email,
+      password: this._password,
+      signInMethod: this.signInMethod,
+      tenantId: this._tenantId
+    };
+  }
+  /**
+   * Static method to deserialize a JSON representation of an object into an {@link  AuthCredential}.
+   *
+   * @param json - Either `object` or the stringified representation of the object. When string is
+   * provided, `JSON.parse` would be called first.
+   *
+   * @returns If the JSON input does not represent an {@link AuthCredential}, null is returned.
+   */
+  static fromJSON(json) {
+    const obj = typeof json === "string" ? JSON.parse(json) : json;
+    if (obj?.email && obj?.password) {
+      if (obj.signInMethod === "password") {
+        return this._fromEmailAndPassword(obj.email, obj.password);
+      } else if (obj.signInMethod === "emailLink") {
+        return this._fromEmailAndCode(obj.email, obj.password, obj.tenantId);
+      }
+    }
+    return null;
+  }
+  /** @internal */
+  async _getIdTokenResponse(auth) {
+    switch (this.signInMethod) {
+      case "password":
+        const request = {
+          returnSecureToken: true,
+          email: this._email,
+          password: this._password,
+          clientType: "CLIENT_TYPE_WEB"
+          /* RecaptchaClientType.WEB */
+        };
+        return handleRecaptchaFlow(auth, request, "signInWithPassword", signInWithPassword);
+      case "emailLink":
+        return signInWithEmailLink$1(auth, {
+          email: this._email,
+          oobCode: this._password
+        });
+      default:
+        _fail2(
+          auth,
+          "internal-error"
+          /* AuthErrorCode.INTERNAL_ERROR */
+        );
+    }
+  }
+  /** @internal */
+  async _linkToIdToken(auth, idToken) {
+    switch (this.signInMethod) {
+      case "password":
+        const request = {
+          idToken,
+          returnSecureToken: true,
+          email: this._email,
+          password: this._password,
+          clientType: "CLIENT_TYPE_WEB"
+          /* RecaptchaClientType.WEB */
+        };
+        return handleRecaptchaFlow(auth, request, "signUpPassword", linkEmailPassword);
+      case "emailLink":
+        return signInWithEmailLinkForLinking(auth, {
+          idToken,
+          email: this._email,
+          oobCode: this._password
+        });
+      default:
+        _fail2(
+          auth,
+          "internal-error"
+          /* AuthErrorCode.INTERNAL_ERROR */
+        );
+    }
+  }
+  /** @internal */
+  _getReauthenticationResolver(auth) {
+    return this._getIdTokenResponse(auth);
+  }
+};
+async function signInWithIdp(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signInWithIdp", _addTidIfNecessary(auth, request));
+}
+var IDP_REQUEST_URI$1 = "http://localhost";
+var OAuthCredential = class _OAuthCredential extends AuthCredential {
+  constructor() {
+    super(...arguments);
+    this.pendingToken = null;
+  }
+  /** @internal */
+  static _fromParams(params) {
+    const cred = new _OAuthCredential(params.providerId, params.signInMethod);
+    if (params.idToken || params.accessToken) {
+      if (params.idToken) {
+        cred.idToken = params.idToken;
+      }
+      if (params.accessToken) {
+        cred.accessToken = params.accessToken;
+      }
+      if (params.nonce && !params.pendingToken) {
+        cred.nonce = params.nonce;
+      }
+      if (params.pendingToken) {
+        cred.pendingToken = params.pendingToken;
+      }
+    } else if (params.oauthToken && params.oauthTokenSecret) {
+      cred.accessToken = params.oauthToken;
+      cred.secret = params.oauthTokenSecret;
+    } else {
+      _fail2(
+        "argument-error"
+        /* AuthErrorCode.ARGUMENT_ERROR */
+      );
+    }
+    return cred;
+  }
+  /** {@inheritdoc AuthCredential.toJSON}  */
+  toJSON() {
+    return {
+      idToken: this.idToken,
+      accessToken: this.accessToken,
+      secret: this.secret,
+      nonce: this.nonce,
+      pendingToken: this.pendingToken,
+      providerId: this.providerId,
+      signInMethod: this.signInMethod
+    };
+  }
+  /**
+   * Static method to deserialize a JSON representation of an object into an
+   * {@link  AuthCredential}.
+   *
+   * @param json - Input can be either Object or the stringified representation of the object.
+   * When string is provided, JSON.parse would be called first.
+   *
+   * @returns If the JSON input does not represent an {@link  AuthCredential}, null is returned.
+   */
+  static fromJSON(json) {
+    const obj = typeof json === "string" ? JSON.parse(json) : json;
+    const { providerId, signInMethod, ...rest } = obj;
+    if (!providerId || !signInMethod) {
+      return null;
+    }
+    const cred = new _OAuthCredential(providerId, signInMethod);
+    cred.idToken = rest.idToken || void 0;
+    cred.accessToken = rest.accessToken || void 0;
+    cred.secret = rest.secret;
+    cred.nonce = rest.nonce;
+    cred.pendingToken = rest.pendingToken || null;
+    return cred;
+  }
+  /** @internal */
+  _getIdTokenResponse(auth) {
+    const request = this.buildRequest();
+    return signInWithIdp(auth, request);
+  }
+  /** @internal */
+  _linkToIdToken(auth, idToken) {
+    const request = this.buildRequest();
+    request.idToken = idToken;
+    return signInWithIdp(auth, request);
+  }
+  /** @internal */
+  _getReauthenticationResolver(auth) {
+    const request = this.buildRequest();
+    request.autoCreate = false;
+    return signInWithIdp(auth, request);
+  }
+  buildRequest() {
+    const request = {
+      requestUri: IDP_REQUEST_URI$1,
+      returnSecureToken: true
+    };
+    if (this.pendingToken) {
+      request.pendingToken = this.pendingToken;
+    } else {
+      const postBody = {};
+      if (this.idToken) {
+        postBody["id_token"] = this.idToken;
+      }
+      if (this.accessToken) {
+        postBody["access_token"] = this.accessToken;
+      }
+      if (this.secret) {
+        postBody["oauth_token_secret"] = this.secret;
+      }
+      postBody["providerId"] = this.providerId;
+      if (this.nonce && !this.pendingToken) {
+        postBody["nonce"] = this.nonce;
+      }
+      request.postBody = querystring(postBody);
+    }
+    return request;
+  }
+};
+function parseMode(mode) {
+  switch (mode) {
+    case "recoverEmail":
+      return "RECOVER_EMAIL";
+    case "resetPassword":
+      return "PASSWORD_RESET";
+    case "signIn":
+      return "EMAIL_SIGNIN";
+    case "verifyEmail":
+      return "VERIFY_EMAIL";
+    case "verifyAndChangeEmail":
+      return "VERIFY_AND_CHANGE_EMAIL";
+    case "revertSecondFactorAddition":
+      return "REVERT_SECOND_FACTOR_ADDITION";
+    default:
+      return null;
+  }
+}
+function parseDeepLink(url) {
+  const link = querystringDecode(extractQuerystring(url))["link"];
+  const doubleDeepLink = link ? querystringDecode(extractQuerystring(link))["deep_link_id"] : null;
+  const iOSDeepLink = querystringDecode(extractQuerystring(url))["deep_link_id"];
+  const iOSDoubleDeepLink = iOSDeepLink ? querystringDecode(extractQuerystring(iOSDeepLink))["link"] : null;
+  return iOSDoubleDeepLink || iOSDeepLink || doubleDeepLink || link || url;
+}
+var ActionCodeURL = class _ActionCodeURL {
+  /**
+   * @param actionLink - The link from which to extract the URL.
+   * @returns The {@link ActionCodeURL} object, or null if the link is invalid.
+   *
+   * @internal
+   */
+  constructor(actionLink) {
+    const searchParams = querystringDecode(extractQuerystring(actionLink));
+    const apiKey = searchParams[
+      "apiKey"
+      /* QueryField.API_KEY */
+    ] ?? null;
+    const code = searchParams[
+      "oobCode"
+      /* QueryField.CODE */
+    ] ?? null;
+    const operation = parseMode(searchParams[
+      "mode"
+      /* QueryField.MODE */
+    ] ?? null);
+    _assert(
+      apiKey && code && operation,
+      "argument-error"
+      /* AuthErrorCode.ARGUMENT_ERROR */
+    );
+    this.apiKey = apiKey;
+    this.operation = operation;
+    this.code = code;
+    this.continueUrl = searchParams[
+      "continueUrl"
+      /* QueryField.CONTINUE_URL */
+    ] ?? null;
+    this.languageCode = searchParams[
+      "lang"
+      /* QueryField.LANGUAGE_CODE */
+    ] ?? null;
+    this.tenantId = searchParams[
+      "tenantId"
+      /* QueryField.TENANT_ID */
+    ] ?? null;
+  }
+  /**
+   * Parses the email action link string and returns an {@link ActionCodeURL} if the link is valid,
+   * otherwise returns null.
+   *
+   * @param link  - The email action link string.
+   * @returns The {@link ActionCodeURL} object, or null if the link is invalid.
+   *
+   * @public
+   */
+  static parseLink(link) {
+    const actionLink = parseDeepLink(link);
+    try {
+      return new _ActionCodeURL(actionLink);
+    } catch {
+      return null;
+    }
+  }
+};
+var EmailAuthProvider = class _EmailAuthProvider {
+  constructor() {
+    this.providerId = _EmailAuthProvider.PROVIDER_ID;
+  }
+  /**
+   * Initialize an {@link AuthCredential} using an email and password.
+   *
+   * @example
+   * ```javascript
+   * const authCredential = EmailAuthProvider.credential(email, password);
+   * const userCredential = await signInWithCredential(auth, authCredential);
+   * ```
+   *
+   * @example
+   * ```javascript
+   * const userCredential = await signInWithEmailAndPassword(auth, email, password);
+   * ```
+   *
+   * @param email - Email address.
+   * @param password - User account password.
+   * @returns The auth provider credential.
+   */
+  static credential(email, password) {
+    return EmailAuthCredential._fromEmailAndPassword(email, password);
+  }
+  /**
+   * Initialize an {@link AuthCredential} using an email and an email link after a sign in with
+   * email link operation.
+   *
+   * @example
+   * ```javascript
+   * const authCredential = EmailAuthProvider.credentialWithLink(auth, email, emailLink);
+   * const userCredential = await signInWithCredential(auth, authCredential);
+   * ```
+   *
+   * @example
+   * ```javascript
+   * await sendSignInLinkToEmail(auth, email);
+   * // Obtain emailLink from user.
+   * const userCredential = await signInWithEmailLink(auth, email, emailLink);
+   * ```
+   *
+   * @param auth - The {@link Auth} instance used to verify the link.
+   * @param email - Email address.
+   * @param emailLink - Sign-in email link.
+   * @returns - The auth provider credential.
+   */
+  static credentialWithLink(email, emailLink) {
+    const actionCodeUrl = ActionCodeURL.parseLink(emailLink);
+    _assert(
+      actionCodeUrl,
+      "argument-error"
+      /* AuthErrorCode.ARGUMENT_ERROR */
+    );
+    return EmailAuthCredential._fromEmailAndCode(email, actionCodeUrl.code, actionCodeUrl.tenantId);
+  }
+};
+EmailAuthProvider.PROVIDER_ID = "password";
+EmailAuthProvider.EMAIL_PASSWORD_SIGN_IN_METHOD = "password";
+EmailAuthProvider.EMAIL_LINK_SIGN_IN_METHOD = "emailLink";
+var FederatedAuthProvider = class {
+  /**
+   * Constructor for generic OAuth providers.
+   *
+   * @param providerId - Provider for which credentials should be generated.
+   */
+  constructor(providerId) {
+    this.providerId = providerId;
+    this.defaultLanguageCode = null;
+    this.customParameters = {};
+  }
+  /**
+   * Set the language gode.
+   *
+   * @param languageCode - language code
+   */
+  setDefaultLanguage(languageCode) {
+    this.defaultLanguageCode = languageCode;
+  }
+  /**
+   * Sets the OAuth custom parameters to pass in an OAuth request for popup and redirect sign-in
+   * operations.
+   *
+   * @remarks
+   * For a detailed list, check the reserved required OAuth 2.0 parameters such as `client_id`,
+   * `redirect_uri`, `scope`, `response_type`, and `state` are not allowed and will be ignored.
+   *
+   * @param customOAuthParameters - The custom OAuth parameters to pass in the OAuth request.
+   */
+  setCustomParameters(customOAuthParameters) {
+    this.customParameters = customOAuthParameters;
+    return this;
+  }
+  /**
+   * Retrieve the current list of {@link CustomParameters}.
+   */
+  getCustomParameters() {
+    return this.customParameters;
+  }
+};
+var BaseOAuthProvider = class extends FederatedAuthProvider {
+  constructor() {
+    super(...arguments);
+    this.scopes = [];
+  }
+  /**
+   * Add an OAuth scope to the credential.
+   *
+   * @param scope - Provider OAuth scope to add.
+   */
+  addScope(scope) {
+    if (!this.scopes.includes(scope)) {
+      this.scopes.push(scope);
+    }
+    return this;
+  }
+  /**
+   * Retrieve the current list of OAuth scopes.
+   */
+  getScopes() {
+    return [...this.scopes];
+  }
+};
+var FacebookAuthProvider = class _FacebookAuthProvider extends BaseOAuthProvider {
+  constructor() {
+    super(
+      "facebook.com"
+      /* ProviderId.FACEBOOK */
+    );
+  }
+  /**
+   * Creates a credential for Facebook.
+   *
+   * @example
+   * ```javascript
+   * // `event` from the Facebook auth.authResponseChange callback.
+   * const credential = FacebookAuthProvider.credential(event.authResponse.accessToken);
+   * const result = await signInWithCredential(credential);
+   * ```
+   *
+   * @param accessToken - Facebook access token.
+   */
+  static credential(accessToken) {
+    return OAuthCredential._fromParams({
+      providerId: _FacebookAuthProvider.PROVIDER_ID,
+      signInMethod: _FacebookAuthProvider.FACEBOOK_SIGN_IN_METHOD,
+      accessToken
+    });
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link UserCredential}.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromResult(userCredential) {
+    return _FacebookAuthProvider.credentialFromTaggedObject(userCredential);
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+   * thrown during a sign-in, link, or reauthenticate operation.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromError(error) {
+    return _FacebookAuthProvider.credentialFromTaggedObject(error.customData || {});
+  }
+  static credentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+    if (!tokenResponse || !("oauthAccessToken" in tokenResponse)) {
+      return null;
+    }
+    if (!tokenResponse.oauthAccessToken) {
+      return null;
+    }
+    try {
+      return _FacebookAuthProvider.credential(tokenResponse.oauthAccessToken);
+    } catch {
+      return null;
+    }
+  }
+};
+FacebookAuthProvider.FACEBOOK_SIGN_IN_METHOD = "facebook.com";
+FacebookAuthProvider.PROVIDER_ID = "facebook.com";
+var GoogleAuthProvider = class _GoogleAuthProvider extends BaseOAuthProvider {
+  constructor() {
+    super(
+      "google.com"
+      /* ProviderId.GOOGLE */
+    );
+    this.addScope("profile");
+  }
+  /**
+   * Creates a credential for Google. At least one of ID token and access token is required.
+   *
+   * @example
+   * ```javascript
+   * // \`googleUser\` from the onsuccess Google Sign In callback.
+   * const credential = GoogleAuthProvider.credential(googleUser.getAuthResponse().id_token);
+   * const result = await signInWithCredential(credential);
+   * ```
+   *
+   * @param idToken - Google ID token.
+   * @param accessToken - Google access token.
+   */
+  static credential(idToken, accessToken) {
+    return OAuthCredential._fromParams({
+      providerId: _GoogleAuthProvider.PROVIDER_ID,
+      signInMethod: _GoogleAuthProvider.GOOGLE_SIGN_IN_METHOD,
+      idToken,
+      accessToken
+    });
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link UserCredential}.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromResult(userCredential) {
+    return _GoogleAuthProvider.credentialFromTaggedObject(userCredential);
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+   * thrown during a sign-in, link, or reauthenticate operation.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromError(error) {
+    return _GoogleAuthProvider.credentialFromTaggedObject(error.customData || {});
+  }
+  static credentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+    if (!tokenResponse) {
+      return null;
+    }
+    const { oauthIdToken, oauthAccessToken } = tokenResponse;
+    if (!oauthIdToken && !oauthAccessToken) {
+      return null;
+    }
+    try {
+      return _GoogleAuthProvider.credential(oauthIdToken, oauthAccessToken);
+    } catch {
+      return null;
+    }
+  }
+};
+GoogleAuthProvider.GOOGLE_SIGN_IN_METHOD = "google.com";
+GoogleAuthProvider.PROVIDER_ID = "google.com";
+var GithubAuthProvider = class _GithubAuthProvider extends BaseOAuthProvider {
+  constructor() {
+    super(
+      "github.com"
+      /* ProviderId.GITHUB */
+    );
+  }
+  /**
+   * Creates a credential for GitHub.
+   *
+   * @param accessToken - GitHub access token.
+   */
+  static credential(accessToken) {
+    return OAuthCredential._fromParams({
+      providerId: _GithubAuthProvider.PROVIDER_ID,
+      signInMethod: _GithubAuthProvider.GITHUB_SIGN_IN_METHOD,
+      accessToken
+    });
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link UserCredential}.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromResult(userCredential) {
+    return _GithubAuthProvider.credentialFromTaggedObject(userCredential);
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+   * thrown during a sign-in, link, or reauthenticate operation.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromError(error) {
+    return _GithubAuthProvider.credentialFromTaggedObject(error.customData || {});
+  }
+  static credentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+    if (!tokenResponse || !("oauthAccessToken" in tokenResponse)) {
+      return null;
+    }
+    if (!tokenResponse.oauthAccessToken) {
+      return null;
+    }
+    try {
+      return _GithubAuthProvider.credential(tokenResponse.oauthAccessToken);
+    } catch {
+      return null;
+    }
+  }
+};
+GithubAuthProvider.GITHUB_SIGN_IN_METHOD = "github.com";
+GithubAuthProvider.PROVIDER_ID = "github.com";
+var TwitterAuthProvider = class _TwitterAuthProvider extends BaseOAuthProvider {
+  constructor() {
+    super(
+      "twitter.com"
+      /* ProviderId.TWITTER */
+    );
+  }
+  /**
+   * Creates a credential for Twitter.
+   *
+   * @param token - Twitter access token.
+   * @param secret - Twitter secret.
+   */
+  static credential(token, secret) {
+    return OAuthCredential._fromParams({
+      providerId: _TwitterAuthProvider.PROVIDER_ID,
+      signInMethod: _TwitterAuthProvider.TWITTER_SIGN_IN_METHOD,
+      oauthToken: token,
+      oauthTokenSecret: secret
+    });
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link UserCredential}.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromResult(userCredential) {
+    return _TwitterAuthProvider.credentialFromTaggedObject(userCredential);
+  }
+  /**
+   * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+   * thrown during a sign-in, link, or reauthenticate operation.
+   *
+   * @param userCredential - The user credential.
+   */
+  static credentialFromError(error) {
+    return _TwitterAuthProvider.credentialFromTaggedObject(error.customData || {});
+  }
+  static credentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+    if (!tokenResponse) {
+      return null;
+    }
+    const { oauthAccessToken, oauthTokenSecret } = tokenResponse;
+    if (!oauthAccessToken || !oauthTokenSecret) {
+      return null;
+    }
+    try {
+      return _TwitterAuthProvider.credential(oauthAccessToken, oauthTokenSecret);
+    } catch {
+      return null;
+    }
+  }
+};
+TwitterAuthProvider.TWITTER_SIGN_IN_METHOD = "twitter.com";
+TwitterAuthProvider.PROVIDER_ID = "twitter.com";
+async function signUp(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signUp", _addTidIfNecessary(auth, request));
+}
+var UserCredentialImpl = class _UserCredentialImpl {
+  constructor(params) {
+    this.user = params.user;
+    this.providerId = params.providerId;
+    this._tokenResponse = params._tokenResponse;
+    this.operationType = params.operationType;
+  }
+  static async _fromIdTokenResponse(auth, operationType, idTokenResponse, isAnonymous = false) {
+    const user = await UserImpl._fromIdTokenResponse(auth, idTokenResponse, isAnonymous);
+    const providerId = providerIdForResponse(idTokenResponse);
+    const userCred = new _UserCredentialImpl({
+      user,
+      providerId,
+      _tokenResponse: idTokenResponse,
+      operationType
+    });
+    return userCred;
+  }
+  static async _forOperation(user, operationType, response) {
+    await user._updateTokensIfNecessary(
+      response,
+      /* reload */
+      true
+    );
+    const providerId = providerIdForResponse(response);
+    return new _UserCredentialImpl({
+      user,
+      providerId,
+      _tokenResponse: response,
+      operationType
+    });
+  }
+};
+function providerIdForResponse(response) {
+  if (response.providerId) {
+    return response.providerId;
+  }
+  if ("phoneNumber" in response) {
+    return "phone";
+  }
+  return null;
+}
+var MultiFactorError = class _MultiFactorError extends FirebaseError {
+  constructor(auth, error, operationType, user) {
+    super(error.code, error.message);
+    this.operationType = operationType;
+    this.user = user;
+    Object.setPrototypeOf(this, _MultiFactorError.prototype);
+    this.customData = {
+      appName: auth.name,
+      tenantId: auth.tenantId ?? void 0,
+      _serverResponse: error.customData._serverResponse,
+      operationType
+    };
+  }
+  static _fromErrorAndOperation(auth, error, operationType, user) {
+    return new _MultiFactorError(auth, error, operationType, user);
+  }
+};
+function _processCredentialSavingMfaContextIfNecessary(auth, operationType, credential, user) {
+  const idTokenProvider = operationType === "reauthenticate" ? credential._getReauthenticationResolver(auth) : credential._getIdTokenResponse(auth);
+  return idTokenProvider.catch((error) => {
+    if (error.code === `auth/${"multi-factor-auth-required"}`) {
+      throw MultiFactorError._fromErrorAndOperation(auth, error, operationType, user);
+    }
+    throw error;
+  });
+}
+async function _signInWithCredential(auth, credential, bypassAuthState = false) {
+  if (_isFirebaseServerApp(auth.app)) {
+    return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+  }
+  const operationType = "signIn";
+  const response = await _processCredentialSavingMfaContextIfNecessary(auth, operationType, credential);
+  const userCredential = await UserCredentialImpl._fromIdTokenResponse(auth, operationType, response);
+  if (!bypassAuthState) {
+    await auth._updateCurrentUser(userCredential.user);
+  }
+  return userCredential;
+}
+async function signInWithCredential(auth, credential) {
+  return _signInWithCredential(_castAuth(auth), credential);
+}
+async function signInWithCustomToken$1(auth, request) {
+  return _performSignInRequest(auth, "POST", "/v1/accounts:signInWithCustomToken", _addTidIfNecessary(auth, request));
+}
+async function signInWithCustomToken(auth, customToken) {
+  if (_isFirebaseServerApp(auth.app)) {
+    return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+  }
+  const authInternal = _castAuth(auth);
+  const response = await signInWithCustomToken$1(authInternal, {
+    token: customToken,
+    returnSecureToken: true
+  });
+  const cred = await UserCredentialImpl._fromIdTokenResponse(authInternal, "signIn", response);
+  await authInternal._updateCurrentUser(cred.user);
+  return cred;
+}
+async function recachePasswordPolicy(auth) {
+  const authInternal = _castAuth(auth);
+  if (authInternal._getPasswordPolicyInternal()) {
+    await authInternal._updatePasswordPolicy();
+  }
+}
+async function createUserWithEmailAndPassword(auth, email, password) {
+  if (_isFirebaseServerApp(auth.app)) {
+    return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+  }
+  const authInternal = _castAuth(auth);
+  const request = {
+    returnSecureToken: true,
+    email,
+    password,
+    clientType: "CLIENT_TYPE_WEB"
+    /* RecaptchaClientType.WEB */
+  };
+  const signUpResponse = handleRecaptchaFlow(authInternal, request, "signUpPassword", signUp);
+  const response = await signUpResponse.catch((error) => {
+    if (error.code === `auth/${"password-does-not-meet-requirements"}`) {
+      void recachePasswordPolicy(auth);
+    }
+    throw error;
+  });
+  const userCredential = await UserCredentialImpl._fromIdTokenResponse(authInternal, "signIn", response);
+  await authInternal._updateCurrentUser(userCredential.user);
+  return userCredential;
+}
+function signInWithEmailAndPassword(auth, email, password) {
+  if (_isFirebaseServerApp(auth.app)) {
+    return Promise.reject(_serverAppCurrentUserOperationNotSupportedError(auth));
+  }
+  return signInWithCredential(getModularInstance(auth), EmailAuthProvider.credential(email, password)).catch(async (error) => {
+    if (error.code === `auth/${"password-does-not-meet-requirements"}`) {
+      void recachePasswordPolicy(auth);
+    }
+    throw error;
+  });
+}
+function startEnrollTotpMfa(auth, request) {
+  return _performApiRequest(auth, "POST", "/v2/accounts/mfaEnrollment:start", _addTidIfNecessary(auth, request));
+}
+function finalizeEnrollTotpMfa(auth, request) {
+  return _performApiRequest(auth, "POST", "/v2/accounts/mfaEnrollment:finalize", _addTidIfNecessary(auth, request));
+}
+var name5 = "@firebase/auth";
+var version6 = "1.13.7";
+var AuthInterop = class {
+  constructor(auth) {
+    this.auth = auth;
+    this.internalListeners = /* @__PURE__ */ new Map();
+  }
+  getUid() {
+    this.assertAuthConfigured();
+    return this.auth.currentUser?.uid || null;
+  }
+  async getToken(forceRefresh) {
+    this.assertAuthConfigured();
+    await this.auth._initializationPromise;
+    if (!this.auth.currentUser) {
+      return null;
+    }
+    const accessToken = await this.auth.currentUser.getIdToken(forceRefresh);
+    return { accessToken };
+  }
+  addAuthTokenListener(listener) {
+    this.assertAuthConfigured();
+    if (this.internalListeners.has(listener)) {
+      return;
+    }
+    const unsubscribe = this.auth.onIdTokenChanged((user) => {
+      listener(user?.stsTokenManager.accessToken || null);
+    });
+    this.internalListeners.set(listener, unsubscribe);
+    this.updateProactiveRefresh();
+  }
+  removeAuthTokenListener(listener) {
+    this.assertAuthConfigured();
+    const unsubscribe = this.internalListeners.get(listener);
+    if (!unsubscribe) {
+      return;
+    }
+    this.internalListeners.delete(listener);
+    unsubscribe();
+    this.updateProactiveRefresh();
+  }
+  assertAuthConfigured() {
+    _assert(
+      this.auth._initializationPromise,
+      "dependent-sdk-initialized-before-auth"
+      /* AuthErrorCode.DEPENDENT_SDK_INIT_BEFORE_AUTH */
+    );
+  }
+  updateProactiveRefresh() {
+    if (this.internalListeners.size > 0) {
+      this.auth._startProactiveRefresh();
+    } else {
+      this.auth._stopProactiveRefresh();
+    }
+  }
+};
+function getVersionForPlatform(clientPlatform) {
+  switch (clientPlatform) {
+    case "Node":
+      return "node";
+    case "ReactNative":
+      return "rn";
+    case "Worker":
+      return "webworker";
+    case "Cordova":
+      return "cordova";
+    case "WebExtension":
+      return "web-extension";
+    default:
+      return void 0;
+  }
+}
+function registerAuth(clientPlatform) {
+  _registerComponent(new Component(
+    "auth",
+    (container, { options: deps }) => {
+      const app = container.getProvider("app").getImmediate();
+      const heartbeatServiceProvider = container.getProvider("heartbeat");
+      const appCheckServiceProvider = container.getProvider("app-check-internal");
+      const { apiKey, authDomain } = app.options;
+      _assert(apiKey && !apiKey.includes(":"), "invalid-api-key", { appName: app.name });
+      const config = {
+        apiKey,
+        authDomain,
+        clientPlatform,
+        apiHost: "identitytoolkit.googleapis.com",
+        tokenApiHost: "securetoken.googleapis.com",
+        apiScheme: "https",
+        sdkClientVersion: _getClientVersion(clientPlatform)
+      };
+      const authInstance = new AuthImpl(app, heartbeatServiceProvider, appCheckServiceProvider, config);
+      _initializeAuthInstance(authInstance, deps);
+      return authInstance;
+    },
+    "PUBLIC"
+    /* ComponentType.PUBLIC */
+  ).setInstantiationMode(
+    "EXPLICIT"
+    /* InstantiationMode.EXPLICIT */
+  ).setInstanceCreatedCallback((container, _instanceIdentifier, _instance) => {
+    const authInternalProvider = container.getProvider(
+      "auth-internal"
+      /* _ComponentName.AUTH_INTERNAL */
+    );
+    authInternalProvider.initialize();
+  }));
+  _registerComponent(new Component(
+    "auth-internal",
+    (container) => {
+      const auth = _castAuth(container.getProvider(
+        "auth"
+        /* _ComponentName.AUTH */
+      ).getImmediate());
+      return ((auth2) => new AuthInterop(auth2))(auth);
+    },
+    "PRIVATE"
+    /* ComponentType.PRIVATE */
+  ).setInstantiationMode(
+    "EXPLICIT"
+    /* InstantiationMode.EXPLICIT */
+  ));
+  registerVersion(name5, version6, getVersionForPlatform(clientPlatform));
+  registerVersion(name5, version6, "esm2020");
+}
+FetchProvider.initialize(fetch, Headers, Response);
+function getAuth(app = getApp()) {
+  const provider = _getProvider(app, "auth");
+  if (provider.isInitialized()) {
+    return provider.getImmediate();
+  }
+  const auth = initializeAuth(app);
+  const authEmulatorHost = getDefaultEmulatorHost("auth");
+  if (authEmulatorHost) {
+    connectAuthEmulator(auth, `http://${authEmulatorHost}`);
+  }
+  return auth;
+}
+registerAuth(
+  "Node"
+  /* ClientPlatform.NODE */
+);
+var NOT_AVAILABLE_ERROR = _createError(
+  "operation-not-supported-in-this-environment"
+  /* AuthErrorCode.OPERATION_NOT_SUPPORTED */
+);
+AuthImpl.prototype.setPersistence = async () => {
+};
+function finalizeSignInTotpMfa(auth, request) {
+  return _performApiRequest(auth, "POST", "/v2/accounts/mfaSignIn:finalize", _addTidIfNecessary(auth, request));
+}
+var MultiFactorAssertionImpl = class {
+  constructor(factorId) {
+    this.factorId = factorId;
+  }
+  _process(auth, session, displayName) {
+    switch (session.type) {
+      case "enroll":
+        return this._finalizeEnroll(auth, session.credential, displayName);
+      case "signin":
+        return this._finalizeSignIn(auth, session.credential);
+      default:
+        return debugFail("unexpected MultiFactorSessionType");
+    }
+  }
+};
+var TotpMultiFactorGenerator = class {
+  /**
+   * Provides a {@link TotpMultiFactorAssertion} to confirm ownership of
+   * the TOTP (time-based one-time password) second factor.
+   * This assertion is used to complete enrollment in TOTP second factor.
+   *
+   * @param secret A {@link TotpSecret} containing the shared secret key and other TOTP parameters.
+   * @param oneTimePassword One-time password from TOTP App.
+   * @returns A {@link TotpMultiFactorAssertion} which can be used with
+   * {@link MultiFactorUser.enroll}.
+   */
+  static assertionForEnrollment(secret, oneTimePassword) {
+    return TotpMultiFactorAssertionImpl._fromSecret(secret, oneTimePassword);
+  }
+  /**
+   * Provides a {@link TotpMultiFactorAssertion} to confirm ownership of the TOTP second factor.
+   * This assertion is used to complete signIn with TOTP as the second factor.
+   *
+   * @param enrollmentId identifies the enrolled TOTP second factor.
+   * @param oneTimePassword One-time password from TOTP App.
+   * @returns A {@link TotpMultiFactorAssertion} which can be used with
+   * {@link MultiFactorResolver.resolveSignIn}.
+   */
+  static assertionForSignIn(enrollmentId, oneTimePassword) {
+    return TotpMultiFactorAssertionImpl._fromEnrollmentId(enrollmentId, oneTimePassword);
+  }
+  /**
+   * Returns a promise to {@link TotpSecret} which contains the TOTP shared secret key and other parameters.
+   * Creates a TOTP secret as part of enrolling a TOTP second factor.
+   * Used for generating a QR code URL or inputting into a TOTP app.
+   * This method uses the auth instance corresponding to the user in the multiFactorSession.
+   *
+   * @param session The {@link MultiFactorSession} that the user is part of.
+   * @returns A promise to {@link TotpSecret}.
+   */
+  static async generateSecret(session) {
+    const mfaSession = session;
+    _assert(
+      typeof mfaSession.user?.auth !== "undefined",
+      "internal-error"
+      /* AuthErrorCode.INTERNAL_ERROR */
+    );
+    const response = await startEnrollTotpMfa(mfaSession.user.auth, {
+      idToken: mfaSession.credential,
+      totpEnrollmentInfo: {}
+    });
+    return TotpSecret._fromStartTotpMfaEnrollmentResponse(response, mfaSession.user.auth);
+  }
+};
+TotpMultiFactorGenerator.FACTOR_ID = "totp";
+var TotpMultiFactorAssertionImpl = class _TotpMultiFactorAssertionImpl extends MultiFactorAssertionImpl {
+  constructor(otp, enrollmentId, secret) {
+    super(
+      "totp"
+      /* FactorId.TOTP */
+    );
+    this.otp = otp;
+    this.enrollmentId = enrollmentId;
+    this.secret = secret;
+  }
+  /** @internal */
+  static _fromSecret(secret, otp) {
+    return new _TotpMultiFactorAssertionImpl(otp, void 0, secret);
+  }
+  /** @internal */
+  static _fromEnrollmentId(enrollmentId, otp) {
+    return new _TotpMultiFactorAssertionImpl(otp, enrollmentId);
+  }
+  /** @internal */
+  async _finalizeEnroll(auth, idToken, displayName) {
+    _assert(
+      typeof this.secret !== "undefined",
+      auth,
+      "argument-error"
+      /* AuthErrorCode.ARGUMENT_ERROR */
+    );
+    return finalizeEnrollTotpMfa(auth, {
+      idToken,
+      displayName,
+      totpVerificationInfo: this.secret._makeTotpVerificationInfo(this.otp)
+    });
+  }
+  /** @internal */
+  async _finalizeSignIn(auth, mfaPendingCredential) {
+    _assert(
+      this.enrollmentId !== void 0 && this.otp !== void 0,
+      auth,
+      "argument-error"
+      /* AuthErrorCode.ARGUMENT_ERROR */
+    );
+    const totpVerificationInfo = { verificationCode: this.otp };
+    return finalizeSignInTotpMfa(auth, {
+      mfaPendingCredential,
+      mfaEnrollmentId: this.enrollmentId,
+      totpVerificationInfo
+    });
+  }
+};
+var TotpSecret = class _TotpSecret {
+  // The public members are declared outside the constructor so the docs can be generated.
+  constructor(secretKey, hashingAlgorithm, codeLength, codeIntervalSeconds, enrollmentCompletionDeadline, sessionInfo, auth) {
+    this.sessionInfo = sessionInfo;
+    this.auth = auth;
+    this.secretKey = secretKey;
+    this.hashingAlgorithm = hashingAlgorithm;
+    this.codeLength = codeLength;
+    this.codeIntervalSeconds = codeIntervalSeconds;
+    this.enrollmentCompletionDeadline = enrollmentCompletionDeadline;
+  }
+  /** @internal */
+  static _fromStartTotpMfaEnrollmentResponse(response, auth) {
+    return new _TotpSecret(response.totpSessionInfo.sharedSecretKey, response.totpSessionInfo.hashingAlgorithm, response.totpSessionInfo.verificationCodeLength, response.totpSessionInfo.periodSec, new Date(response.totpSessionInfo.finalizeEnrollmentTime).toUTCString(), response.totpSessionInfo.sessionInfo, auth);
+  }
+  /** @internal */
+  _makeTotpVerificationInfo(otp) {
+    return { sessionInfo: this.sessionInfo, verificationCode: otp };
+  }
+  /**
+   * Returns a QR code URL as described in
+   * https://github.com/google/google-authenticator/wiki/Key-Uri-Format
+   * This can be displayed to the user as a QR code to be scanned into a TOTP app like Google Authenticator.
+   * If the optional parameters are unspecified, an accountName of <userEmail> and issuer of <firebaseAppName> are used.
+   *
+   * @param accountName the name of the account/app along with a user identifier.
+   * @param issuer issuer of the TOTP (likely the app name).
+   * @returns A QR code URL string.
+   */
+  generateQrCodeUrl(accountName, issuer) {
+    let useDefaults = false;
+    if (_isEmptyString(accountName) || _isEmptyString(issuer)) {
+      useDefaults = true;
+    }
+    if (useDefaults) {
+      if (_isEmptyString(accountName)) {
+        accountName = this.auth.currentUser?.email || "unknownuser";
+      }
+      if (_isEmptyString(issuer)) {
+        issuer = this.auth.name;
+      }
+    }
+    return `otpauth://totp/${issuer}:${accountName}?secret=${this.secretKey}&issuer=${issuer}&algorithm=${this.hashingAlgorithm}&digits=${this.codeLength}`;
+  }
+};
+function _isEmptyString(input) {
+  return typeof input === "undefined" || input?.length === 0;
+}
+
 // firebase-applet-config.json
 var firebase_applet_config_default = {
   projectId: "distinguished-arena-4wr9b",
@@ -54981,14 +58927,128 @@ var firebase_applet_config_default = {
 };
 
 // server/firebase.ts
+var PINNED_SERVER_UID = "ukJVtQYppkV4awTHZImYEPV7dH53";
 var cachedApp = null;
 var cachedDb = null;
 var cachedStorage = null;
+var cachedAuth = null;
+var pendingAuthPromise = null;
 function getFirebaseApp() {
   if (!cachedApp) {
     cachedApp = getApps().length === 0 ? initializeApp(firebase_applet_config_default) : getApp();
   }
   return cachedApp;
+}
+function getFirebaseAuth() {
+  if (!cachedAuth) {
+    cachedAuth = getAuth(getFirebaseApp());
+  }
+  return cachedAuth;
+}
+function getServiceAccountForFirestore() {
+  const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
+  if (rawJson.length > 0) {
+    try {
+      const decoded = rawJson.startsWith("{") ? rawJson : Buffer.from(rawJson, "base64").toString("utf-8");
+      const parsed = JSON.parse(decoded.trim());
+      const projectMatches = !parsed.project_id || String(parsed.project_id).trim() === firebase_applet_config_default.projectId;
+      const clientEmail2 = String(parsed.client_email || "").trim();
+      const privateKey2 = String(parsed.private_key || "").replace(/\\n/g, "\n").trim();
+      if (projectMatches && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
+        return {
+          clientEmail: clientEmail2,
+          privateKey: privateKey2
+        };
+      }
+    } catch {
+    }
+  }
+  const envProjectId = (process.env.FIREBASE_PROJECT_ID || "").trim();
+  if (envProjectId && envProjectId !== firebase_applet_config_default.projectId) {
+    return null;
+  }
+  const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || "").trim();
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  if (clientEmail && privateKey.includes("PRIVATE KEY")) {
+    return { clientEmail, privateKey };
+  }
+  return null;
+}
+function createServiceAccountCustomToken(clientEmail, privateKey) {
+  const now = Math.floor(Date.now() / 1e3);
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: clientEmail,
+      sub: clientEmail,
+      aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+      iat: now,
+      exp: now + 3600,
+      uid: PINNED_SERVER_UID,
+      claims: {
+        serverAdmin: true
+      }
+    })
+  ).toString("base64url");
+  const signer = crypto2.createSign("RSA-SHA256");
+  signer.update(`${header}.${payload}`);
+  signer.end();
+  const signature = signer.sign(privateKey, "base64url");
+  return `${header}.${payload}.${signature}`;
+}
+function deriveServerAuthCredentials() {
+  const seed = (process.env.FIREBASE_SERVER_AUTH_SECRET || "8825316434").trim();
+  const derivedKey = crypto2.pbkdf2Sync(
+    seed,
+    `zoya-firestore-server-auth-v1:${firebase_applet_config_default.firestoreDatabaseId}:${firebase_applet_config_default.appId}`,
+    1e5,
+    32,
+    "sha256"
+  ).toString("base64url");
+  const emailHash = crypto2.createHash("sha256").update(firebase_applet_config_default.firestoreDatabaseId).digest("hex").slice(0, 12);
+  return {
+    email: `zoya-server-${emailHash}@zoya-internal.local`,
+    password: `Zy!${derivedKey}#9a`
+  };
+}
+async function ensureServerFirestoreAuth() {
+  const db = getDb();
+  const auth = getFirebaseAuth();
+  if (auth.currentUser && auth.currentUser.uid === PINNED_SERVER_UID) {
+    return db;
+  }
+  if (!pendingAuthPromise) {
+    pendingAuthPromise = (async () => {
+      try {
+        const serviceAccount = getServiceAccountForFirestore();
+        if (serviceAccount) {
+          try {
+            const customToken = createServiceAccountCustomToken(
+              serviceAccount.clientEmail,
+              serviceAccount.privateKey
+            );
+            await signInWithCustomToken(auth, customToken);
+            return;
+          } catch {
+          }
+        }
+        const { email, password } = deriveServerAuthCredentials();
+        try {
+          await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          if (err?.code === "auth/user-not-found") {
+            await createUserWithEmailAndPassword(auth, email, password);
+          } else {
+            throw err;
+          }
+        }
+      } finally {
+        pendingAuthPromise = null;
+      }
+    })();
+  }
+  await pendingAuthPromise;
+  return db;
 }
 function getDb() {
   if (!cachedDb) {
@@ -55052,7 +59112,7 @@ function isValidApkHeader(buffer) {
 }
 async function getAllReleases() {
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snapshot = await getDocs(collection(db, "releases"));
     const releases = [];
     snapshot.forEach((docSnap) => {
@@ -55091,7 +59151,7 @@ async function getLatestPublishedRelease() {
 async function getReleaseById(id) {
   if (!id) return null;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const docRef = doc(db, "releases", id);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
@@ -55111,7 +59171,7 @@ async function saveRelease(release) {
   const updatedRelease = Object.fromEntries(
     Object.entries(rawRelease).filter(([, v]) => v !== void 0)
   );
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const docRef = doc(db, "releases", updatedRelease.id);
   await setDoc(docRef, updatedRelease);
   try {
@@ -55132,7 +59192,7 @@ async function saveRelease(release) {
 async function deleteStoredChunks(storageKey, totalChunks) {
   if (!storageKey || totalChunks <= 0) return;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const delPromises = [];
     for (let i = 0; i < totalChunks; i++) {
       delPromises.push(deleteDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${i}`)));
@@ -55146,7 +59206,7 @@ async function deleteRelease(id) {
   if (!id) return false;
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   try {
     await deleteDoc(doc(db, "releases", id));
   } catch (err) {
@@ -55212,7 +59272,7 @@ async function storeApkChunk(storageKey, index, totalChunks, chunkBuffer) {
   if (chunkBuffer.length > 9e5) {
     throw new Error(`Chunk size (${chunkBuffer.length} bytes) exceeds safe Firestore document limit.`);
   }
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const uint8 = new Uint8Array(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
   await setDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${index}`), {
     storageKey,
@@ -55226,7 +59286,7 @@ async function storeApkChunk(storageKey, index, totalChunks, chunkBuffer) {
 async function verifyStoredChunks(storageKey, totalChunks) {
   if (!storageKey || totalChunks <= 0) return false;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const firstSnap = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_0`));
     if (!firstSnap.exists()) return false;
     const firstData = firstSnap.data();
@@ -55246,7 +59306,7 @@ async function verifyStoredChunks(storageKey, totalChunks) {
 async function hasApkBinary(release) {
   if (!release || !release.storageKey) return false;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const chunk0Snap = await getDoc(doc(db, "apk_chunks", `${release.storageKey}_chunk_0`));
     if (chunk0Snap.exists()) {
       const d = chunk0Snap.data();
@@ -55282,7 +59342,7 @@ async function storeApkBuffer(buffer, originalFilename) {
   if (!isValidApkHeader(buffer)) {
     throw new Error("Invalid APK file: Header does not match Android Package / ZIP format (magic bytes PK\\x03\\x04).");
   }
-  const sha256 = crypto2.createHash("sha256").update(buffer).digest("hex");
+  const sha256 = crypto3.createHash("sha256").update(buffer).digest("hex");
   const fileSize = buffer.length;
   const fileSizeFormatted = formatBytes(fileSize);
   const safeBase = path.basename(originalFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -55341,7 +59401,7 @@ async function getApkBuffer(storageKey, storagePath, chunkCount) {
     }
   }
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     let total = chunkCount && chunkCount > 0 ? chunkCount : 0;
     let chunk0Buffer = null;
     if (!total) {
@@ -55693,9 +59753,12 @@ function parseApkBuffer(apkBuffer) {
 }
 
 // server/auth.ts
-import crypto3 from "crypto";
+import crypto4 from "crypto";
+import fs2 from "fs";
+import path2 from "path";
 var DEFAULT_ADMIN_PIN = "8825316434";
-var DEFAULT_JWT_SECRET = "zoya-secret-jwt-key-release-mgr-2026";
+var cachedDerivedJwtSecret = null;
+var loggedJwtSecretNotice = false;
 function getAdminPin() {
   const envPin = process.env.ZOYA_ADMIN_PIN;
   if (envPin !== void 0 && envPin !== null && String(envPin).trim().length > 0) {
@@ -55703,12 +59766,36 @@ function getAdminPin() {
   }
   return DEFAULT_ADMIN_PIN;
 }
+function readServerIdentitySalt() {
+  try {
+    const configPath = path2.resolve(process.cwd(), "firebase-applet-config.json");
+    if (fs2.existsSync(configPath)) {
+      const parsed = JSON.parse(fs2.readFileSync(configPath, "utf-8"));
+      if (parsed && typeof parsed.firestoreDatabaseId === "string" && typeof parsed.appId === "string") {
+        return `${parsed.projectId || "zoya"}:${parsed.firestoreDatabaseId}:${parsed.appId}`;
+      }
+    }
+  } catch {
+  }
+  return "zoya-server-jwt-derivation-v2";
+}
 function getJwtSecret() {
-  const envSecret = process.env.ADMIN_JWT_SECRET;
-  if (envSecret !== void 0 && envSecret !== null && String(envSecret).trim().length > 0) {
+  const envSecret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
+  if (envSecret !== void 0 && envSecret !== null && String(envSecret).trim().length >= 16) {
     return String(envSecret).trim();
   }
-  return DEFAULT_JWT_SECRET;
+  if (!cachedDerivedJwtSecret) {
+    if (!loggedJwtSecretNotice) {
+      loggedJwtSecretNotice = true;
+      console.warn(
+        "[Security Notice] ADMIN_JWT_SECRET is not configured in environment variables. Deriving a server-only cryptographic JWT key so existing Admin Portal PIN login continues working without interruption. Set ADMIN_JWT_SECRET (32+ random bytes) in Vercel environment variables for dedicated secret rotation."
+      );
+    }
+    const pinSeed = getAdminPin();
+    const salt = `zoya-admin-jwt-v2:${readServerIdentitySalt()}`;
+    cachedDerivedJwtSecret = crypto4.pbkdf2Sync(pinSeed, salt, 1e5, 32, "sha256").toString("hex");
+  }
+  return cachedDerivedJwtSecret;
 }
 function createToken(user) {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
@@ -55722,7 +59809,7 @@ function createToken(user) {
       // 7 days
     })
   ).toString("base64url");
-  const signature = crypto3.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
+  const signature = crypto4.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
 }
 function verifyToken(token) {
@@ -55731,12 +59818,14 @@ function verifyToken(token) {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, payload, signature] = parts;
-    const expectedSignature = crypto3.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
-    if (signature !== expectedSignature) {
+    const expectedSignature = crypto4.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
+    const sigBuf = Buffer.from(signature, "utf-8");
+    const expectedBuf = Buffer.from(expectedSignature, "utf-8");
+    if (sigBuf.length !== expectedBuf.length || !crypto4.timingSafeEqual(sigBuf, expectedBuf)) {
       return null;
     }
     const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8"));
-    if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1e3)) {
+    if (!decoded.exp || decoded.exp < Math.floor(Date.now() / 1e3)) {
       return null;
     }
     if (decoded.role !== "admin") {
@@ -55747,7 +59836,7 @@ function verifyToken(token) {
       role: "admin",
       name: decoded.name || "Administrator"
     };
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -55755,7 +59844,10 @@ function authenticateAdminPin(pin) {
   if (pin === void 0 || pin === null) return null;
   const cleanPin = String(pin).trim();
   const targetPin = getAdminPin();
-  if (cleanPin.length > 0 && cleanPin === targetPin) {
+  if (!cleanPin || !targetPin) return null;
+  const cleanBuf = Buffer.from(cleanPin, "utf-8");
+  const targetBuf = Buffer.from(targetPin, "utf-8");
+  if (cleanBuf.length === targetBuf.length && crypto4.timingSafeEqual(cleanBuf, targetBuf)) {
     return {
       email: "admin@zoya.ai",
       role: "admin",
@@ -55765,10 +59857,19 @@ function authenticateAdminPin(pin) {
   return null;
 }
 function authenticateAdmin(email, password) {
-  const targetPassword = process.env.ADMIN_PASSWORD || "zoya-admin-2026";
-  if (password && password === targetPassword || email && email.toLowerCase() === "riyajulansari113b@gmail.com" && password === targetPassword) {
+  const pinMatch = authenticateAdminPin(password);
+  if (pinMatch) {
+    return pinMatch;
+  }
+  const targetPassword = (process.env.ADMIN_PASSWORD || "").trim();
+  if (!targetPassword || !password) {
+    return null;
+  }
+  const passBuf = Buffer.from(password, "utf-8");
+  const targetBuf = Buffer.from(targetPassword, "utf-8");
+  if (passBuf.length === targetBuf.length && crypto4.timingSafeEqual(passBuf, targetBuf)) {
     return {
-      email: "riyajulansari113b@gmail.com",
+      email: email?.trim().toLowerCase() || "riyajulansari113b@gmail.com",
       role: "admin",
       name: "Riyajul (Administrator)"
     };
@@ -55795,7 +59896,7 @@ function extractAuthToken(reqHeaders) {
 }
 
 // server/fcm.ts
-import crypto4 from "crypto";
+import crypto5 from "crypto";
 var DEFAULT_FCM_TOPIC = "zoya_releases";
 var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-opal.vercel.app";
 var cachedAccessToken = null;
@@ -55855,7 +59956,7 @@ async function getFcmAccessToken(creds) {
     })
   ).toString("base64url");
   const unsignedJwt = `${header}.${payload}`;
-  const signer = crypto4.createSign("RSA-SHA256");
+  const signer = crypto5.createSign("RSA-SHA256");
   signer.update(unsignedJwt);
   signer.end();
   const signature = signer.sign(creds.privateKey, "base64url");
@@ -55967,8 +60068,8 @@ async function registerFcmDeviceToken(params) {
   if (!cleanToken || cleanToken.length < 20) {
     throw new Error("A valid FCM registration token is required.");
   }
-  const deviceId = crypto4.createHash("sha256").update(cleanToken).digest("hex").substring(0, 40);
-  const db = getDb();
+  const deviceId = crypto5.createHash("sha256").update(cleanToken).digest("hex").substring(0, 40);
+  const db = await ensureServerFirestoreAuth();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   await setDoc(
     doc(db, "fcm_devices", deviceId),
@@ -55991,7 +60092,7 @@ async function getFcmStatus() {
   const topic = getFcmTopic();
   let registeredDevicesCount = 0;
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snap = await getDocs(collection(db, "fcm_devices"));
     registeredDevicesCount = snap.size;
   } catch {
@@ -56038,7 +60139,7 @@ async function sendReleasePushNotification(release) {
       data
     };
   }
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const notifDocRef = doc(db, "fcm_notifications", idempotencyKey);
   try {
     const existingSnap = await getDoc(notifDocRef);
@@ -56263,9 +60364,9 @@ async function sendManualPushNotification(params) {
     };
   }
   const { title, message, requestId } = validation;
-  const contentHash = crypto4.createHash("sha256").update(`${title}
+  const contentHash = crypto5.createHash("sha256").update(`${title}
 ${message}`).digest("hex").substring(0, 32);
-  const idempotencyKey = requestId ? `manual_req_${crypto4.createHash("sha256").update(requestId).digest("hex").substring(0, 32)}` : `manual_msg_${contentHash}`;
+  const idempotencyKey = requestId ? `manual_req_${crypto5.createHash("sha256").update(requestId).digest("hex").substring(0, 32)}` : `manual_msg_${contentHash}`;
   const contentDedupKey = `manual_msg_${contentHash}`;
   const nowMs = Date.now();
   const sentAtIso = new Date(nowMs).toISOString();
@@ -56309,7 +60410,7 @@ ${message}`).digest("hex").substring(0, 32);
       data
     };
   }
-  const db = getDb();
+  const db = await ensureServerFirestoreAuth();
   const notifDocRef = doc(db, "fcm_notifications", contentDedupKey);
   try {
     const existingSnap = await getDoc(notifDocRef);
@@ -56491,37 +60592,26 @@ ${message}`).digest("hex").substring(0, 32);
 }
 
 // server/licenses.ts
-import crypto5 from "crypto";
-import fs2 from "fs";
-import path2 from "path";
+import crypto6 from "crypto";
+var LicenseStorageError = class extends Error {
+  constructor(message, cause) {
+    super(message);
+    this.cause = cause;
+    this.status = 503;
+    this.code = "STORAGE_UNAVAILABLE";
+    this.name = "LicenseStorageError";
+  }
+};
+var simulatedStorageFailureForTesting = false;
+function assertStorageAvailable() {
+  if (simulatedStorageFailureForTesting) {
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) is currently unavailable."
+    );
+  }
+}
 var LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 var LICENSE_KEY_REGEX = /^ZOYA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
-var IS_SERVERLESS2 = Boolean(
-  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
-);
-function getLicenseStoragePath() {
-  if (IS_SERVERLESS2) {
-    const tmpData = path2.join("/tmp", "zoya-data");
-    return {
-      dataDir: tmpData,
-      licensesFile: path2.join(tmpData, "licenses.json")
-    };
-  }
-  const localData = path2.resolve(process.cwd(), ".data");
-  return {
-    dataDir: localData,
-    licensesFile: path2.join(localData, "licenses.json")
-  };
-}
-function ensureLicenseDir() {
-  const { dataDir } = getLicenseStoragePath();
-  try {
-    if (!fs2.existsSync(dataDir)) {
-      fs2.mkdirSync(dataDir, { recursive: true });
-    }
-  } catch {
-  }
-}
 var licenseOperationChain = Promise.resolve();
 function withLicenseLock(fn) {
   const next = licenseOperationChain.then(fn, fn);
@@ -56535,7 +60625,7 @@ function generateCryptographicLicenseKey() {
   const group = () => {
     let chars = "";
     for (let i = 0; i < 4; i++) {
-      const idx = crypto5.randomInt(0, LICENSE_ALPHABET.length);
+      const idx = crypto6.randomInt(0, LICENSE_ALPHABET.length);
       chars += LICENSE_ALPHABET[idx];
     }
     return chars;
@@ -56552,7 +60642,7 @@ function isValidLicenseKeyFormat(rawKey) {
 }
 function hashLicenseKey(rawKey) {
   const normalized = normalizeLicenseKey(rawKey);
-  return crypto5.createHash("sha256").update(`zoya_license_v1:${normalized}`).digest("hex");
+  return crypto6.createHash("sha256").update(`zoya_license_v1:${normalized}`).digest("hex");
 }
 function maskLicenseKey(rawKey) {
   const normalized = normalizeLicenseKey(rawKey);
@@ -56568,26 +60658,6 @@ function sanitizeText(raw, maxLen = 200) {
   return raw.replace(/[\x00-\x1F\x7F]/g, " ").trim().slice(0, maxLen);
 }
 var EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function readLocalLicensesBackup() {
-  ensureLicenseDir();
-  const { licensesFile } = getLicenseStoragePath();
-  if (!fs2.existsSync(licensesFile)) return [];
-  try {
-    const raw = fs2.readFileSync(licensesFile, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-function writeLocalLicensesBackup(records) {
-  try {
-    ensureLicenseDir();
-    const { licensesFile } = getLicenseStoragePath();
-    fs2.writeFileSync(licensesFile, JSON.stringify(records, null, 2), "utf-8");
-  } catch {
-  }
-}
 function sanitizeRecordForStorage(record) {
   const copy = { ...record };
   delete copy.licenseKey;
@@ -56599,34 +60669,35 @@ function sanitizeRecordForStorage(record) {
   return cleaned;
 }
 async function getAllLicenses() {
-  const byId = /* @__PURE__ */ new Map();
-  const localRecords = readLocalLicensesBackup();
-  for (const rec of localRecords) {
-    if (rec && rec.id && rec.keyHash) {
-      byId.set(rec.id, sanitizeRecordForStorage(rec));
-    }
-  }
+  assertStorageAvailable();
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snap = await getDocs(collection(db, "licenses"));
+    const all = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data();
       if (data && data.id && data.keyHash) {
-        byId.set(data.id, sanitizeRecordForStorage(data));
+        all.push(sanitizeRecordForStorage(data));
       }
     });
+    all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return all;
   } catch (err) {
-    console.warn("Firestore licenses read fallback notice:", err);
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) is unavailable. Could not retrieve licenses.",
+      err
+    );
   }
-  const all = Array.from(byId.values());
-  all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return all;
 }
 async function getLicenseById(id) {
   const cleanId = sanitizeText(id, 100);
   if (!cleanId) return null;
+  assertStorageAvailable();
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     const snap = await getDoc(doc(db, "licenses", cleanId));
     if (snap.exists()) {
       const data = snap.data();
@@ -56634,12 +60705,16 @@ async function getLicenseById(id) {
         return sanitizeRecordForStorage(data);
       }
     }
+    return null;
   } catch (err) {
-    console.warn("Firestore getLicenseById fallback notice:", err);
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) is unavailable. Could not read license record.",
+      err
+    );
   }
-  const local = readLocalLicensesBackup();
-  const found = local.find((r) => r.id === cleanId);
-  return found ? sanitizeRecordForStorage(found) : null;
 }
 async function getLicenseByKeyHash(keyHash) {
   if (!keyHash) return null;
@@ -56647,25 +60722,24 @@ async function getLicenseByKeyHash(keyHash) {
   return all.find((r) => r.keyHash === keyHash) || null;
 }
 async function saveLicenseRecord(record) {
+  assertStorageAvailable();
   const safeRecord = sanitizeRecordForStorage({
     ...record,
     updatedAt: record.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
   });
   try {
-    const db = getDb();
+    const db = await ensureServerFirestoreAuth();
     await setDoc(doc(db, "licenses", safeRecord.id), safeRecord);
+    return safeRecord;
   } catch (err) {
-    console.warn("Firestore saveLicenseRecord notice:", err);
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) failed to save license record.",
+      err
+    );
   }
-  const existing = readLocalLicensesBackup();
-  const idx = existing.findIndex((r) => r.id === safeRecord.id);
-  if (idx >= 0) {
-    existing[idx] = safeRecord;
-  } else {
-    existing.push(safeRecord);
-  }
-  writeLocalLicensesBackup(existing);
-  return safeRecord;
 }
 function computeLicenseStats(licenses) {
   let active = 0;
@@ -56744,92 +60818,103 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
   const currencyRaw = sanitizeText(input.currency, 12).toUpperCase();
   const currency = currencyRaw.length > 0 ? currencyRaw : amount ? "INR" : null;
   return withLicenseLock(async () => {
-    const existingLicenses = await getAllLicenses();
-    const existingHashes = new Set(existingLicenses.map((l) => l.keyHash));
-    const keyGen = customKeyGenerator || generateCryptographicLicenseKey;
-    let rawKey = "";
-    let keyHash = "";
-    const MAX_ATTEMPTS = 10;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const candidate = normalizeLicenseKey(keyGen());
-      if (!isValidLicenseKeyFormat(candidate)) {
-        continue;
+    try {
+      const existingLicenses = await getAllLicenses();
+      const existingHashes = new Set(existingLicenses.map((l) => l.keyHash));
+      const keyGen = customKeyGenerator || generateCryptographicLicenseKey;
+      let rawKey = "";
+      let keyHash = "";
+      const MAX_ATTEMPTS = 10;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const candidate = normalizeLicenseKey(keyGen());
+        if (!isValidLicenseKeyFormat(candidate)) {
+          continue;
+        }
+        const candidateHash = hashLicenseKey(candidate);
+        if (!existingHashes.has(candidateHash)) {
+          rawKey = candidate;
+          keyHash = candidateHash;
+          break;
+        }
       }
-      const candidateHash = hashLicenseKey(candidate);
-      if (!existingHashes.has(candidateHash)) {
-        rawKey = candidate;
-        keyHash = candidateHash;
-        break;
+      if (!rawKey || !keyHash) {
+        return {
+          success: false,
+          status: 500,
+          error: "Failed to generate a unique cryptographic license key after multiple attempts."
+        };
       }
-    }
-    if (!rawKey || !keyHash) {
-      return {
-        success: false,
-        status: 500,
-        error: "Failed to generate a unique cryptographic license key after multiple attempts."
+      const { maskedKey, keyLastFour } = maskLicenseKey(rawKey);
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const licenseId = `lic_${Date.now()}_${crypto6.randomBytes(4).toString("hex")}`;
+      const actorLabel = `${admin.name} <${admin.email}>`;
+      const initialStatus = isComplimentary ? "active" : "pending_payment";
+      const auditLog = [
+        {
+          id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}`,
+          action: "created",
+          timestamp: nowIso,
+          actor: actorLabel,
+          details: isComplimentary ? `Created Lifetime complimentary license (${maskedKey}) for ${customerName} (${customerEmail}).` : `Created Lifetime license (${maskedKey}) for ${customerName} (${customerEmail}) in Pending Payment status.${paymentReference ? ` Recorded unverified payment reference: ${paymentReference}.` : ""}`
+        }
+      ];
+      if (isComplimentary && complimentaryReason) {
+        auditLog.push({
+          id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}_comp`,
+          action: "complimentary_issued",
+          timestamp: nowIso,
+          actor: actorLabel,
+          details: `Activated as admin-authorized complimentary license. Reason: ${complimentaryReason}`
+        });
+      }
+      const record = {
+        id: licenseId,
+        keyHash,
+        maskedKey,
+        keyLastFour,
+        customerName,
+        customerEmail,
+        licenseType: "Lifetime",
+        status: initialStatus,
+        isComplimentary,
+        complimentaryReason,
+        paymentReference,
+        amount,
+        currency,
+        paymentVerified: false,
+        verifiedBy: null,
+        verifiedAt: null,
+        createdBy: {
+          email: admin.email,
+          name: admin.name
+        },
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        activatedAt: null,
+        revokedAt: null,
+        revokedBy: null,
+        revokeReason: null,
+        linkedDevice: null,
+        lastSeenAt: null,
+        validationCount: 0,
+        auditLog
       };
-    }
-    const { maskedKey, keyLastFour } = maskLicenseKey(rawKey);
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const licenseId = `lic_${Date.now()}_${crypto5.randomBytes(4).toString("hex")}`;
-    const actorLabel = `${admin.name} <${admin.email}>`;
-    const initialStatus = isComplimentary ? "active" : "pending_payment";
-    const auditLog = [
-      {
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
-        action: "created",
-        timestamp: nowIso,
-        actor: actorLabel,
-        details: isComplimentary ? `Created Lifetime complimentary license (${maskedKey}) for ${customerName} (${customerEmail}).` : `Created Lifetime license (${maskedKey}) for ${customerName} (${customerEmail}) in Pending Payment status.${paymentReference ? ` Recorded unverified payment reference: ${paymentReference}.` : ""}`
+      const saved = await saveLicenseRecord(record);
+      return {
+        success: true,
+        generatedKey: rawKey,
+        license: saved
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          success: false,
+          status: 503,
+          error: err.message
+        };
       }
-    ];
-    if (isComplimentary && complimentaryReason) {
-      auditLog.push({
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}_comp`,
-        action: "complimentary_issued",
-        timestamp: nowIso,
-        actor: actorLabel,
-        details: `Activated as admin-authorized complimentary license. Reason: ${complimentaryReason}`
-      });
+      throw err;
     }
-    const record = {
-      id: licenseId,
-      keyHash,
-      maskedKey,
-      keyLastFour,
-      customerName,
-      customerEmail,
-      licenseType: "Lifetime",
-      status: initialStatus,
-      isComplimentary,
-      complimentaryReason,
-      paymentReference,
-      amount,
-      currency,
-      paymentVerified: false,
-      verifiedBy: null,
-      verifiedAt: null,
-      createdBy: {
-        email: admin.email,
-        name: admin.name
-      },
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      activatedAt: null,
-      revokedAt: null,
-      revokedBy: null,
-      revokeReason: null,
-      linkedDevice: null,
-      lastSeenAt: null,
-      validationCount: 0,
-      auditLog
-    };
-    const saved = await saveLicenseRecord(record);
-    return {
-      success: true,
-      generatedKey: rawKey,
-      license: saved
-    };
   });
 }
 async function verifyLicensePayment(licenseId, input, admin) {
@@ -56837,75 +60922,82 @@ async function verifyLicensePayment(licenseId, input, admin) {
     return { success: false, status: 401, error: "Unauthorized administrator session." };
   }
   return withLicenseLock(async () => {
-    const existing = await getLicenseById(licenseId);
-    if (!existing) {
-      return { success: false, status: 404, error: "License record not found." };
-    }
-    if (existing.status === "revoked") {
-      return {
-        success: false,
-        status: 400,
-        error: "Cannot verify payment or activate a revoked license."
-      };
-    }
-    if (existing.paymentVerified && existing.status === "active") {
-      return {
-        success: false,
-        status: 400,
-        error: "Payment for this license has already been verified."
-      };
-    }
-    const providedRef = sanitizeText(input?.paymentReference, 120);
-    const finalPaymentRef = providedRef || existing.paymentReference || null;
-    if (!finalPaymentRef) {
-      return {
-        success: false,
-        status: 400,
-        error: "A payment reference / transaction ID is required before marking payment as verified."
-      };
-    }
-    let finalAmount = existing.amount;
-    if (input?.amount !== void 0 && input?.amount !== null && String(input.amount).trim() !== "") {
-      const rawAmount = String(input.amount).trim();
-      const num = Number(rawAmount);
-      if (isNaN(num) || num < 0 || num > 1e6) {
+    try {
+      const existing = await getLicenseById(licenseId);
+      if (!existing) {
+        return { success: false, status: 404, error: "License record not found." };
+      }
+      if (existing.status === "revoked") {
         return {
           success: false,
           status: 400,
-          error: "Amount must be a valid non-negative number."
+          error: "Cannot verify payment or activate a revoked license."
         };
       }
-      finalAmount = rawAmount;
+      if (existing.status === "active" || existing.paymentVerified) {
+        return {
+          success: false,
+          status: 400,
+          error: "Payment for this license has already been verified."
+        };
+      }
+      const providedRef = sanitizeText(input?.paymentReference, 120);
+      const finalPaymentRef = providedRef || existing.paymentReference || null;
+      let finalAmount = existing.amount;
+      if (input?.amount !== void 0 && input?.amount !== null && String(input.amount).trim() !== "") {
+        const rawAmount = String(input.amount).trim();
+        const num = Number(rawAmount);
+        if (isNaN(num) || num < 0 || num > 1e6) {
+          return {
+            success: false,
+            status: 400,
+            error: "Amount must be a valid non-negative number."
+          };
+        }
+        finalAmount = rawAmount;
+      }
+      const providedCurrency = sanitizeText(input?.currency, 12).toUpperCase();
+      const finalCurrency = providedCurrency || existing.currency || (finalAmount ? "INR" : null);
+      const verificationNote = sanitizeText(input?.verificationNote, 240);
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const actorLabel = `${admin.name} <${admin.email}>`;
+      const refDetail = finalPaymentRef ? `Ref: ${finalPaymentRef}` : "No payment reference recorded";
+      const amountDetail = finalAmount ? `, Amount: ${finalCurrency || ""} ${finalAmount}`.trim() : "";
+      const auditEntry = {
+        id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}`,
+        action: "payment_verified",
+        timestamp: nowIso,
+        actor: actorLabel,
+        details: `Payment independently verified by ${admin.name} (${refDetail}${amountDetail}). Status changed to Active.${verificationNote ? ` Note: ${verificationNote}` : ""}`
+      };
+      const updated = {
+        ...existing,
+        paymentReference: finalPaymentRef,
+        amount: finalAmount,
+        currency: finalCurrency,
+        paymentVerified: true,
+        verifiedBy: {
+          email: admin.email,
+          name: admin.name
+        },
+        verifiedAt: nowIso,
+        activatedAt: existing.activatedAt || nowIso,
+        status: "active",
+        updatedAt: nowIso,
+        auditLog: [...existing.auditLog || [], auditEntry]
+      };
+      const saved = await saveLicenseRecord(updated);
+      return { success: true, license: saved };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          success: false,
+          status: 503,
+          error: err.message
+        };
+      }
+      throw err;
     }
-    const providedCurrency = sanitizeText(input?.currency, 12).toUpperCase();
-    const finalCurrency = providedCurrency || existing.currency || (finalAmount ? "INR" : null);
-    const verificationNote = sanitizeText(input?.verificationNote, 240);
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const actorLabel = `${admin.name} <${admin.email}>`;
-    const auditEntry = {
-      id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
-      action: "payment_verified",
-      timestamp: nowIso,
-      actor: actorLabel,
-      details: `Payment independently verified by ${admin.name} (Ref: ${finalPaymentRef}${finalAmount ? `, Amount: ${finalCurrency || ""} ${finalAmount}`.trim() : ""}). Status changed to Active.${verificationNote ? ` Note: ${verificationNote}` : ""}`
-    };
-    const updated = {
-      ...existing,
-      paymentReference: finalPaymentRef,
-      amount: finalAmount,
-      currency: finalCurrency,
-      paymentVerified: true,
-      verifiedBy: {
-        email: admin.email,
-        name: admin.name
-      },
-      verifiedAt: nowIso,
-      status: "active",
-      updatedAt: nowIso,
-      auditLog: [...existing.auditLog || [], auditEntry]
-    };
-    const saved = await saveLicenseRecord(updated);
-    return { success: true, license: saved };
   });
 }
 async function revokeLicense(licenseId, input, admin) {
@@ -56913,41 +61005,52 @@ async function revokeLicense(licenseId, input, admin) {
     return { success: false, status: 401, error: "Unauthorized administrator session." };
   }
   return withLicenseLock(async () => {
-    const existing = await getLicenseById(licenseId);
-    if (!existing) {
-      return { success: false, status: 404, error: "License record not found." };
-    }
-    if (existing.status === "revoked") {
-      return {
-        success: false,
-        status: 400,
-        error: "This license is already revoked."
+    try {
+      const existing = await getLicenseById(licenseId);
+      if (!existing) {
+        return { success: false, status: 404, error: "License record not found." };
+      }
+      if (existing.status === "revoked") {
+        return {
+          success: false,
+          status: 400,
+          error: "This license is already revoked."
+        };
+      }
+      const reason = sanitizeText(input?.reason, 300) || "Revoked by administrator";
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const actorLabel = `${admin.name} <${admin.email}>`;
+      const auditEntry = {
+        id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}`,
+        action: "revoked",
+        timestamp: nowIso,
+        actor: actorLabel,
+        details: `License revoked by ${admin.name}. Reason: ${reason}`
       };
+      const updated = {
+        ...existing,
+        status: "revoked",
+        revokedAt: nowIso,
+        revokedBy: {
+          email: admin.email,
+          name: admin.name
+        },
+        revokeReason: reason,
+        updatedAt: nowIso,
+        auditLog: [...existing.auditLog || [], auditEntry]
+      };
+      const saved = await saveLicenseRecord(updated);
+      return { success: true, license: saved };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          success: false,
+          status: 503,
+          error: err.message
+        };
+      }
+      throw err;
     }
-    const reason = sanitizeText(input?.reason, 300) || "Revoked by administrator";
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const actorLabel = `${admin.name} <${admin.email}>`;
-    const auditEntry = {
-      id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
-      action: "revoked",
-      timestamp: nowIso,
-      actor: actorLabel,
-      details: `License revoked by ${admin.name}. Reason: ${reason}`
-    };
-    const updated = {
-      ...existing,
-      status: "revoked",
-      revokedAt: nowIso,
-      revokedBy: {
-        email: admin.email,
-        name: admin.name
-      },
-      revokeReason: reason,
-      updatedAt: nowIso,
-      auditLog: [...existing.auditLog || [], auditEntry]
-    };
-    const saved = await saveLicenseRecord(updated);
-    return { success: true, license: saved };
   });
 }
 async function validateLicenseForAndroid(payload) {
@@ -56972,99 +61075,112 @@ async function validateLicenseForAndroid(payload) {
   }
   const keyHash = hashLicenseKey(normalizedKey);
   return withLicenseLock(async () => {
-    const existing = await getLicenseByKeyHash(keyHash);
-    if (!existing) {
-      return {
-        valid: false,
-        status: "not_found",
-        code: "UNKNOWN_KEY",
-        httpStatus: 404,
-        error: "License key not found."
-      };
-    }
-    if (existing.status === "revoked") {
-      return {
-        valid: false,
-        status: "revoked",
-        code: "LICENSE_REVOKED",
-        httpStatus: 403,
-        revokedAt: existing.revokedAt,
-        error: "This license has been revoked and is no longer valid."
-      };
-    }
-    const isAuthorizedActive = existing.status === "active" && (existing.paymentVerified || existing.isComplimentary);
-    if (!isAuthorizedActive) {
-      return {
-        valid: false,
-        status: "pending_payment",
-        code: "PAYMENT_UNVERIFIED",
-        httpStatus: 403,
-        error: "This license is pending manual payment verification by an administrator and cannot be activated yet."
-      };
-    }
-    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-    const isFirstActivation = !existing.activatedAt;
-    const activatedAt = existing.activatedAt || nowIso;
-    let linkedDevice = existing.linkedDevice || null;
-    if (payload.deviceInfo && typeof payload.deviceInfo === "object") {
-      const deviceId = sanitizeText(payload.deviceInfo.deviceId, 120) || null;
-      const deviceModel = sanitizeText(payload.deviceInfo.deviceModel, 120) || null;
-      const androidVersion = sanitizeText(payload.deviceInfo.androidVersion, 60) || null;
-      const appVersion = sanitizeText(payload.deviceInfo.appVersion, 60) || null;
-      if (deviceId || deviceModel || androidVersion || appVersion) {
-        linkedDevice = {
-          deviceId: deviceId ?? linkedDevice?.deviceId ?? null,
-          deviceModel: deviceModel ?? linkedDevice?.deviceModel ?? null,
-          androidVersion: androidVersion ?? linkedDevice?.androidVersion ?? null,
-          appVersion: appVersion ?? linkedDevice?.appVersion ?? null,
-          linkedAt: linkedDevice?.linkedAt || nowIso
+    try {
+      const existing = await getLicenseByKeyHash(keyHash);
+      if (!existing) {
+        return {
+          valid: false,
+          status: "not_found",
+          code: "UNKNOWN_KEY",
+          httpStatus: 404,
+          error: "License key not found."
         };
       }
-    }
-    const updatedAuditLog = [...existing.auditLog || []];
-    if (isFirstActivation) {
-      updatedAuditLog.push({
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
-        action: "activated",
-        timestamp: nowIso,
-        actor: "Zoya Android Client",
-        details: linkedDevice?.deviceModel ? `License activated on device (${linkedDevice.deviceModel}).` : "License activated via validation endpoint."
-      });
-    } else if (updatedAuditLog.length < 50) {
-      updatedAuditLog.push({
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
-        action: "validated",
-        timestamp: nowIso,
-        actor: "Zoya Android Client",
-        details: linkedDevice?.deviceModel ? `License validated from device (${linkedDevice.deviceModel}).` : "License validated."
-      });
-    }
-    const updated = {
-      ...existing,
-      activatedAt,
-      lastSeenAt: nowIso,
-      linkedDevice,
-      validationCount: (existing.validationCount || 0) + 1,
-      updatedAt: nowIso,
-      auditLog: updatedAuditLog
-    };
-    const saved = await saveLicenseRecord(updated);
-    return {
-      valid: true,
-      status: "active",
-      code: "LICENSE_VALID",
-      httpStatus: 200,
-      license: {
-        id: saved.id,
-        maskedKey: saved.maskedKey,
-        licenseType: "Lifetime",
-        status: "active",
-        customerName: saved.customerName,
-        activatedAt: saved.activatedAt || nowIso,
-        lastSeenAt: saved.lastSeenAt || nowIso,
-        linkedDevice: saved.linkedDevice
+      if (existing.status === "revoked") {
+        return {
+          valid: false,
+          status: "revoked",
+          code: "LICENSE_REVOKED",
+          httpStatus: 403,
+          revokedAt: existing.revokedAt,
+          error: "This license has been revoked and is no longer valid."
+        };
       }
-    };
+      const isAuthorizedActive = existing.status === "active" && (existing.paymentVerified || existing.isComplimentary);
+      if (!isAuthorizedActive) {
+        return {
+          valid: false,
+          status: "pending_payment",
+          code: "PAYMENT_UNVERIFIED",
+          httpStatus: 403,
+          error: "This license is pending manual payment verification by an administrator and cannot be activated yet."
+        };
+      }
+      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+      const isFirstActivation = (existing.validationCount || 0) === 0 && !(existing.auditLog || []).some((e) => e.action === "activated");
+      const activatedAt = existing.activatedAt || nowIso;
+      let linkedDevice = existing.linkedDevice || null;
+      if (payload.deviceInfo && typeof payload.deviceInfo === "object") {
+        const deviceId = sanitizeText(payload.deviceInfo.deviceId, 120) || null;
+        const deviceModel = sanitizeText(payload.deviceInfo.deviceModel, 120) || null;
+        const androidVersion = sanitizeText(payload.deviceInfo.androidVersion, 60) || null;
+        const appVersion = sanitizeText(payload.deviceInfo.appVersion, 60) || null;
+        if (deviceId || deviceModel || androidVersion || appVersion) {
+          linkedDevice = {
+            deviceId: deviceId ?? linkedDevice?.deviceId ?? null,
+            deviceModel: deviceModel ?? linkedDevice?.deviceModel ?? null,
+            androidVersion: androidVersion ?? linkedDevice?.androidVersion ?? null,
+            appVersion: appVersion ?? linkedDevice?.appVersion ?? null,
+            linkedAt: linkedDevice?.linkedAt || nowIso
+          };
+        }
+      }
+      const updatedAuditLog = [...existing.auditLog || []];
+      if (isFirstActivation) {
+        updatedAuditLog.push({
+          id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}`,
+          action: "activated",
+          timestamp: nowIso,
+          actor: "Zoya Android Client",
+          details: linkedDevice?.deviceModel ? `License activated on device (${linkedDevice.deviceModel}).` : "License activated via validation endpoint."
+        });
+      } else if (updatedAuditLog.length < 50) {
+        updatedAuditLog.push({
+          id: `aud_${Date.now()}_${crypto6.randomBytes(3).toString("hex")}`,
+          action: "validated",
+          timestamp: nowIso,
+          actor: "Zoya Android Client",
+          details: linkedDevice?.deviceModel ? `License validated from device (${linkedDevice.deviceModel}).` : "License validated."
+        });
+      }
+      const updated = {
+        ...existing,
+        activatedAt,
+        lastSeenAt: nowIso,
+        linkedDevice,
+        validationCount: (existing.validationCount || 0) + 1,
+        updatedAt: nowIso,
+        auditLog: updatedAuditLog
+      };
+      const saved = await saveLicenseRecord(updated);
+      return {
+        valid: true,
+        status: "active",
+        code: "LICENSE_VALID",
+        httpStatus: 200,
+        license: {
+          id: saved.id,
+          maskedKey: saved.maskedKey,
+          licenseType: "Lifetime",
+          status: "active",
+          customerName: saved.customerName,
+          activatedAt: saved.activatedAt || nowIso,
+          lastSeenAt: saved.lastSeenAt || nowIso,
+          linkedDevice: saved.linkedDevice
+        }
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          valid: false,
+          status: "storage_error",
+          code: "STORAGE_UNAVAILABLE",
+          httpStatus: 503,
+          error: err.message
+        };
+      }
+      throw err;
+    }
   });
 }
 
@@ -57147,8 +61263,12 @@ function sendJson(res, status, data) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(data));
 }
-function sendError(res, status, message) {
-  sendJson(res, status, { success: false, error: message });
+function sendError(res, status, message, code) {
+  sendJson(res, status, {
+    success: false,
+    ...code ? { code } : status === 503 ? { code: "STORAGE_UNAVAILABLE" } : {},
+    error: message
+  });
 }
 async function parseJsonBody(req) {
   const anyReq = req;
@@ -57627,7 +61747,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             );
             return true;
           }
-          const serverSha256 = crypto6.createHash("sha256").update(apkBuffer).digest("hex");
+          const serverSha256 = crypto7.createHash("sha256").update(apkBuffer).digest("hex");
           const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
           const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
@@ -58022,6 +62142,10 @@ async function handleApiRequest(req, res, explicitRoute) {
     sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
     return true;
   } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      sendError(res, 503, err.message, err.code);
+      return true;
+    }
     console.error("API Error:", err);
     sendError(res, 500, err instanceof Error ? err.message : "Internal Server Error");
     return true;
@@ -58117,7 +62241,6 @@ long/umd/index.js:
    * limitations under the License.
    *)
 
-@firebase/util/dist/node-esm/index.node.esm.js:
 @firebase/util/dist/node-esm/index.node.esm.js:
 @firebase/util/dist/node-esm/index.node.esm.js:
 @firebase/util/dist/node-esm/index.node.esm.js:
@@ -58240,6 +62363,9 @@ long/umd/index.js:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
   (**
    * @license
    * Copyright 2019 Google LLC
@@ -58281,6 +62407,33 @@ firebase/app/dist/index.mjs:
 @firebase/firestore/dist/index.node.mjs:
 @firebase/firestore/dist/index.node.mjs:
 @firebase/firestore/dist/index.node.mjs:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
   (**
    * @license
    * Copyright 2020 Google LLC
@@ -59490,6 +63643,7 @@ re2js/build/index.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
 @firebase/storage/dist/node-esm/index.node.esm.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
   (**
    * @license
    * Copyright 2021 Google LLC
@@ -59527,6 +63681,125 @@ re2js/build/index.js:
   (**
    * @license
    * Copyright 2022 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+  (**
+   * @license
+   * Copyright 2020 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+  (**
+   * @license
+   * Copyright 2019 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+  (**
+   * @license
+   * Copyright 2020 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+  (**
+   * @license
+   * Copyright 2022 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+  (**
+   * @license
+   * Copyright 2023 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+
+@firebase/auth/dist/node-esm/totp-15CrSsqZ.js:
+  (**
+   * @license
+   * Copyright 2020 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+  (**
+   * @license
+   * Copyright 2021 Google LLC
    *
    * Licensed under the Apache License, Version 2.0 (the "License");
    * you may not use this file except in compliance with the License.
