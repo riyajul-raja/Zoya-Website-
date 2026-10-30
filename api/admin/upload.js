@@ -62599,7 +62599,7 @@ var config = {
 };
 async function handler(req, res) {
   try {
-    const handled = await handleApiRequest(req, res, "/api/admin/upload");
+    const handled = await handleApiRequest(req, res);
     if (!handled && !(res.writableEnded || res.headersSent)) {
       res.statusCode = 404;
       res.setHeader("Content-Type", "application/json; charset=utf-8");

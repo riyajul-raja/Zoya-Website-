@@ -3,7 +3,7 @@ import { handleApiRequest } from '../../apiHandler';
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
-    const handled = await handleApiRequest(req, res, '/api/admin/licenses');
+    const handled = await handleApiRequest(req, res);
     if (!handled && !(res.writableEnded || res.headersSent)) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');

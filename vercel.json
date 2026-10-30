@@ -2,20 +2,48 @@
   "buildCommand": "npm run build",
   "rewrites": [
     {
-      "source": "/api/admin/notify",
-      "destination": "/api/admin/notify"
+      "source": "/api/admin/login",
+      "destination": "/api/admin/auth?__route=/api/admin/login"
+    },
+    {
+      "source": "/api/admin/session",
+      "destination": "/api/admin/auth?__route=/api/admin/session"
+    },
+    {
+      "source": "/api/admin/logout",
+      "destination": "/api/admin/auth?__route=/api/admin/logout"
+    },
+    {
+      "source": "/api/admin/releases",
+      "destination": "/api/admin/releases?__route=/api/admin/releases"
     },
     {
       "source": "/api/admin/releases/:id",
-      "destination": "/api/admin/releases/[id]"
+      "destination": "/api/admin/releases?__route=/api/admin/releases/:id&id=:id"
+    },
+    {
+      "source": "/api/admin/publish",
+      "destination": "/api/admin/releases?__route=/api/admin/publish"
     },
     {
       "source": "/api/admin/licenses",
-      "destination": "/api/admin/licenses"
+      "destination": "/api/admin/licenses?__route=/api/admin/licenses"
     },
     {
       "source": "/api/admin/licenses/:id",
-      "destination": "/api/admin/licenses/[id]"
+      "destination": "/api/admin/licenses?__route=/api/admin/licenses/:id&id=:id"
+    },
+    {
+      "source": "/api/releases/latest",
+      "destination": "/api/releases?__route=/api/releases/latest"
+    },
+    {
+      "source": "/api/releases/manifest",
+      "destination": "/api/releases?__route=/api/releases/manifest"
+    },
+    {
+      "source": "/api/releases/download",
+      "destination": "/api/releases?__route=/api/releases/download"
     },
     {
       "source": "/api/licenses/validate",

@@ -62594,7 +62594,7 @@ async function handleApiRequest(req, res, explicitRoute) {
 // server/api/admin/licenses.ts
 async function handler(req, res) {
   try {
-    const handled = await handleApiRequest(req, res, "/api/admin/licenses");
+    const handled = await handleApiRequest(req, res);
     if (!handled && !(res.writableEnded || res.headersSent)) {
       res.statusCode = 404;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
