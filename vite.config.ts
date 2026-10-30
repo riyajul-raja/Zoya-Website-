@@ -2,7 +2,6 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, Plugin } from 'vite';
-import { handleApiRequest } from './server/apiHandler';
 
 function apiDevMiddleware(): Plugin {
   return {
@@ -11,7 +10,8 @@ function apiDevMiddleware(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         if (req.url && req.url.startsWith('/api/')) {
           try {
-            const handled = await handleApiRequest(req, res);
+            const mod = await server.ssrLoadModule('/server/apiHandler.ts');
+            const handled = await mod.handleApiRequest(req, res);
             if (handled) return;
           } catch (err) {
             console.error('Error handling API request:', err);
