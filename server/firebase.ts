@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { getFirestore, setLogLevel, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import {
   getAuth,
@@ -174,6 +174,11 @@ export async function ensureServerFirestoreAuth(): Promise<Firestore> {
 
 export function getDb(): Firestore {
   if (!cachedDb) {
+    try {
+      setLogLevel('error');
+    } catch {
+      // Ignore
+    }
     const app = getFirebaseApp();
     cachedDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
   }

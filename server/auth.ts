@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
+import firebaseConfig from '../firebase-applet-config.json';
+
 const DEFAULT_ADMIN_PIN = '8825316434';
 
 let cachedDerivedJwtSecret: string | null = null;
@@ -16,16 +18,12 @@ export function getAdminPin(): string {
 }
 
 function readServerIdentitySalt(): string {
-  try {
-    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-    if (fs.existsSync(configPath)) {
-      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (parsed && typeof parsed.firestoreDatabaseId === 'string' && typeof parsed.appId === 'string') {
-        return `${parsed.projectId || 'zoya'}:${parsed.firestoreDatabaseId}:${parsed.appId}`;
-      }
-    }
-  } catch {
-    // Ignore file read errors and use fallback salt component
+  if (
+    firebaseConfig &&
+    typeof firebaseConfig.firestoreDatabaseId === 'string' &&
+    typeof firebaseConfig.appId === 'string'
+  ) {
+    return `${firebaseConfig.projectId || 'zoya'}:${firebaseConfig.firestoreDatabaseId}:${firebaseConfig.appId}`;
   }
   return 'zoya-server-jwt-derivation-v2';
 }
@@ -180,7 +178,10 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
   if (!reqHeaders) return null;
   const authHeader = reqHeaders['authorization'] || reqHeaders['Authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    return authHeader.substring(7).trim();
+    const bearer = authHeader.substring(7).trim();
+    if (bearer && bearer !== 'cookie-session') {
+      return bearer;
+    }
   }
 
   const rawCookie = reqHeaders['cookie'] || reqHeaders['Cookie'];
@@ -190,7 +191,10 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
     const cookies = cookieHeader.split(';').map((c) => c.trim());
     for (const c of cookies) {
       if (c.startsWith('zoya_admin_token=')) {
-        return c.substring('zoya_admin_token='.length);
+        const val = c.substring('zoya_admin_token='.length).trim();
+        if (val && val !== 'cookie-session') {
+          return val;
+        }
       }
     }
   }

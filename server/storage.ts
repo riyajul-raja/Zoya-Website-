@@ -129,7 +129,29 @@ export function isValidApkHeader(buffer: Buffer | Uint8Array): boolean {
 // PERSISTENT FIRESTORE METADATA OPERATIONS
 // ----------------------------------------------------
 
+const RELEASES_CACHE_TTL_MS = 60_000;
+let releasesCache: { data: ReleaseMetadata[]; cachedAt: number } | null = null;
+
+function logStorageNotice(context: string, err: unknown): void {
+  const isQuota =
+    (err as any)?.code === 'resource-exhausted' ||
+    String((err as any)?.message || err).includes('Quota limit exceeded');
+  if (isQuota) {
+    console.warn(`${context}: Daily free tier read/write quota limit reached. Using local/cached fallback.`);
+  } else {
+    console.warn(`${context}:`, err);
+  }
+}
+
+export function clearReleasesInMemoryCache(): void {
+  releasesCache = null;
+}
+
 export async function getAllReleases(): Promise<ReleaseMetadata[]> {
+  if (releasesCache && Date.now() - releasesCache.cachedAt < RELEASES_CACHE_TTL_MS) {
+    return releasesCache.data;
+  }
+
   try {
     const db = await ensureServerFirestoreAuth();
     const snapshot = await getDocs(collection(db, 'releases'));
@@ -141,10 +163,11 @@ export async function getAllReleases(): Promise<ReleaseMetadata[]> {
       }
     });
     if (releases.length > 0) {
+      releasesCache = { data: releases, cachedAt: Date.now() };
       return releases;
     }
   } catch (err) {
-    console.warn('Firestore read error, checking local backup:', err);
+    logStorageNotice('Firestore read notice, checking local backup', err);
   }
 
   ensureDataDirs();
@@ -153,12 +176,15 @@ export async function getAllReleases(): Promise<ReleaseMetadata[]> {
     try {
       const raw = fs.readFileSync(releasesFile, 'utf-8');
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        releasesCache = { data: parsed, cachedAt: Date.now() };
+        return parsed;
+      }
     } catch {
-      return [];
+      // Ignore
     }
   }
-  return [];
+  return releasesCache ? releasesCache.data : [];
 }
 
 export async function getPublishedReleases(): Promise<ReleaseMetadata[]> {
@@ -183,13 +209,14 @@ export async function getReleaseById(id: string): Promise<ReleaseMetadata | null
       return docSnap.data() as ReleaseMetadata;
     }
   } catch (err) {
-    console.warn('Firestore getDoc error, falling back to getAllReleases:', err);
+    logStorageNotice('Firestore getDoc notice, falling back to getAllReleases', err);
   }
   const all = await getAllReleases();
   return all.find((r) => r.id === id) || null;
 }
 
 export async function saveRelease(release: ReleaseMetadata): Promise<void> {
+  clearReleasesInMemoryCache();
   const rawRelease: ReleaseMetadata = {
     ...release,
     updatedAt: new Date().toISOString(),
@@ -238,6 +265,7 @@ export async function deleteStoredChunks(storageKey: string, totalChunks: number
 
 export async function deleteRelease(id: string): Promise<boolean> {
   if (!id) return false;
+  clearReleasesInMemoryCache();
 
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
@@ -394,7 +422,7 @@ export async function hasApkBinary(release: ReleaseMetadata | null | undefined):
       }
     }
   } catch (err) {
-    console.warn('hasApkBinary Firestore check error:', err);
+    logStorageNotice('hasApkBinary Firestore notice', err);
   }
 
   // 2. Check local disk only when not on Vercel serverless (or if bundled in repo)

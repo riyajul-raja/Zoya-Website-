@@ -36,7 +36,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
           headers: savedToken ? { Authorization: `Bearer ${savedToken}` } : {},
         });
         const rawText = await res.text();
-        let data: { authenticated?: boolean; user?: { email: string; name: string } } = {};
+        let data: { authenticated?: boolean; token?: string; user?: { email: string; name: string } } = {};
         try {
           data = rawText ? JSON.parse(rawText) : {};
         } catch {
@@ -45,7 +45,13 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
         if (res.ok && data.authenticated && data.user) {
           setUser(data.user);
-          setToken(savedToken || 'cookie-session');
+          const activeToken = data.token || savedToken;
+          if (activeToken && activeToken !== 'cookie-session') {
+            sessionStorage.setItem('zoya_admin_token', activeToken);
+            setToken(activeToken);
+          } else {
+            setToken('cookie-session');
+          }
         } else {
           sessionStorage.removeItem('zoya_admin_token');
           setToken(null);

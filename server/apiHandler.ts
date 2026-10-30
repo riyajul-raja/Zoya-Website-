@@ -562,6 +562,7 @@ export async function handleApiRequest(
 
       sendJson(res, 200, {
         authenticated: true,
+        token: token,
         user: { email: user.email, name: user.name, role: user.role },
       });
       return true;

@@ -6,9 +6,12 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  query,
+  where,
+  limit,
 } from 'firebase/firestore';
 import { ensureServerFirestoreAuth } from './firebase';
-import type { AdminUser } from './auth';
+import { getJwtSecret, type AdminUser } from './auth';
 
 export class LicenseStorageError extends Error {
   public readonly status = 503;
@@ -21,9 +24,18 @@ export class LicenseStorageError extends Error {
 }
 
 let simulatedStorageFailureForTesting = false;
+let useInMemoryStoreForTesting = false;
+const inMemoryTestStore = new Map<string, LicenseRecord>();
 
 export function setSimulatedStorageFailureForTesting(shouldFail: boolean): void {
   simulatedStorageFailureForTesting = shouldFail;
+}
+
+export function setUseInMemoryStoreForTesting(enabled: boolean): void {
+  useInMemoryStoreForTesting = enabled;
+  if (!enabled) {
+    inMemoryTestStore.clear();
+  }
 }
 
 function assertStorageAvailable(): void {
@@ -193,11 +205,48 @@ function sanitizeRecordForStorage(record: LicenseRecord): LicenseRecord {
   return cleaned;
 }
 
+const CACHE_TTL_MS = 60_000; // 60 seconds TTL
+
+interface CacheEntry<T> {
+  data: T;
+  cachedAt: number;
+}
+
+const idToLicenseCache = new Map<string, CacheEntry<LicenseRecord>>();
+const keyHashToLicenseCache = new Map<string, CacheEntry<LicenseRecord>>();
+let allLicensesCache: CacheEntry<LicenseRecord[]> | null = null;
+
+function cacheLicenseRecord(record: LicenseRecord): void {
+  const now = Date.now();
+  idToLicenseCache.set(record.id, { data: record, cachedAt: now });
+  if (record.keyHash) {
+    keyHashToLicenseCache.set(record.keyHash, { data: record, cachedAt: now });
+  }
+}
+
+export function clearLicenseInMemoryCache(): void {
+  idToLicenseCache.clear();
+  keyHashToLicenseCache.clear();
+  allLicensesCache = null;
+}
+
 /**
  * Retrieves all licenses strictly from persistent Cloud Firestore (`licenses` collection).
  * Throws LicenseStorageError (HTTP 503) if Cloud Firestore is unavailable.
  */
 export async function getAllLicenses(): Promise<LicenseRecord[]> {
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    const all = Array.from(inMemoryTestStore.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return all;
+  }
+
+  if (allLicensesCache && Date.now() - allLicensesCache.cachedAt < CACHE_TTL_MS) {
+    return allLicensesCache.data;
+  }
+
   assertStorageAvailable();
 
   try {
@@ -207,10 +256,13 @@ export async function getAllLicenses(): Promise<LicenseRecord[]> {
     snap.forEach((docSnap) => {
       const data = docSnap.data() as LicenseRecord;
       if (data && data.id && data.keyHash) {
-        all.push(sanitizeRecordForStorage(data));
+        const sanitized = sanitizeRecordForStorage(data);
+        all.push(sanitized);
+        cacheLicenseRecord(sanitized);
       }
     });
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    allLicensesCache = { data: all, cachedAt: Date.now() };
     return all;
   } catch (err) {
     if (err instanceof LicenseStorageError) {
@@ -231,6 +283,16 @@ export async function getLicenseById(id: string): Promise<LicenseRecord | null> 
   const cleanId = sanitizeText(id, 100);
   if (!cleanId) return null;
 
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    return inMemoryTestStore.get(cleanId) || null;
+  }
+
+  const cached = idToLicenseCache.get(cleanId);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   assertStorageAvailable();
 
   try {
@@ -239,7 +301,9 @@ export async function getLicenseById(id: string): Promise<LicenseRecord | null> 
     if (snap.exists()) {
       const data = snap.data() as LicenseRecord;
       if (data && data.id) {
-        return sanitizeRecordForStorage(data);
+        const sanitized = sanitizeRecordForStorage(data);
+        cacheLicenseRecord(sanitized);
+        return sanitized;
       }
     }
     return null;
@@ -255,12 +319,53 @@ export async function getLicenseById(id: string): Promise<LicenseRecord | null> 
 }
 
 /**
- * Retrieves a single license by its SHA-256 keyHash strictly from Cloud Firestore.
+ * Retrieves a single license by its SHA-256 keyHash using an indexed query (1 document read).
  */
 export async function getLicenseByKeyHash(keyHash: string): Promise<LicenseRecord | null> {
   if (!keyHash) return null;
-  const all = await getAllLicenses();
-  return all.find((r) => r.keyHash === keyHash) || null;
+
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    for (const record of inMemoryTestStore.values()) {
+      if (record.keyHash === keyHash) return record;
+    }
+    return null;
+  }
+
+  const cached = keyHashToLicenseCache.get(keyHash);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  assertStorageAvailable();
+
+  try {
+    const db = await ensureServerFirestoreAuth();
+    const q = query(
+      collection(db, 'licenses'),
+      where('keyHash', '==', keyHash),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data() as LicenseRecord;
+      if (data && data.id) {
+        const sanitized = sanitizeRecordForStorage(data);
+        cacheLicenseRecord(sanitized);
+        return sanitized;
+      }
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      'Persistent license storage (Cloud Firestore) is unavailable. Could not query license record by keyHash.',
+      err
+    );
+  }
 }
 
 /**
@@ -275,9 +380,18 @@ export async function saveLicenseRecord(record: LicenseRecord): Promise<LicenseR
     updatedAt: record.updatedAt || new Date().toISOString(),
   });
 
+  if (useInMemoryStoreForTesting) {
+    inMemoryTestStore.set(safeRecord.id, safeRecord);
+    cacheLicenseRecord(safeRecord);
+    allLicensesCache = null;
+    return safeRecord;
+  }
+
   try {
     const db = await ensureServerFirestoreAuth();
     await setDoc(doc(db, 'licenses', safeRecord.id), safeRecord);
+    cacheLicenseRecord(safeRecord);
+    allLicensesCache = null; // Invalidate all-list cache
     return safeRecord;
   } catch (err) {
     if (err instanceof LicenseStorageError) {
@@ -299,9 +413,27 @@ export async function deleteLicenseRecord(id: string): Promise<boolean> {
 
   assertStorageAvailable();
 
+  if (useInMemoryStoreForTesting) {
+    const existing = inMemoryTestStore.get(cleanId);
+    inMemoryTestStore.delete(cleanId);
+    idToLicenseCache.delete(cleanId);
+    if (existing?.keyHash) {
+      keyHashToLicenseCache.delete(existing.keyHash);
+    }
+    allLicensesCache = null;
+    return true;
+  }
+
   try {
+    const existing = await getLicenseById(cleanId);
     const db = await ensureServerFirestoreAuth();
     await deleteDoc(doc(db, 'licenses', cleanId));
+
+    idToLicenseCache.delete(cleanId);
+    if (existing?.keyHash) {
+      keyHashToLicenseCache.delete(existing.keyHash);
+    }
+    allLicensesCache = null;
     return true;
   } catch (err) {
     if (err instanceof LicenseStorageError) {
@@ -751,8 +883,83 @@ export async function revokeLicense(
   });
 }
 
+export function generateSignedEntitlementToken(payload: {
+  licenseId: string;
+  keyHash: string;
+  maskedKey: string;
+  activatedAt: string;
+}): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expSec = nowSec + 30 * 24 * 60 * 60; // 30-day offline grace validity
+  const body = Buffer.from(
+    JSON.stringify({
+      id: payload.licenseId,
+      kh: payload.keyHash,
+      mk: payload.maskedKey,
+      act: payload.activatedAt,
+      iat: nowSec,
+      exp: expSec,
+    })
+  ).toString('base64url');
+
+  const signature = crypto
+    .createHmac('sha256', getJwtSecret())
+    .update(`${header}.${body}`)
+    .digest('base64url');
+
+  return `${header}.${body}.${signature}`;
+}
+
+export function verifySignedEntitlementToken(
+  token: string | null | undefined,
+  expectedKeyHash: string
+): { valid: boolean; payload?: any; reason?: string } {
+  if (!token || typeof token !== 'string') {
+    return { valid: false, reason: 'Entitlement token missing or invalid.' };
+  }
+
+  const parts = token.trim().split('.');
+  if (parts.length !== 3) {
+    return { valid: false, reason: 'Entitlement token malformed.' };
+  }
+
+  const [header, body, signature] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', getJwtSecret())
+    .update(`${header}.${body}`)
+    .digest('base64url');
+
+  const sigBuf = Buffer.from(signature, 'utf-8');
+  const expBuf = Buffer.from(expectedSig, 'utf-8');
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return { valid: false, reason: 'Entitlement token signature mismatch or untrusted.' };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
+    if (!payload || typeof payload !== 'object') {
+      return { valid: false, reason: 'Entitlement token payload invalid.' };
+    }
+
+    if (payload.kh !== expectedKeyHash) {
+      return { valid: false, reason: 'Entitlement token key mismatch.' };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!payload.exp || payload.exp < nowSec) {
+      return { valid: false, reason: 'Entitlement token grace period expired.' };
+    }
+
+    return { valid: true, payload };
+  } catch {
+    return { valid: false, reason: 'Entitlement token parse error.' };
+  }
+}
+
 export interface AndroidValidationRequest {
   licenseKey?: unknown;
+  entitlementToken?: unknown;
   deviceInfo?: {
     deviceId?: unknown;
     deviceModel?: unknown;
@@ -774,6 +981,8 @@ export interface AndroidValidationResponse {
   httpStatus: number;
   error?: string;
   revokedAt?: string | null;
+  entitlementToken?: string;
+  isOfflineGrace?: boolean;
   license?: {
     id: string;
     maskedKey: string;
@@ -792,8 +1001,8 @@ export interface AndroidValidationResponse {
  * - Rejects unknown keys (404)
  * - Rejects revoked keys (403)
  * - Rejects pending-payment / unverified keys (403)
- * - Returns HTTP 503 if persistent storage is unavailable
- * - Approves active verified/complimentary keys (200) ONLY after persistent Cloud Firestore write succeeds.
+ * - Approves active verified/complimentary keys (200) after persistent Cloud Firestore write succeeds.
+ * - For previously verified keys submitting a valid HMAC signed entitlement token during storage outages, allows 30-day offline grace validation.
  */
 export async function validateLicenseForAndroid(
   payload: AndroidValidationRequest
@@ -820,6 +1029,7 @@ export async function validateLicenseForAndroid(
   }
 
   const keyHash = hashLicenseKey(normalizedKey);
+  const rawToken = typeof payload.entitlementToken === 'string' ? payload.entitlementToken.trim() : '';
 
   return withLicenseLock(async () => {
     try {
@@ -918,12 +1128,19 @@ export async function validateLicenseForAndroid(
       };
 
       const saved = await saveLicenseRecord(updated);
+      const entitlementToken = generateSignedEntitlementToken({
+        licenseId: saved.id,
+        keyHash: saved.keyHash,
+        maskedKey: saved.maskedKey,
+        activatedAt: saved.activatedAt || nowIso,
+      });
 
       return {
         valid: true,
         status: 'active',
         code: 'LICENSE_VALID',
         httpStatus: 200,
+        entitlementToken,
         license: {
           id: saved.id,
           maskedKey: saved.maskedKey,
@@ -937,6 +1154,30 @@ export async function validateLicenseForAndroid(
       };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
+        const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash);
+        if (tokenVerification.valid && tokenVerification.payload) {
+          return {
+            valid: true,
+            status: 'active',
+            code: 'LICENSE_VALID',
+            httpStatus: 200,
+            isOfflineGrace: true,
+            entitlementToken: rawToken,
+            error:
+              'Server storage is temporarily unavailable. License validated via cryptographic offline grace token.',
+            license: {
+              id: tokenVerification.payload.id || 'grace_id',
+              maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
+              licenseType: 'Lifetime',
+              status: 'active',
+              customerName: 'Lifetime Subscriber',
+              activatedAt: tokenVerification.payload.act || new Date().toISOString(),
+              lastSeenAt: new Date().toISOString(),
+              linkedDevice: null,
+            },
+          };
+        }
+
         return {
           valid: false,
           status: 'storage_error',
