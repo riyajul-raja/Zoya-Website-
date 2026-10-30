@@ -46,9 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
   }, [mobileMenuOpen]);
 
   const navLinks = [
-    { label: 'Features', href: '#features' },
     { label: 'Installation', href: '#installation' },
-    { label: 'About', href: '#about' },
     { label: 'Download', href: '#download' },
     { label: 'FAQ', href: '#faq' },
   ];

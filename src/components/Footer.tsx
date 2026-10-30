@@ -73,24 +73,6 @@ export const Footer: React.FC<FooterProps> = ({
               <li>
                 <button
                   type="button"
-                  onClick={() => handleScrollTo('#features')}
-                  className="hover:text-pink-600 transition-colors cursor-pointer text-left py-1.5 min-h-[40px] flex items-center focus-visible:outline-pink-600 rounded-sm"
-                >
-                  Features
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => handleScrollTo('#about')}
-                  className="hover:text-pink-600 transition-colors cursor-pointer text-left py-1.5 min-h-[40px] flex items-center focus-visible:outline-pink-600 rounded-sm"
-                >
-                  About Zoya
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
                   onClick={() => handleScrollTo('#download')}
                   className="hover:text-pink-600 transition-colors cursor-pointer text-left py-1.5 min-h-[40px] flex items-center focus-visible:outline-pink-600 rounded-sm"
                 >

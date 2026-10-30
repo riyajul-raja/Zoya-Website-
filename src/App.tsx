@@ -6,9 +6,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
-import { Features } from './components/Features';
-import { About } from './components/About';
 import { ApkDownload } from './components/ApkDownload';
+import { FeatureGrid } from './components/FeatureGrid';
 import { InstallationGuide } from './components/InstallationGuide';
 import { Faq } from './components/Faq';
 import { Footer } from './components/Footer';
@@ -96,14 +95,8 @@ export default function App() {
           onDownloadClick={scrollToDownload}
         />
 
-        {/* Section 1 — Core Capabilities */}
-        <Features />
-
-        {/* Section 2 — Simple Setup */}
+        {/* Section 1 — Simple Setup */}
         <InstallationGuide />
-
-        {/* About Zoya Section */}
-        <About />
 
         {/* Official Android Release / APK Download Area */}
         <ApkDownload
@@ -111,6 +104,9 @@ export default function App() {
           loading={loadingRelease}
           onOpenAdmin={() => setAdminOpen(true)}
         />
+
+        {/* 8 Feature Cards directly below Download section */}
+        <FeatureGrid />
 
         {/* Frequently Asked Questions */}
         <Faq apkConfig={DEFAULT_APK_CONFIG} />

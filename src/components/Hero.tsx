@@ -76,7 +76,7 @@ export const Hero: React.FC<HeroProps> = ({
           </p>
 
           {/* Action Navigation Buttons */}
-          <div className="mt-6 sm:mt-8 w-full max-w-md flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
+          <div className="mt-6 sm:mt-8 w-full max-w-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4">
             <button
               type="button"
               onClick={handleScrollToDownloads}
@@ -89,7 +89,7 @@ export const Hero: React.FC<HeroProps> = ({
             <button
               type="button"
               onClick={handleScrollToFeatures}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] rounded-xl font-semibold text-zinc-800 hover:text-zinc-900 bg-white/95 hover:bg-white active:bg-zinc-50 border border-zinc-300 hover:border-pink-300 transition-all duration-150 shadow-xs cursor-pointer text-sm sm:text-base whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 min-h-[48px] rounded-xl font-semibold text-pink-700 bg-pink-50 hover:bg-pink-100/90 active:bg-pink-200/80 border border-pink-200/80 transition-colors duration-150 shadow-xs cursor-pointer text-sm sm:text-base whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-pink-600"
             >
               <Sparkles className="w-4 h-4 text-pink-600 shrink-0" aria-hidden="true" />
               <span>Explore Features</span>
