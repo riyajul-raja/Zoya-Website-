@@ -174,47 +174,40 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
 
       let completedChunks = 0;
 
-      // Upload chunks in small batches of 2 to avoid serverless timeouts and payload limits
-      for (let i = 0; i < totalChunks; i += 2) {
-        const batchIndices: number[] = [];
-        for (let j = i; j < Math.min(i + 2, totalChunks); j++) {
-          batchIndices.push(j);
+      // Upload chunks sequentially to ensure reliable serverless reception and exact size bounds
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+        const start = chunkIndex * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, uint8.length);
+        const chunkSlice = uint8.slice(start, end);
+
+        const chunkRes = await fetch(
+          `/api/admin/upload?phase=chunk&storageKey=${encodeURIComponent(storageKey)}&index=${chunkIndex}&totalChunks=${totalChunks}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/octet-stream',
+            },
+            body: chunkSlice,
+          }
+        );
+
+        const chunkText = await chunkRes.text();
+        let chunkData: any = {};
+        try {
+          chunkData = chunkText ? JSON.parse(chunkText) : {};
+        } catch {
+          // Ignore
         }
 
-        await Promise.all(
-          batchIndices.map(async (chunkIndex) => {
-            const start = chunkIndex * CHUNK_SIZE;
-            const end = Math.min(start + CHUNK_SIZE, uint8.length);
-            const chunkSlice = uint8.subarray(start, end);
+        if (!chunkRes.ok || !chunkData.success) {
+          throw new Error(
+            chunkData.error || `Failed to upload chunk ${chunkIndex + 1}/${totalChunks} (HTTP ${chunkRes.status})`
+          );
+        }
 
-            const chunkRes = await fetch(
-              `/api/admin/upload?phase=chunk&storageKey=${encodeURIComponent(storageKey)}&index=${chunkIndex}&totalChunks=${totalChunks}`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  'Content-Type': 'application/octet-stream',
-                },
-                body: chunkSlice,
-              }
-            );
-
-            const chunkText = await chunkRes.text();
-            let chunkData: any = {};
-            try {
-              chunkData = chunkText ? JSON.parse(chunkText) : {};
-            } catch {
-              // Ignore
-            }
-
-            if (!chunkRes.ok || !chunkData.success) {
-              throw new Error(chunkData.error || `Failed to upload chunk ${chunkIndex + 1}/${totalChunks}`);
-            }
-
-            completedChunks += 1;
-            setUploadProgress(Math.min(95, Math.round((completedChunks / totalChunks) * 95)));
-          })
-        );
+        completedChunks += 1;
+        setUploadProgress(Math.min(95, Math.round((completedChunks / totalChunks) * 95)));
       }
 
       // Finalize upload: server independently parses AndroidManifest.xml and saves the verified draft

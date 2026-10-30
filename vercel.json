@@ -11,11 +11,11 @@
     },
     {
       "source": "/api/admin/licenses",
-      "destination": "/api/admin/releases?__route=/api/admin/licenses"
+      "destination": "/api/admin/licenses"
     },
     {
       "source": "/api/admin/licenses/:id",
-      "destination": "/api/admin/releases/[id]?__route=/api/admin/licenses/:id&id=:id"
+      "destination": "/api/admin/licenses/[id]"
     },
     {
       "source": "/api/licenses/validate",

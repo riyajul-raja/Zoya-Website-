@@ -7,6 +7,8 @@ const entryPoints = [
   'server/api/admin/logout.ts',
   'server/api/admin/releases.ts',
   'server/api/admin/releases/[id].ts',
+  'server/api/admin/licenses.ts',
+  'server/api/admin/licenses/[id].ts',
   'server/api/admin/upload.ts',
   'server/api/admin/publish.ts',
   'server/api/admin/notify.ts',
@@ -21,6 +23,7 @@ async function build() {
 
   // Ensure output directories exist in api/
   fs.mkdirSync('api/admin/releases', { recursive: true });
+  fs.mkdirSync('api/admin/licenses', { recursive: true });
   fs.mkdirSync('api/releases', { recursive: true });
   fs.mkdirSync('api/devices', { recursive: true });
 

@@ -658,14 +658,14 @@ var require_tls_helpers = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.CIPHER_SUITES = void 0;
     exports.getDefaultRootsData = getDefaultRootsData;
-    var fs3 = __require("fs");
+    var fs2 = __require("fs");
     exports.CIPHER_SUITES = process.env.GRPC_SSL_CIPHER_SUITES;
     var DEFAULT_ROOTS_FILE_PATH = process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH;
     var defaultRootsData = null;
     function getDefaultRootsData() {
       if (DEFAULT_ROOTS_FILE_PATH) {
         if (defaultRootsData === null) {
-          defaultRootsData = fs3.readFileSync(DEFAULT_ROOTS_FILE_PATH);
+          defaultRootsData = fs2.readFileSync(DEFAULT_ROOTS_FILE_PATH);
         }
         return defaultRootsData;
       }
@@ -859,8 +859,8 @@ var require_load_balancer = __commonJS({
     function registerDefaultLoadBalancerType(typeName) {
       defaultLoadBalancerType = typeName;
     }
-    function createLoadBalancer(config, channelControlHelper) {
-      const typeName = config.getLoadBalancerName();
+    function createLoadBalancer(config2, channelControlHelper) {
+      const typeName = config2.getLoadBalancerName();
       if (typeName in registeredLoadBalancerTypes) {
         return new registeredLoadBalancerTypes[typeName].LoadBalancer(channelControlHelper);
       } else {
@@ -871,9 +871,9 @@ var require_load_balancer = __commonJS({
       return typeName in registeredLoadBalancerTypes;
     }
     function getFirstUsableConfig(configs, fallbackTodefault = false) {
-      for (const config of configs) {
-        if (config.getLoadBalancerName() in registeredLoadBalancerTypes) {
-          return config;
+      for (const config2 of configs) {
+        if (config2.getLoadBalancerName() in registeredLoadBalancerTypes) {
+          return config2;
         }
       }
       if (fallbackTodefault) {
@@ -1100,8 +1100,8 @@ var require_service_config = __commonJS({
       }
       if ("loadBalancingConfig" in obj) {
         if (Array.isArray(obj.loadBalancingConfig)) {
-          for (const config of obj.loadBalancingConfig) {
-            result.loadBalancingConfig.push((0, load_balancer_1.validateLoadBalancingConfig)(config));
+          for (const config2 of obj.loadBalancingConfig) {
+            result.loadBalancingConfig.push((0, load_balancer_1.validateLoadBalancingConfig)(config2));
           }
         } else {
           throw new Error("Invalid service config: invalid loadBalancingConfig");
@@ -1189,8 +1189,8 @@ var require_service_config = __commonJS({
       if (!Array.isArray(obj)) {
         throw new Error("Invalid service config list");
       }
-      for (const config of obj) {
-        const validatedConfig = validateCanaryConfig(config);
+      for (const config2 of obj) {
+        const validatedConfig = validateCanaryConfig(config2);
         if (typeof validatedConfig.percentage === "number" && percentage > validatedConfig.percentage) {
           continue;
         }
@@ -1271,19 +1271,19 @@ var require_uri_parser = __commonJS({
       };
     }
     var NUMBER_REGEX = /^\d+$/;
-    function splitHostPort(path4) {
-      if (path4.startsWith("[")) {
-        const hostEnd = path4.indexOf("]");
+    function splitHostPort(path3) {
+      if (path3.startsWith("[")) {
+        const hostEnd = path3.indexOf("]");
         if (hostEnd === -1) {
           return null;
         }
-        const host = path4.substring(1, hostEnd);
+        const host = path3.substring(1, hostEnd);
         if (host.indexOf(":") === -1) {
           return null;
         }
-        if (path4.length > hostEnd + 1) {
-          if (path4[hostEnd + 1] === ":") {
-            const portString = path4.substring(hostEnd + 2);
+        if (path3.length > hostEnd + 1) {
+          if (path3[hostEnd + 1] === ":") {
+            const portString = path3.substring(hostEnd + 2);
             if (NUMBER_REGEX.test(portString)) {
               return {
                 host,
@@ -1301,7 +1301,7 @@ var require_uri_parser = __commonJS({
           };
         }
       } else {
-        const splitPath = path4.split(":");
+        const splitPath = path3.split(":");
         if (splitPath.length === 2) {
           if (NUMBER_REGEX.test(splitPath[1])) {
             return {
@@ -1313,7 +1313,7 @@ var require_uri_parser = __commonJS({
           }
         } else {
           return {
-            host: path4
+            host: path3
           };
         }
       }
@@ -1746,9 +1746,9 @@ var require_resolving_load_balancer = __commonJS({
       return false;
     }
     function findMatchingConfig(service, method, methodConfigs, matchLevel) {
-      for (const config of methodConfigs) {
-        if (hasMatchingName(service, method, config, matchLevel)) {
-          return config;
+      for (const config2 of methodConfigs) {
+        if (hasMatchingName(service, method, config2, matchLevel)) {
+          return config2;
         }
       }
       return null;
@@ -2456,14 +2456,14 @@ var require_client_interceptors = __commonJS({
       }
     };
     exports.InterceptingCall = InterceptingCall;
-    function getCall(channel, path4, options2) {
+    function getCall(channel, path3, options2) {
       var _a2, _b;
       const deadline = (_a2 = options2.deadline) !== null && _a2 !== void 0 ? _a2 : Infinity;
       const host = options2.host;
       const parent2 = (_b = options2.parent) !== null && _b !== void 0 ? _b : null;
       const propagateFlags = options2.propagate_flags;
       const credentials2 = options2.credentials;
-      const call = channel.createCall(path4, deadline, host, parent2, propagateFlags);
+      const call = channel.createCall(path3, deadline, host, parent2, propagateFlags);
       if (credentials2) {
         call.setCredentials(credentials2);
       }
@@ -3028,9 +3028,9 @@ var require_make_client = __commonJS({
       ServiceClientImpl.serviceName = serviceName;
       return ServiceClientImpl;
     }
-    function partial(fn, path4, serialize, deserialize) {
+    function partial(fn, path3, serialize, deserialize) {
       return function(...args) {
-        return fn.call(this, path4, serialize, deserialize, ...args);
+        return fn.call(this, path3, serialize, deserialize, ...args);
       };
     }
     function isProtobufTypeDefinition(obj) {
@@ -5098,9 +5098,9 @@ var require_minimal = __commonJS({
       return bits.toNumber(Boolean(unsigned));
     };
     function merge(dst) {
-      var ifNotSet = typeof arguments[arguments.length - 1] === "boolean", limit = ifNotSet ? arguments.length - 1 : arguments.length;
+      var ifNotSet = typeof arguments[arguments.length - 1] === "boolean", limit2 = ifNotSet ? arguments.length - 1 : arguments.length;
       ifNotSet = ifNotSet && arguments[arguments.length - 1];
-      for (var a = 1; a < limit; ++a) {
+      for (var a = 1; a < limit2; ++a) {
         var src = arguments[a];
         if (!src)
           continue;
@@ -5913,17 +5913,17 @@ var require_codegen = __commonJS({
 var require_fs = __commonJS({
   "node_modules/@protobufjs/fetch/util/fs.js"(exports, module) {
     "use strict";
-    var fs3 = null;
+    var fs2 = null;
     try {
-      fs3 = __require(
+      fs2 = __require(
         /* webpackIgnore: true */
         "fs"
       );
-      if (!fs3 || !fs3.readFile || !fs3.readFileSync)
-        fs3 = null;
+      if (!fs2 || !fs2.readFile || !fs2.readFileSync)
+        fs2 = null;
     } catch (e) {
     }
-    module.exports = fs3;
+    module.exports = fs2;
   }
 });
 
@@ -5933,7 +5933,7 @@ var require_fetch = __commonJS({
     "use strict";
     module.exports = fetch2;
     var asPromise = require_aspromise();
-    var fs3 = require_fs();
+    var fs2 = require_fs();
     function fetch2(filename, options2, callback) {
       if (typeof options2 === "function") {
         callback = options2;
@@ -5942,8 +5942,8 @@ var require_fetch = __commonJS({
         options2 = {};
       if (!callback)
         return asPromise(fetch2, this, filename, options2);
-      if (!options2.xhr && fs3 && fs3.readFile)
-        return fs3.readFile(filename, function fetchReadFileCallback(err, contents) {
+      if (!options2.xhr && fs2 && fs2.readFile)
+        return fs2.readFile(filename, function fetchReadFileCallback(err, contents) {
           return err && typeof XMLHttpRequest !== "undefined" ? fetch2.xhr(filename, options2, callback) : err ? callback(err) : callback(null, options2.binary ? contents : contents.toString("utf8"));
         });
       return fetch2.xhr(filename, options2, callback);
@@ -5981,15 +5981,15 @@ var require_fetch = __commonJS({
 var require_path = __commonJS({
   "node_modules/@protobufjs/path/index.js"(exports) {
     "use strict";
-    var path4 = exports;
+    var path3 = exports;
     var isAbsolute = (
       /**
        * Tests if the specified path is absolute.
        * @param {string} path Path to test
        * @returns {boolean} `true` if path is absolute
        */
-      path4.isAbsolute = function isAbsolute2(path5) {
-        return /^(?:\/|\w+:)/.test(path5);
+      path3.isAbsolute = function isAbsolute2(path4) {
+        return /^(?:\/|\w+:)/.test(path4);
       }
     );
     var normalize = (
@@ -5998,9 +5998,9 @@ var require_path = __commonJS({
        * @param {string} path Path to normalize
        * @returns {string} Normalized path
        */
-      path4.normalize = function normalize2(path5) {
-        path5 = path5.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-        var parts = path5.split("/"), absolute = isAbsolute(path5), prefix = "";
+      path3.normalize = function normalize2(path4) {
+        path4 = path4.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+        var parts = path4.split("/"), absolute = isAbsolute(path4), prefix = "";
         if (absolute)
           prefix = parts.shift() + "/";
         for (var i = 0; i < parts.length; ) {
@@ -6019,7 +6019,7 @@ var require_path = __commonJS({
         return prefix + parts.join("/");
       }
     );
-    path4.resolve = function resolve(originPath, includePath, alreadyNormalized) {
+    path3.resolve = function resolve(originPath, includePath, alreadyNormalized) {
       if (!alreadyNormalized)
         includePath = normalize(includePath);
       if (isAbsolute(includePath))
@@ -6046,17 +6046,17 @@ var require_patterns = __commonJS({
 var require_fs2 = __commonJS({
   "node_modules/protobufjs/src/util/fs.js"(exports, module) {
     "use strict";
-    var fs3 = null;
+    var fs2 = null;
     try {
-      fs3 = __require(
+      fs2 = __require(
         /* webpackIgnore: true */
         "fs"
       );
-      if (!fs3 || !fs3.readFile || !fs3.readFileSync)
-        fs3 = null;
+      if (!fs2 || !fs2.readFile || !fs2.readFileSync)
+        fs2 = null;
     } catch (e) {
     }
-    module.exports = fs3;
+    module.exports = fs2;
   }
 });
 
@@ -6203,18 +6203,18 @@ var require_namespace = __commonJS({
       object.onRemove(this);
       return clearCache(this);
     };
-    Namespace.prototype.define = function define2(path4, json) {
-      if (util.isString(path4))
-        path4 = path4.split(".");
-      else if (!Array.isArray(path4))
+    Namespace.prototype.define = function define2(path3, json) {
+      if (util.isString(path3))
+        path3 = path3.split(".");
+      else if (!Array.isArray(path3))
         throw TypeError("illegal path");
-      if (path4 && path4.length && path4[0] === "")
+      if (path3 && path3.length && path3[0] === "")
         throw Error("path must be relative");
-      if (path4.length > util.recursionLimit)
+      if (path3.length > util.recursionLimit)
         throw Error("max depth exceeded");
       var ptr = this;
-      while (path4.length > 0) {
-        var part = path4.shift();
+      while (path3.length > 0) {
+        var part = path3.shift();
         if (ptr.nested && ptr.nested[part]) {
           ptr = ptr.nested[part];
           if (!(ptr instanceof Namespace))
@@ -6249,26 +6249,26 @@ var require_namespace = __commonJS({
       });
       return this;
     };
-    Namespace.prototype.lookup = function lookup(path4, filterTypes, parentAlreadyChecked) {
+    Namespace.prototype.lookup = function lookup(path3, filterTypes, parentAlreadyChecked) {
       if (typeof filterTypes === "boolean") {
         parentAlreadyChecked = filterTypes;
         filterTypes = void 0;
       } else if (filterTypes && !Array.isArray(filterTypes))
         filterTypes = [filterTypes];
-      if (util.isString(path4) && path4.length) {
-        if (path4 === ".")
+      if (util.isString(path3) && path3.length) {
+        if (path3 === ".")
           return this.root;
-        path4 = path4.split(".");
-      } else if (!path4.length)
+        path3 = path3.split(".");
+      } else if (!path3.length)
         return this;
-      var flatPath = path4.join(".");
-      if (path4[0] === "")
-        return this.root.lookup(path4.slice(1), filterTypes);
+      var flatPath = path3.join(".");
+      if (path3[0] === "")
+        return this.root.lookup(path3.slice(1), filterTypes);
       var found = this.root._fullyQualifiedObjects && this.root._fullyQualifiedObjects["." + flatPath];
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
-      found = this._lookupImpl(path4, flatPath);
+      found = this._lookupImpl(path3, flatPath);
       if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
         return found;
       }
@@ -6276,7 +6276,7 @@ var require_namespace = __commonJS({
         return null;
       var current = this;
       while (current.parent) {
-        found = current.parent._lookupImpl(path4, flatPath);
+        found = current.parent._lookupImpl(path3, flatPath);
         if (found && (!filterTypes || filterTypes.indexOf(found.constructor) > -1)) {
           return found;
         }
@@ -6284,22 +6284,22 @@ var require_namespace = __commonJS({
       }
       return null;
     };
-    Namespace.prototype._lookupImpl = function lookup(path4, flatPath) {
+    Namespace.prototype._lookupImpl = function lookup(path3, flatPath) {
       if (Object.prototype.hasOwnProperty.call(this._lookupCache, flatPath)) {
         return this._lookupCache[flatPath];
       }
-      var found = this.get(path4[0]);
+      var found = this.get(path3[0]);
       var exact = null;
       if (found) {
-        if (path4.length === 1) {
+        if (path3.length === 1) {
           exact = found;
         } else if (found instanceof Namespace) {
-          path4 = path4.slice(1);
-          exact = found._lookupImpl(path4, path4.join("."));
+          path3 = path3.slice(1);
+          exact = found._lookupImpl(path3, path3.join("."));
         }
       } else {
         for (var i = 0; i < this.nestedArray.length; ++i)
-          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path4, flatPath))) {
+          if (this._nestedArray[i] instanceof Namespace && (found = this._nestedArray[i]._lookupImpl(path3, flatPath))) {
             exact = found;
             break;
           }
@@ -6307,28 +6307,28 @@ var require_namespace = __commonJS({
       this._lookupCache[flatPath] = exact;
       return exact;
     };
-    Namespace.prototype.lookupType = function lookupType(path4) {
-      var found = this.lookup(path4, [Type]);
+    Namespace.prototype.lookupType = function lookupType(path3) {
+      var found = this.lookup(path3, [Type]);
       if (!found)
-        throw Error("no such type: " + path4);
+        throw Error("no such type: " + path3);
       return found;
     };
-    Namespace.prototype.lookupEnum = function lookupEnum(path4) {
-      var found = this.lookup(path4, [Enum]);
+    Namespace.prototype.lookupEnum = function lookupEnum(path3) {
+      var found = this.lookup(path3, [Enum]);
       if (!found)
-        throw Error("no such Enum '" + path4 + "' in " + this);
+        throw Error("no such Enum '" + path3 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path4) {
-      var found = this.lookup(path4, [Type, Enum]);
+    Namespace.prototype.lookupTypeOrEnum = function lookupTypeOrEnum(path3) {
+      var found = this.lookup(path3, [Type, Enum]);
       if (!found)
-        throw Error("no such Type or Enum '" + path4 + "' in " + this);
+        throw Error("no such Type or Enum '" + path3 + "' in " + this);
       return found;
     };
-    Namespace.prototype.lookupService = function lookupService(path4) {
-      var found = this.lookup(path4, [Service]);
+    Namespace.prototype.lookupService = function lookupService(path3) {
+      var found = this.lookup(path3, [Service]);
       if (!found)
-        throw Error("no such Service '" + path4 + "' in " + this);
+        throw Error("no such Service '" + path3 + "' in " + this);
       return found;
     };
     Namespace._configure = function(Type_, Service_, Enum_) {
@@ -7745,13 +7745,13 @@ var require_util = __commonJS({
       Object.defineProperty(object, "$type", { value: enm, enumerable: false });
       return enm;
     };
-    util.setProperty = function setProperty(dst, path4, value, ifNotSet) {
-      function setProp(dst2, path5, value2) {
-        var part = path5.shift();
+    util.setProperty = function setProperty(dst, path3, value, ifNotSet) {
+      function setProp(dst2, path4, value2) {
+        var part = path4.shift();
         if (util.isUnsafeProperty(part))
           return dst2;
-        if (path5.length > 0) {
-          dst2[part] = setProp(dst2[part] || {}, path5, value2);
+        if (path4.length > 0) {
+          dst2[part] = setProp(dst2[part] || {}, path4, value2);
         } else {
           var prevValue = dst2[part];
           if (prevValue && ifNotSet)
@@ -7764,12 +7764,12 @@ var require_util = __commonJS({
       }
       if (typeof dst !== "object")
         throw TypeError("dst must be an object");
-      if (!path4)
+      if (!path3)
         throw TypeError("path must be specified");
-      path4 = path4.split(".");
-      if (path4.length > util.recursionLimit)
+      path3 = path3.split(".");
+      if (path3.length > util.recursionLimit)
         throw Error("max depth exceeded");
-      return setProp(dst, path4, value);
+      return setProp(dst, path3, value);
     };
     Object.defineProperty(util, "decorateRoot", {
       get: function() {
@@ -8315,12 +8315,12 @@ var require_object = __commonJS({
        */
       fullName: {
         get: function() {
-          var path4 = [this.name], ptr = this.parent;
+          var path3 = [this.name], ptr = this.parent;
           while (ptr) {
-            path4.unshift(ptr.name);
+            path3.unshift(ptr.name);
             ptr = ptr.parent;
           }
-          return path4.join(".");
+          return path3.join(".");
         }
       }
     });
@@ -12357,19 +12357,19 @@ var require_util2 = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.addCommonProtos = exports.loadProtosWithOptionsSync = exports.loadProtosWithOptions = void 0;
-    var fs3 = __require("fs");
-    var path4 = __require("path");
+    var fs2 = __require("fs");
+    var path3 = __require("path");
     var Protobuf = require_protobufjs();
     function addIncludePathResolver(root, includePaths) {
       const originalResolvePath = root.resolvePath;
       root.resolvePath = (origin, target) => {
-        if (path4.isAbsolute(target)) {
+        if (path3.isAbsolute(target)) {
           return target;
         }
         for (const directory of includePaths) {
-          const fullPath = path4.join(directory, target);
+          const fullPath = path3.join(directory, target);
           try {
-            fs3.accessSync(fullPath, fs3.constants.R_OK);
+            fs2.accessSync(fullPath, fs2.constants.R_OK);
             return fullPath;
           } catch (err) {
             continue;
@@ -15753,9 +15753,9 @@ var require_resolving_call = __commonJS({
           }
           return;
         }
-        const config = configResult.config;
-        if (config.status !== constants_1.Status.OK) {
-          const { code, details } = (0, control_plane_status_1.restrictControlPlaneStatusCode)(config.status, "Failed to route call to method " + this.method);
+        const config2 = configResult.config;
+        if (config2.status !== constants_1.Status.OK) {
+          const { code, details } = (0, control_plane_status_1.restrictControlPlaneStatusCode)(config2.status, "Failed to route call to method " + this.method);
           this.outputStatus({
             code,
             details,
@@ -15763,17 +15763,17 @@ var require_resolving_call = __commonJS({
           });
           return;
         }
-        if (config.methodConfig.timeout) {
+        if (config2.methodConfig.timeout) {
           const configDeadline = /* @__PURE__ */ new Date();
-          configDeadline.setSeconds(configDeadline.getSeconds() + config.methodConfig.timeout.seconds);
-          configDeadline.setMilliseconds(configDeadline.getMilliseconds() + config.methodConfig.timeout.nanos / 1e6);
+          configDeadline.setSeconds(configDeadline.getSeconds() + config2.methodConfig.timeout.seconds);
+          configDeadline.setMilliseconds(configDeadline.getMilliseconds() + config2.methodConfig.timeout.nanos / 1e6);
           this.deadline = (0, deadline_1.minDeadline)(this.deadline, configDeadline);
           this.runDeadlineTimer();
         }
-        this.filterStackFactory.push(config.dynamicFilterFactories);
+        this.filterStackFactory.push(config2.dynamicFilterFactories);
         this.filterStack = this.filterStackFactory.createFilter();
         this.filterStack.sendMetadata(Promise.resolve(this.metadata)).then((filteredMetadata) => {
-          this.child = this.channel.createInnerCall(config, this.method, this.host, this.credentials, this.deadline);
+          this.child = this.channel.createInnerCall(config2, this.method, this.host, this.credentials, this.deadline);
           this.trace("Created child [" + this.child.getCallNumber() + "]");
           this.child.start(filteredMetadata, {
             onReceiveMetadata: (metadata) => {
@@ -17338,19 +17338,19 @@ var require_server_call = __commonJS({
           let receivedLength = 0;
           const call = this;
           const body = [];
-          const limit = this.maxReceiveMessageSize;
+          const limit2 = this.maxReceiveMessageSize;
           this.stream.on("data", onData);
           this.stream.on("end", onEnd);
           this.stream.on("error", onEnd);
           function onData(chunk) {
             receivedLength += chunk.byteLength;
-            if (limit !== -1 && receivedLength > limit) {
+            if (limit2 !== -1 && receivedLength > limit2) {
               stream.removeListener("data", onData);
               stream.removeListener("end", onEnd);
               stream.removeListener("error", onEnd);
               reject({
                 code: constants_1.Status.RESOURCE_EXHAUSTED,
-                details: `Received message larger than max (${receivedLength} vs. ${limit})`
+                details: `Received message larger than max (${receivedLength} vs. ${limit2})`
               });
               return;
             }
@@ -18250,11 +18250,11 @@ var require_server = __commonJS({
         }
         return true;
       }
-      _retrieveHandler(path4) {
-        this.trace("Received call to method " + path4 + " at address " + this.serverAddressString);
-        const handler2 = this.handlers.get(path4);
+      _retrieveHandler(path3) {
+        this.trace("Received call to method " + path3 + " at address " + this.serverAddressString);
+        const handler2 = this.handlers.get(path3);
         if (handler2 === void 0) {
-          this.trace("No handler registered for method " + path4 + ". Sending UNIMPLEMENTED status.");
+          this.trace("No handler registered for method " + path3 + ". Sending UNIMPLEMENTED status.");
           return null;
         }
         return handler2;
@@ -18281,10 +18281,10 @@ var require_server = __commonJS({
           channelzSessionInfo === null || channelzSessionInfo === void 0 ? void 0 : channelzSessionInfo.streamTracker.addCallFailed();
           return;
         }
-        const path4 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path4);
+        const path3 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path3);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path4), stream, channelzSessionInfo);
+          this._respondWithError(getUnimplementedStatusResponse(path3), stream, channelzSessionInfo);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -18327,10 +18327,10 @@ var require_server = __commonJS({
         if (this._verifyContentType(stream, headers) !== true) {
           return;
         }
-        const path4 = headers[HTTP2_HEADER_PATH];
-        const handler2 = this._retrieveHandler(path4);
+        const path3 = headers[HTTP2_HEADER_PATH];
+        const handler2 = this._retrieveHandler(path3);
         if (!handler2) {
-          this._respondWithError(getUnimplementedStatusResponse(path4), stream, null);
+          this._respondWithError(getUnimplementedStatusResponse(path3), stream, null);
           return;
         }
         const call = new server_call_1.Http2ServerCallStream(stream, handler2, this.options);
@@ -19224,13 +19224,13 @@ var require_resolver_uds = __commonJS({
         this.listener = listener;
         this.addresses = [];
         this.hasReturnedResult = false;
-        let path4;
+        let path3;
         if (target.authority === "") {
-          path4 = "/" + target.path;
+          path3 = "/" + target.path;
         } else {
-          path4 = target.path;
+          path3 = target.path;
         }
-        this.addresses = [{ path: path4 }];
+        this.addresses = [{ path: path3 }];
       }
       updateResolution() {
         if (!this.hasReturnedResult) {
@@ -19287,12 +19287,12 @@ var require_resolver_ip = __commonJS({
           return;
         }
         const pathList = target.path.split(",");
-        for (const path4 of pathList) {
-          const hostPort = (0, uri_parser_1.splitHostPort)(path4);
+        for (const path3 of pathList) {
+          const hostPort = (0, uri_parser_1.splitHostPort)(path3);
           if (hostPort === null) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path4}`,
+              details: `Failed to parse ${target.scheme} address ${path3}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19300,7 +19300,7 @@ var require_resolver_ip = __commonJS({
           if (target.scheme === IPV4_SCHEME && !(0, net_1.isIPv4)(hostPort.host) || target.scheme === IPV6_SCHEME && !(0, net_1.isIPv6)(hostPort.host)) {
             this.error = {
               code: constants_1.Status.UNAVAILABLE,
-              details: `Failed to parse ${target.scheme} address ${path4}`,
+              details: `Failed to parse ${target.scheme} address ${path3}`,
               metadata: new metadata_1.Metadata()
             };
             return;
@@ -19961,7 +19961,7 @@ var require_src3 = __commonJS({
 
 // server/apiHandler.ts
 import crypto7 from "crypto";
-import path3 from "path";
+import path2 from "path";
 
 // server/storage.ts
 import crypto3 from "crypto";
@@ -21515,12 +21515,12 @@ var ERRORS = {
 };
 var ERROR_FACTORY = new ErrorFactory("app", "Firebase", ERRORS);
 var FirebaseAppImpl = class {
-  constructor(options2, config, container) {
+  constructor(options2, config2, container) {
     this._isDeleted = false;
     this._options = { ...options2 };
-    this._config = { ...config };
-    this._name = config.name;
-    this._automaticDataCollectionEnabled = config.automaticDataCollectionEnabled;
+    this._config = { ...config2 };
+    this._name = config2.name;
+    this._automaticDataCollectionEnabled = config2.automaticDataCollectionEnabled;
     this._container = container;
     this.container.addComponent(new Component(
       "app",
@@ -21575,12 +21575,12 @@ function initializeApp(_options, rawConfig = {}) {
     const name7 = rawConfig;
     rawConfig = { name: name7 };
   }
-  const config = {
+  const config2 = {
     name: DEFAULT_ENTRY_NAME2,
     automaticDataCollectionEnabled: true,
     ...rawConfig
   };
-  const name6 = config.name;
+  const name6 = config2.name;
   if (typeof name6 !== "string" || !name6) {
     throw ERROR_FACTORY.create("bad-app-name", {
       appName: String(name6)
@@ -21602,12 +21602,12 @@ function initializeApp(_options, rawConfig = {}) {
         oldValue: JSON.stringify(existingApp.options),
         newValue: JSON.stringify(options2)
       });
-    } else if (!deepEqual(config, existingApp.config)) {
+    } else if (!deepEqual(config2, existingApp.config)) {
       throw ERROR_FACTORY.create("duplicate-app", {
         appName: name6,
         mismatchedParam: "config",
         oldValue: JSON.stringify(existingApp.config),
-        newValue: JSON.stringify(config)
+        newValue: JSON.stringify(config2)
       });
     } else {
       return existingApp;
@@ -21617,7 +21617,7 @@ function initializeApp(_options, rawConfig = {}) {
   for (const component of _components.values()) {
     container.addComponent(component);
   }
-  const newApp = new FirebaseAppImpl(options2, config, container);
+  const newApp = new FirebaseAppImpl(options2, config2, container);
   _apps.set(name6, newApp);
   return newApp;
 }
@@ -23336,16 +23336,16 @@ var MachineUTF8Input = class MachineUTF8Input2 extends MachineInputBase {
     let targetLength = target.length;
     if (targetLength === 0) return fromIndex <= this.end ? fromIndex : -1;
     const firstByte = target[0];
-    let limit = this.end - targetLength;
+    let limit2 = this.end - targetLength;
     const hasNativeIndexOf = typeof source.indexOf === "function";
     let i = fromIndex;
-    while (i <= limit) {
+    while (i <= limit2) {
       if (hasNativeIndexOf) {
         i = source.indexOf(firstByte, i);
-        if (i === -1 || i > limit) return -1;
+        if (i === -1 || i > limit2) return -1;
       } else {
-        while (i <= limit && source[i] !== firstByte) i++;
-        if (i > limit) return -1;
+        while (i <= limit2 && source[i] !== firstByte) i++;
+        if (i > limit2) return -1;
       }
       let match = true;
       for (let j = 1; j < targetLength; j++) if (source[i + j] !== target[j]) {
@@ -24138,8 +24138,8 @@ var Queue = class Queue2 {
     if (!this.denseCaps || this.denseCaps.length < needed) this.denseCaps = new Int32Array(needed);
   }
   growCaps(needed) {
-    const limit = this.densePcs.length * this.ncap;
-    const grown = new Int32Array(Math.min(limit, Math.max(needed, 2 * this.denseCaps.length)));
+    const limit2 = this.densePcs.length * this.ncap;
+    const grown = new Int32Array(Math.min(limit2, Math.max(needed, 2 * this.denseCaps.length)));
     grown.set(this.denseCaps);
     this.denseCaps = grown;
   }
@@ -28913,7 +28913,7 @@ var RE2JS = class RE2JS2 {
   * @param {number} [limit=0] the limit
   * @returns {string[]} the split strings
   */
-  split(input, limit = 0) {
+  split(input, limit2 = 0) {
     const m = this.matcher(input);
     const result = [];
     let emptiesSkipped = 0;
@@ -28923,9 +28923,9 @@ var RE2JS = class RE2JS2 {
         last = m.end();
         continue;
       }
-      if (limit > 0 && result.length === limit - 1) break;
+      if (limit2 > 0 && result.length === limit2 - 1) break;
       if (last === m.start()) {
-        if (limit === 0) {
+        if (limit2 === 0) {
           emptiesSkipped += 1;
           last = m.end();
           continue;
@@ -28937,14 +28937,14 @@ var RE2JS = class RE2JS2 {
       result.push(m.substring(last, m.start()));
       last = m.end();
     }
-    if (limit === 0 && last !== m.inputLength()) {
+    if (limit2 === 0 && last !== m.inputLength()) {
       while (emptiesSkipped > 0) {
         result.push("");
         emptiesSkipped -= 1;
       }
       result.push(m.substring(last, m.inputLength()));
     }
-    if (limit !== 0 || result.length === 0 && !(last === m.inputLength() && last > 0)) result.push(m.substring(last, m.inputLength()));
+    if (limit2 !== 0 || result.length === 0 && !(last === m.inputLength() && last > 0)) result.push(m.substring(last, m.inputLength()));
     return result;
   }
   /**
@@ -29034,6 +29034,9 @@ function formatJSON(value) {
 var logClient = new Logger("@firebase/firestore");
 function getLogLevel() {
   return logClient.logLevel;
+}
+function setLogLevel2(logLevel) {
+  logClient.setLogLevel(logLevel);
 }
 function logDebug(msg, ...obj) {
   if (logClient.logLevel <= LogLevel.DEBUG) {
@@ -29975,11 +29978,11 @@ var ResourcePath = class _ResourcePath extends BasePath {
    */
   static fromString(...pathComponents) {
     const segments = [];
-    for (const path4 of pathComponents) {
-      if (path4.indexOf("//") >= 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path4}). Paths must not contain // in them.`);
+    for (const path3 of pathComponents) {
+      if (path3.indexOf("//") >= 0) {
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid segment (${path3}). Paths must not contain // in them.`);
       }
-      segments.push(...path4.split("/").filter((segment) => segment.length > 0));
+      segments.push(...path3.split("/").filter((segment) => segment.length > 0));
     }
     return new _ResourcePath(segments);
   }
@@ -30033,27 +30036,27 @@ var FieldPath$1 = class FieldPath extends BasePath {
    * TODO(b/37244157): we should make this more strict. Right now, it allows
    * non-identifier path components, even if they aren't escaped.
    */
-  static fromServerFormat(path4) {
+  static fromServerFormat(path3) {
     const segments = [];
     let current = "";
     let i = 0;
     const addCurrentSegment = () => {
       if (current.length === 0) {
-        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path4}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
+        throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
       }
       segments.push(current);
       current = "";
     };
     let inBackticks = false;
-    while (i < path4.length) {
-      const c = path4[i];
+    while (i < path3.length) {
+      const c = path3[i];
       if (c === "\\") {
-        if (i + 1 === path4.length) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path4);
+        if (i + 1 === path3.length) {
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has trailing escape character: " + path3);
         }
-        const next = path4[i + 1];
+        const next = path3[i + 1];
         if (!(next === "\\" || next === "." || next === "`")) {
-          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path4);
+          throw new FirestoreError(Code.INVALID_ARGUMENT, "Path has invalid escape sequence: " + path3);
         }
         current += next;
         i += 2;
@@ -30070,7 +30073,7 @@ var FieldPath$1 = class FieldPath extends BasePath {
     }
     addCurrentSegment();
     if (inBackticks) {
-      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path4);
+      throw new FirestoreError(Code.INVALID_ARGUMENT, "Unterminated ` in path: " + path3);
     }
     return new FieldPath(segments);
   }
@@ -30152,11 +30155,11 @@ function isEmpty(obj) {
   return true;
 }
 var DocumentKey = class _DocumentKey {
-  constructor(path4) {
-    this.path = path4;
+  constructor(path3) {
+    this.path = path3;
   }
-  static fromPath(path4) {
-    return new _DocumentKey(ResourcePath.fromString(path4));
+  static fromPath(path3) {
+    return new _DocumentKey(ResourcePath.fromString(path3));
   }
   static fromName(name6) {
     return new _DocumentKey(ResourcePath.fromString(name6).popFirst(5));
@@ -30188,8 +30191,8 @@ var DocumentKey = class _DocumentKey {
   static comparator(k1, k2) {
     return ResourcePath.comparator(k1.path, k2.path);
   }
-  static isDocumentKey(path4) {
-    return path4.length % 2 === 0;
+  static isDocumentKey(path3) {
+    return path3.length % 2 === 0;
   }
   /**
    * Creates and returns a new document key with the given segments.
@@ -30211,14 +30214,14 @@ function validateIsNotUsedTogether(optionName1, argument1, optionName2, argument
     throw new FirestoreError(Code.INVALID_ARGUMENT, `${optionName1} and ${optionName2} cannot be used together.`);
   }
 }
-function validateDocumentPath(path4) {
-  if (!DocumentKey.isDocumentKey(path4)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path4} has ${path4.length}.`);
+function validateDocumentPath(path3) {
+  if (!DocumentKey.isDocumentKey(path3)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${path3} has ${path3.length}.`);
   }
 }
-function validateCollectionPath(path4) {
-  if (DocumentKey.isDocumentKey(path4)) {
-    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path4} has ${path4.length}.`);
+function validateCollectionPath(path3) {
+  if (DocumentKey.isDocumentKey(path3)) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${path3} has ${path3.length}.`);
   }
 }
 function isPlainObject(input) {
@@ -30272,6 +30275,11 @@ function cast(obj, constructor) {
     }
   }
   return obj;
+}
+function validatePositiveNumber(functionName, n) {
+  if (n <= 0) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Function ${functionName}() requires a positive number, but it was: ${n}.`);
+  }
 }
 function property(typeString, optionalValue) {
   const result = {
@@ -32517,6 +32525,11 @@ function estimateMapByteSize(mapValue) {
 function estimateArrayByteSize(arrayValue) {
   return (arrayValue.values || []).reduce((previousSize, value) => previousSize + estimateByteSize(value), 0);
 }
+function refValue(databaseId, key) {
+  return {
+    referenceValue: `projects/${databaseId.projectId}/databases/${databaseId.database}/documents/${key.path.canonicalString()}`
+  };
+}
 function isBoolean(value) {
   return !!value && "booleanValue" in value;
 }
@@ -32627,18 +32640,18 @@ var ObjectValue = class _ObjectValue {
    * @param path - the path to search
    * @returns The value at the path or null if the path is not set.
    */
-  field(path4) {
-    if (path4.isEmpty()) {
+  field(path3) {
+    if (path3.isEmpty()) {
       return this.value;
     } else {
       let currentLevel = this.value;
-      for (let i = 0; i < path4.length - 1; ++i) {
-        currentLevel = (currentLevel.mapValue.fields || {})[path4.get(i)];
+      for (let i = 0; i < path3.length - 1; ++i) {
+        currentLevel = (currentLevel.mapValue.fields || {})[path3.get(i)];
         if (!isMapValue(currentLevel)) {
           return null;
         }
       }
-      currentLevel = (currentLevel.mapValue.fields || {})[path4.lastSegment()];
+      currentLevel = (currentLevel.mapValue.fields || {})[path3.lastSegment()];
       return currentLevel || null;
     }
   }
@@ -32648,9 +32661,9 @@ var ObjectValue = class _ObjectValue {
    * @param path - The field path to set.
    * @param value - The value to set.
    */
-  set(path4, value) {
-    const fieldsMap = this.getFieldsMap(path4.popLast());
-    fieldsMap[path4.lastSegment()] = deepClone(value);
+  set(path3, value) {
+    const fieldsMap = this.getFieldsMap(path3.popLast());
+    fieldsMap[path3.lastSegment()] = deepClone(value);
   }
   /**
    * Sets the provided fields to the provided values.
@@ -32661,18 +32674,18 @@ var ObjectValue = class _ObjectValue {
     let parent2 = FieldPath$1.emptyPath();
     let upserts = {};
     let deletes = [];
-    data.forEach((value, path4) => {
-      if (!parent2.isImmediateParentOf(path4)) {
+    data.forEach((value, path3) => {
+      if (!parent2.isImmediateParentOf(path3)) {
         const fieldsMap2 = this.getFieldsMap(parent2);
         this.applyChanges(fieldsMap2, upserts, deletes);
         upserts = {};
         deletes = [];
-        parent2 = path4.popLast();
+        parent2 = path3.popLast();
       }
       if (value) {
-        upserts[path4.lastSegment()] = deepClone(value);
+        upserts[path3.lastSegment()] = deepClone(value);
       } else {
-        deletes.push(path4.lastSegment());
+        deletes.push(path3.lastSegment());
       }
     });
     const fieldsMap = this.getFieldsMap(parent2);
@@ -32684,10 +32697,10 @@ var ObjectValue = class _ObjectValue {
    *
    * @param path - The field path to remove.
    */
-  delete(path4) {
-    const nestedValue = this.field(path4.popLast());
+  delete(path3) {
+    const nestedValue = this.field(path3.popLast());
     if (isMapValue(nestedValue) && nestedValue.mapValue.fields) {
-      delete nestedValue.mapValue.fields[path4.lastSegment()];
+      delete nestedValue.mapValue.fields[path3.lastSegment()];
     }
   }
   isEqual(other) {
@@ -32697,16 +32710,16 @@ var ObjectValue = class _ObjectValue {
    * Returns the map that contains the leaf element of `path`. If the parent
    * entry does not yet exist, or if it is not a map, a new map will be created.
    */
-  getFieldsMap(path4) {
+  getFieldsMap(path3) {
     let current = this.value;
     if (!current.mapValue.fields) {
       current.mapValue = { fields: {} };
     }
-    for (let i = 0; i < path4.length; ++i) {
-      let next = current.mapValue.fields[path4.get(i)];
+    for (let i = 0; i < path3.length; ++i) {
+      let next = current.mapValue.fields[path3.get(i)];
       if (!isMapValue(next) || !next.mapValue.fields) {
         next = { mapValue: { fields: {} } };
-        current.mapValue.fields[path4.get(i)] = next;
+        current.mapValue.fields[path3.get(i)] = next;
       }
       current = next;
     }
@@ -33004,19 +33017,19 @@ function calculateOverlayMutation(doc3, mask) {
     const docValue = doc3.data;
     const patchValue = ObjectValue.empty();
     let maskSet = new SortedSet(FieldPath$1.comparator);
-    for (let path4 of mask.fields) {
-      if (!maskSet.has(path4)) {
-        let value = docValue.field(path4);
-        if (value === null && path4.length > 1) {
-          path4 = path4.popLast();
-          value = docValue.field(path4);
+    for (let path3 of mask.fields) {
+      if (!maskSet.has(path3)) {
+        let value = docValue.field(path3);
+        if (value === null && path3.length > 1) {
+          path3 = path3.popLast();
+          value = docValue.field(path3);
         }
         if (value === null) {
-          patchValue.delete(path4);
+          patchValue.delete(path3);
         } else {
-          patchValue.set(path4, value);
+          patchValue.set(path3, value);
         }
-        maskSet = maskSet.add(path4);
+        maskSet = maskSet.add(path3);
       }
     }
     return new PatchMutation(doc3.key, patchValue, new FieldMask(maskSet.toArray()), Precondition.none());
@@ -33773,19 +33786,19 @@ function indexOffsetComparator(left, right) {
   return primitiveComparator(left.largestBatchId, right.largestBatchId);
 }
 var TargetImpl = class {
-  constructor(path4, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-    this.path = path4;
+  constructor(path3, collectionGroup2 = null, orderBy = [], filters = [], limit2 = null, startAt = null, endAt = null) {
+    this.path = path3;
     this.collectionGroup = collectionGroup2;
     this.orderBy = orderBy;
     this.filters = filters;
-    this.limit = limit;
+    this.limit = limit2;
     this.startAt = startAt;
     this.endAt = endAt;
     this.memoizedCanonicalId = null;
   }
 };
-function newTarget(path4, collectionGroup2 = null, orderBy = [], filters = [], limit = null, startAt = null, endAt = null) {
-  return new TargetImpl(path4, collectionGroup2, orderBy, filters, limit, startAt, endAt);
+function newTarget(path3, collectionGroup2 = null, orderBy = [], filters = [], limit2 = null, startAt = null, endAt = null) {
+  return new TargetImpl(path3, collectionGroup2, orderBy, filters, limit2, startAt, endAt);
 }
 function canonifyTarget(target) {
   const targetImpl = debugCast(target);
@@ -33884,12 +33897,12 @@ var QueryImpl = class {
    * Initializes a Query with a path and optional additional query constraints.
    * Path must currently be empty if this is a collection group query.
    */
-  constructor(path4, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit = null, limitType = "F", startAt = null, endAt = null) {
-    this.path = path4;
+  constructor(path3, collectionGroup2 = null, explicitOrderBy = [], filters = [], limit2 = null, limitType = "F", startAt = null, endAt = null) {
+    this.path = path3;
     this.collectionGroup = collectionGroup2;
     this.explicitOrderBy = explicitOrderBy;
     this.filters = filters;
-    this.limit = limit;
+    this.limit = limit2;
     this.limitType = limitType;
     this.startAt = startAt;
     this.endAt = endAt;
@@ -33900,31 +33913,31 @@ var QueryImpl = class {
     if (this.endAt) ;
   }
 };
-function newQuery(path4, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt) {
-  return new QueryImpl(path4, collectionGroup2, explicitOrderBy, filters, limit, limitType, startAt, endAt);
+function newQuery(path3, collectionGroup2, explicitOrderBy, filters, limit2, limitType, startAt, endAt) {
+  return new QueryImpl(path3, collectionGroup2, explicitOrderBy, filters, limit2, limitType, startAt, endAt);
 }
-function newQueryForPath(path4) {
-  return new QueryImpl(path4);
+function newQueryForPath(path3) {
+  return new QueryImpl(path3);
 }
-function asCollectionQueryAtPath(query, path4) {
+function asCollectionQueryAtPath(query2, path3) {
   return new QueryImpl(
-    path4,
+    path3,
     /*collectionGroup=*/
     null,
-    query.explicitOrderBy.slice(),
-    query.filters.slice(),
-    query.limit,
-    query.limitType,
-    query.startAt,
-    query.endAt
+    query2.explicitOrderBy.slice(),
+    query2.filters.slice(),
+    query2.limit,
+    query2.limitType,
+    query2.startAt,
+    query2.endAt
   );
 }
-function queryMatchesAllDocuments(query) {
-  return query.filters.length === 0 && query.limit === null && query.startAt == null && query.endAt == null && (query.explicitOrderBy.length === 0 || query.explicitOrderBy.length === 1 && query.explicitOrderBy[0].field.isKeyField());
+function queryMatchesAllDocuments(query2) {
+  return query2.filters.length === 0 && query2.limit === null && query2.startAt == null && query2.endAt == null && (query2.explicitOrderBy.length === 0 || query2.explicitOrderBy.length === 1 && query2.explicitOrderBy[0].field.isKeyField());
 }
-function getInequalityFilterFields(query) {
+function getInequalityFilterFields(query2) {
   let result = new SortedSet(FieldPath$1.comparator);
-  query.filters.forEach((filter) => {
+  query2.filters.forEach((filter) => {
     const subFilters = filter.getFlattenedFilters();
     subFilters.forEach((filter2) => {
       if (filter2.isInequality()) {
@@ -33934,14 +33947,14 @@ function getInequalityFilterFields(query) {
   });
   return result;
 }
-function isDocumentQuery$1(query) {
-  return DocumentKey.isDocumentKey(query.path) && query.collectionGroup === null && query.filters.length === 0;
+function isDocumentQuery$1(query2) {
+  return DocumentKey.isDocumentKey(query2.path) && query2.collectionGroup === null && query2.filters.length === 0;
 }
-function isCollectionGroupQuery(query) {
-  return query.collectionGroup !== null;
+function isCollectionGroupQuery(query2) {
+  return query2.collectionGroup !== null;
 }
-function queryNormalizedOrderBy(query) {
-  const queryImpl = debugCast(query);
+function queryNormalizedOrderBy(query2) {
+  const queryImpl = debugCast(query2);
   if (queryImpl.memoizedNormalizedOrderBy === null) {
     queryImpl.memoizedNormalizedOrderBy = [];
     const fieldsNormalized = /* @__PURE__ */ new Set();
@@ -33962,10 +33975,10 @@ function queryNormalizedOrderBy(query) {
   }
   return queryImpl.memoizedNormalizedOrderBy;
 }
-function queryToTarget(query) {
-  const queryImpl = debugCast(query);
+function queryToTarget(query2) {
+  const queryImpl = debugCast(query2);
   if (!queryImpl.memoizedTarget) {
-    queryImpl.memoizedTarget = _queryToTarget(queryImpl, queryNormalizedOrderBy(query));
+    queryImpl.memoizedTarget = _queryToTarget(queryImpl, queryNormalizedOrderBy(query2));
   }
   return queryImpl.memoizedTarget;
 }
@@ -33982,60 +33995,64 @@ function _queryToTarget(queryImpl, orderBys) {
     return newTarget(queryImpl.path, queryImpl.collectionGroup, orderBys, queryImpl.filters, queryImpl.limit, startAt, endAt);
   }
 }
-function queryWithLimit(query, limit, limitType) {
-  return new QueryImpl(query.path, query.collectionGroup, query.explicitOrderBy.slice(), query.filters.slice(), limit, limitType, query.startAt, query.endAt);
+function queryWithAddedFilter(query2, filter) {
+  const newFilters = query2.filters.concat([filter]);
+  return new QueryImpl(query2.path, query2.collectionGroup, query2.explicitOrderBy.slice(), newFilters, query2.limit, query2.limitType, query2.startAt, query2.endAt);
+}
+function queryWithLimit(query2, limit2, limitType) {
+  return new QueryImpl(query2.path, query2.collectionGroup, query2.explicitOrderBy.slice(), query2.filters.slice(), limit2, limitType, query2.startAt, query2.endAt);
 }
 function queryEquals(left, right) {
   return targetEquals(queryToTarget(left), queryToTarget(right)) && left.limitType === right.limitType;
 }
-function canonifyQuery(query) {
-  return `${canonifyTarget(queryToTarget(query))}|lt:${query.limitType}`;
+function canonifyQuery(query2) {
+  return `${canonifyTarget(queryToTarget(query2))}|lt:${query2.limitType}`;
 }
-function stringifyQuery(query) {
-  return `Query(target=${stringifyTarget(queryToTarget(query))}; limitType=${query.limitType})`;
+function stringifyQuery(query2) {
+  return `Query(target=${stringifyTarget(queryToTarget(query2))}; limitType=${query2.limitType})`;
 }
-function queryMatches(query, doc3) {
-  return doc3.isFoundDocument() && queryMatchesPathAndCollectionGroup(query, doc3) && queryMatchesOrderBy(query, doc3) && queryMatchesFilters(query, doc3) && queryMatchesBounds(query, doc3);
+function queryMatches(query2, doc3) {
+  return doc3.isFoundDocument() && queryMatchesPathAndCollectionGroup(query2, doc3) && queryMatchesOrderBy(query2, doc3) && queryMatchesFilters(query2, doc3) && queryMatchesBounds(query2, doc3);
 }
-function queryMatchesPathAndCollectionGroup(query, doc3) {
+function queryMatchesPathAndCollectionGroup(query2, doc3) {
   const docPath = doc3.key.path;
-  if (query.collectionGroup !== null) {
-    return doc3.key.hasCollectionId(query.collectionGroup) && query.path.isPrefixOf(docPath);
-  } else if (DocumentKey.isDocumentKey(query.path)) {
-    return query.path.isEqual(docPath);
+  if (query2.collectionGroup !== null) {
+    return doc3.key.hasCollectionId(query2.collectionGroup) && query2.path.isPrefixOf(docPath);
+  } else if (DocumentKey.isDocumentKey(query2.path)) {
+    return query2.path.isEqual(docPath);
   } else {
-    return query.path.isImmediateParentOf(docPath);
+    return query2.path.isImmediateParentOf(docPath);
   }
 }
-function queryMatchesOrderBy(query, doc3) {
-  for (const orderBy of queryNormalizedOrderBy(query)) {
+function queryMatchesOrderBy(query2, doc3) {
+  for (const orderBy of queryNormalizedOrderBy(query2)) {
     if (!orderBy.field.isKeyField() && doc3.data.field(orderBy.field) === null) {
       return false;
     }
   }
   return true;
 }
-function queryMatchesFilters(query, doc3) {
-  for (const filter of query.filters) {
+function queryMatchesFilters(query2, doc3) {
+  for (const filter of query2.filters) {
     if (!filter.matches(doc3)) {
       return false;
     }
   }
   return true;
 }
-function queryMatchesBounds(query, doc3) {
-  if (query.startAt && !boundSortsBeforeDocument(query.startAt, queryNormalizedOrderBy(query), doc3)) {
+function queryMatchesBounds(query2, doc3) {
+  if (query2.startAt && !boundSortsBeforeDocument(query2.startAt, queryNormalizedOrderBy(query2), doc3)) {
     return false;
   }
-  if (query.endAt && !boundSortsAfterDocument(query.endAt, queryNormalizedOrderBy(query), doc3)) {
+  if (query2.endAt && !boundSortsAfterDocument(query2.endAt, queryNormalizedOrderBy(query2), doc3)) {
     return false;
   }
   return true;
 }
-function newQueryComparator(query) {
+function newQueryComparator(query2) {
   return (d1, d2) => {
     let comparedOnKeyField = false;
-    for (const orderBy of queryNormalizedOrderBy(query)) {
+    for (const orderBy of queryNormalizedOrderBy(query2)) {
       const comp = compareDocs(orderBy, d1, d2);
       if (comp !== 0) {
         return comp;
@@ -34771,8 +34788,8 @@ var WatchChangeAggregator = class {
       const targetData = this.targetDataForActiveTarget(targetId);
       if (targetData) {
         if (targetState.current && this.isSingleDocumentTarget(targetData.target)) {
-          const path4 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
-          const key = new DocumentKey(path4);
+          const path3 = targetIsPipelineTarget(targetData.target) ? ResourcePath.fromString(targetData.target.getPipelineDocuments()[0]) : targetData.target.path;
+          const key = new DocumentKey(path3);
           if (!this.ensureDocumentUpdateByTarget(key).has(targetId) && !this.targetContainsDocument(targetId, key)) {
             this.removeDocumentFromTarget(targetId, key, MutableDocument.newNoDocument(key, snapshotVersion));
           }
@@ -35119,12 +35136,12 @@ function fromVersion(version7) {
   hardAssert(!!version7, 49232);
   return SnapshotVersion.fromTimestamp(fromTimestamp(version7));
 }
-function toResourceName(databaseId, path4) {
-  return toResourcePath(databaseId, path4).canonicalString();
+function toResourceName(databaseId, path3) {
+  return toResourcePath(databaseId, path3).canonicalString();
 }
-function toResourcePath(databaseId, path4) {
+function toResourcePath(databaseId, path3) {
   const resourcePath = fullyQualifiedPrefixPath(databaseId).child("documents");
-  return path4 === void 0 ? resourcePath : resourcePath.child(path4);
+  return path3 === void 0 ? resourcePath : resourcePath.child(path3);
 }
 function fromResourceName(name6) {
   const resource = ResourcePath.fromString(name6);
@@ -35144,8 +35161,8 @@ function fromName(serializer, name6) {
   }
   return new DocumentKey(extractLocalPathFromResourceName(resource));
 }
-function toQueryPath(serializer, path4) {
-  return toResourceName(serializer.databaseId, path4);
+function toQueryPath(serializer, path3) {
+  return toResourceName(serializer.databaseId, path3);
 }
 function fromQueryPath(name6) {
   const resourceName = fromResourceName(name6);
@@ -35155,13 +35172,13 @@ function fromQueryPath(name6) {
   return extractLocalPathFromResourceName(resourceName);
 }
 function getEncodedDatabaseId(serializer) {
-  const path4 = new ResourcePath([
+  const path3 = new ResourcePath([
     "projects",
     serializer.databaseId.projectId,
     "databases",
     serializer.databaseId.database
   ]);
-  return path4.canonicalString();
+  return path3.canonicalString();
 }
 function fullyQualifiedPrefixPath(databaseId) {
   return new ResourcePath([
@@ -35367,10 +35384,10 @@ function toDocumentsTarget(serializer, target) {
 }
 function toQueryTarget(serializer, target) {
   const queryTarget = { structuredQuery: {} };
-  const path4 = target.path;
+  const path3 = target.path;
   let parent2;
   if (target.collectionGroup !== null) {
-    parent2 = path4;
+    parent2 = path3;
     queryTarget.structuredQuery.from = [
       {
         collectionId: target.collectionGroup,
@@ -35378,21 +35395,21 @@ function toQueryTarget(serializer, target) {
       }
     ];
   } else {
-    parent2 = path4.popLast();
-    queryTarget.structuredQuery.from = [{ collectionId: path4.lastSegment() }];
+    parent2 = path3.popLast();
+    queryTarget.structuredQuery.from = [{ collectionId: path3.lastSegment() }];
   }
   queryTarget.parent = toQueryPath(serializer, parent2);
-  const where = toFilters(target.filters);
-  if (where) {
-    queryTarget.structuredQuery.where = where;
+  const where2 = toFilters(target.filters);
+  if (where2) {
+    queryTarget.structuredQuery.where = where2;
   }
   const orderBy = toOrder(target.orderBy);
   if (orderBy) {
     queryTarget.structuredQuery.orderBy = orderBy;
   }
-  const limit = toInt32Proto(serializer, target.limit);
-  if (limit !== null) {
-    queryTarget.structuredQuery.limit = limit;
+  const limit2 = toInt32Proto(serializer, target.limit);
+  if (limit2 !== null) {
+    queryTarget.structuredQuery.limit = limit2;
   }
   if (target.startAt) {
     queryTarget.structuredQuery.startAt = toStartAtCursor(target.startAt);
@@ -35403,40 +35420,40 @@ function toQueryTarget(serializer, target) {
   return { queryTarget, parent: parent2 };
 }
 function convertQueryTargetToQuery(target) {
-  let path4 = fromQueryPath(target.parent);
-  const query = target.structuredQuery;
-  const fromCount = query.from ? query.from.length : 0;
+  let path3 = fromQueryPath(target.parent);
+  const query2 = target.structuredQuery;
+  const fromCount = query2.from ? query2.from.length : 0;
   let collectionGroup2 = null;
   if (fromCount > 0) {
     hardAssert(fromCount === 1, 65062);
-    const from = query.from[0];
+    const from = query2.from[0];
     if (from.allDescendants) {
       collectionGroup2 = from.collectionId;
     } else {
-      path4 = path4.child(from.collectionId);
+      path3 = path3.child(from.collectionId);
     }
   }
   let filterBy = [];
-  if (query.where) {
-    filterBy = fromFilters(query.where);
+  if (query2.where) {
+    filterBy = fromFilters(query2.where);
   }
   let orderBy = [];
-  if (query.orderBy) {
-    orderBy = fromOrder(query.orderBy);
+  if (query2.orderBy) {
+    orderBy = fromOrder(query2.orderBy);
   }
-  let limit = null;
-  if (query.limit) {
-    limit = fromInt32Proto(query.limit);
+  let limit2 = null;
+  if (query2.limit) {
+    limit2 = fromInt32Proto(query2.limit);
   }
   let startAt = null;
-  if (query.startAt) {
-    startAt = fromStartAtCursor(query.startAt);
+  if (query2.startAt) {
+    startAt = fromStartAtCursor(query2.startAt);
   }
   let endAt = null;
-  if (query.endAt) {
-    endAt = fromEndAtCursor(query.endAt);
+  if (query2.endAt) {
+    endAt = fromEndAtCursor(query2.endAt);
   }
-  return newQuery(path4, collectionGroup2, orderBy, filterBy, limit, "F", startAt, endAt);
+  return newQuery(path3, collectionGroup2, orderBy, filterBy, limit2, "F", startAt, endAt);
 }
 function toListenRequestLabels(serializer, targetData) {
   const value = toLabel(targetData.purpose);
@@ -35615,8 +35632,8 @@ function fromCompositeOperatorName(op) {
       return fail(1026);
   }
 }
-function toFieldPathReference(path4) {
-  return { fieldPath: path4.canonicalString() };
+function toFieldPathReference(path3) {
+  return { fieldPath: path3.canonicalString() };
 }
 function fromFieldPathReference(fieldReference) {
   return FieldPath$1.fromServerFormat(fieldReference.fieldPath);
@@ -35734,8 +35751,8 @@ function toDocumentMask(fieldMask) {
     fieldPaths: canonicalFields
   };
 }
-function isValidResourceName(path4) {
-  return path4.length >= 4 && path4.get(0) === "projects" && path4.get(2) === "databases";
+function isValidResourceName(path3) {
+  return path3.length >= 4 && path3.get(0) === "projects" && path3.get(2) === "databases";
 }
 function isProtoValueSerializable(value) {
   return !!value && typeof value._toProto === "function" && value._protoValueType === "ProtoValue";
@@ -36529,7 +36546,7 @@ var GrpcConnection = class {
     }
     return this.cachedStub;
   }
-  invokeRPC(rpcName, path4, request, authToken, appCheckToken) {
+  invokeRPC(rpcName, path3, request, authToken, appCheckToken) {
     const streamId = generateUniqueDebugId();
     const stub = this.ensureActiveStub();
     const metadata = createMetadata(this.databasePath, authToken, appCheckToken, this.databaseInfo.appId, this.databaseInfo.apiKey, this.databaseInfo._customHeaders);
@@ -36547,7 +36564,7 @@ var GrpcConnection = class {
       });
     });
   }
-  invokeStreamingRPC(rpcName, path4, request, authToken, appCheckToken, expectedResponseCount) {
+  invokeStreamingRPC(rpcName, path3, request, authToken, appCheckToken, expectedResponseCount) {
     const streamId = generateUniqueDebugId();
     const results = [];
     const responseDeferred = new Deferred2();
@@ -42469,11 +42486,11 @@ var CollectionReference = class _CollectionReference extends Query {
     return new _CollectionReference(this.firestore, converter, this._path);
   }
 };
-function collection(parent2, path4, ...pathSegments) {
+function collection(parent2, path3, ...pathSegments) {
   parent2 = getModularInstance(parent2);
-  validateNonEmptyArgument("collection", "path", path4);
+  validateNonEmptyArgument("collection", "path", path3);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path4, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2,
@@ -42485,7 +42502,7 @@ function collection(parent2, path4, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path4, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
     validateCollectionPath(absolutePath);
     return new CollectionReference(
       parent2.firestore,
@@ -42495,14 +42512,14 @@ function collection(parent2, path4, ...pathSegments) {
     );
   }
 }
-function doc(parent2, path4, ...pathSegments) {
+function doc(parent2, path3, ...pathSegments) {
   parent2 = getModularInstance(parent2);
   if (arguments.length === 1) {
-    path4 = AutoId.newId();
+    path3 = AutoId.newId();
   }
-  validateNonEmptyArgument("doc", "path", path4);
+  validateNonEmptyArgument("doc", "path", path3);
   if (parent2 instanceof Firestore$1) {
-    const absolutePath = ResourcePath.fromString(path4, ...pathSegments);
+    const absolutePath = ResourcePath.fromString(path3, ...pathSegments);
     validateDocumentPath(absolutePath);
     return new DocumentReference(
       parent2,
@@ -42514,7 +42531,7 @@ function doc(parent2, path4, ...pathSegments) {
     if (!(parent2 instanceof DocumentReference) && !(parent2 instanceof CollectionReference)) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Expected first argument to doc() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
     }
-    const absolutePath = parent2._path.child(ResourcePath.fromString(path4, ...pathSegments));
+    const absolutePath = parent2._path.child(ResourcePath.fromString(path3, ...pathSegments));
     validateDocumentPath(absolutePath);
     return new DocumentReference(parent2.firestore, parent2 instanceof CollectionReference ? parent2.converter : null, new DocumentKey(absolutePath));
   }
@@ -42758,6 +42775,11 @@ function parseSetData(userDataReader, methodName, targetDoc, input, hasConverter
     fieldTransforms = context.fieldTransforms;
   }
   return new ParsedSetData(new ObjectValue(updateData), fieldMask, fieldTransforms);
+}
+function parseQueryValue(userDataReader, methodName, input, allowArrays = false) {
+  const context = userDataReader.createContext(allowArrays ? 4 : 3, methodName);
+  const parsed = parseData(input, context);
+  return parsed;
 }
 function parseData(input, context, options2) {
   input = getModularInstance(input);
@@ -43041,12 +43063,12 @@ function validatePlainObject(message, context, input) {
     }
   }
 }
-function fieldPathFromArgument(methodName, path4, targetDoc) {
-  path4 = getModularInstance(path4);
-  if (path4 instanceof FieldPath2) {
-    return path4._internalPath;
-  } else if (typeof path4 === "string") {
-    return fieldPathFromDotSeparatedString(methodName, path4);
+function fieldPathFromArgument(methodName, path3, targetDoc) {
+  path3 = getModularInstance(path3);
+  if (path3 instanceof FieldPath2) {
+    return path3._internalPath;
+  } else if (typeof path3 === "string") {
+    return fieldPathFromDotSeparatedString(methodName, path3);
   } else {
     const message = "Field path arguments must be of type string or ";
     throw createError(
@@ -43061,11 +43083,11 @@ function fieldPathFromArgument(methodName, path4, targetDoc) {
   }
 }
 var FIELD_PATH_RESERVED = new RegExp("[~\\*/\\[\\]]");
-function fieldPathFromDotSeparatedString(methodName, path4, targetDoc) {
-  const found = path4.search(FIELD_PATH_RESERVED);
+function fieldPathFromDotSeparatedString(methodName, path3, targetDoc) {
+  const found = path3.search(FIELD_PATH_RESERVED);
   if (found >= 0) {
     throw createError(
-      `Invalid field path (${path4}). Paths must not contain '~', '*', '/', '[', or ']'`,
+      `Invalid field path (${path3}). Paths must not contain '~', '*', '/', '[', or ']'`,
       methodName,
       /* hasConverter= */
       false,
@@ -43075,10 +43097,10 @@ function fieldPathFromDotSeparatedString(methodName, path4, targetDoc) {
     );
   }
   try {
-    return new FieldPath2(...path4.split("."))._internalPath;
+    return new FieldPath2(...path3.split("."))._internalPath;
   } catch (e) {
     throw createError(
-      `Invalid field path (${path4}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
+      `Invalid field path (${path3}). Paths must not be empty, begin with '.', end with '.', or contain '..'`,
       methodName,
       /* hasConverter= */
       false,
@@ -43088,8 +43110,8 @@ function fieldPathFromDotSeparatedString(methodName, path4, targetDoc) {
     );
   }
 }
-function createError(reason, methodName, hasConverter, path4, targetDoc) {
-  const hasPath = path4 && !path4.isEmpty();
+function createError(reason, methodName, hasConverter, path3, targetDoc) {
+  const hasPath = path3 && !path3.isEmpty();
   const hasDocument = targetDoc !== void 0;
   let message = `Function ${methodName}() called with invalid data`;
   if (hasConverter) {
@@ -43100,7 +43122,7 @@ function createError(reason, methodName, hasConverter, path4, targetDoc) {
   if (hasPath || hasDocument) {
     description += " (found";
     if (hasPath) {
-      description += ` in field ${path4}`;
+      description += ` in field ${path3}`;
     }
     if (hasDocument) {
       description += ` in document ${targetDoc}`;
@@ -45379,7 +45401,7 @@ var DocumentsSource = class extends Stage {
     if (!docPaths || docPaths.length === 0) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Empty document paths are not allowed in DocumentsSource");
     }
-    const paths = docPaths.map((path4) => path4.startsWith("/") ? path4 : "/" + path4);
+    const paths = docPaths.map((path3) => path3.startsWith("/") ? path3 : "/" + path3);
     const uniqueDocPaths = new Set(paths);
     if (uniqueDocPaths.size !== paths.length) {
       throw new FirestoreError(Code.INVALID_ARGUMENT, "Duplicate document paths are not allowed in DocumentsSource");
@@ -45436,10 +45458,10 @@ var Limit = class extends Stage {
   get _optionsUtil() {
     return new OptionsUtil({});
   }
-  constructor(limit, options2) {
-    hardAssert(!isNaN(limit) && limit !== Infinity && limit !== -Infinity, 34860);
+  constructor(limit2, options2) {
+    hardAssert(!isNaN(limit2) && limit2 !== Infinity && limit2 !== -Infinity, 34860);
     super(options2);
-    this.limit = limit;
+    this.limit = limit2;
   }
   /**
    * @internal
@@ -47809,10 +47831,10 @@ function canonifyPipeline(p) {
 function pipelineEq(left, right) {
   return canonifyPipeline(left) === canonifyPipeline(right);
 }
-function asCollectionPipelineAtPath(pipeline, path4) {
+function asCollectionPipelineAtPath(pipeline, path3) {
   const newStages = pipeline.stages.map((s) => {
     if (s instanceof CollectionGroupSource) {
-      return new CollectionSource(path4.canonicalString(), {});
+      return new CollectionSource(path3.canonicalString(), {});
     }
     return s;
   });
@@ -47937,9 +47959,9 @@ var RealtimePipeline = class _RealtimePipeline {
     copy.push(new Where(condition, {}));
     return new _RealtimePipeline(this._db, this.userDataReader, this._userDataWriter, copy);
   }
-  limit(limit) {
+  limit(limit2) {
     const copy = this.stages.map((s) => s);
-    copy.push(new Limit(limit, {}));
+    copy.push(new Limit(limit2, {}));
     return new _RealtimePipeline(this._db, this.userDataReader, this._userDataWriter, copy);
   }
   sort(optionsOrOrderings, ...rest) {
@@ -48075,13 +48097,13 @@ var escapeChar = "";
 var encodedSeparatorChar = "";
 var encodedNul = "";
 var encodedEscape = "";
-function encodeResourcePath(path4) {
+function encodeResourcePath(path3) {
   let result = "";
-  for (let i = 0; i < path4.length; i++) {
+  for (let i = 0; i < path3.length; i++) {
     if (result.length > 0) {
       result = encodeSeparator(result);
     }
-    result = encodeSegment(path4.get(i), result);
+    result = encodeSegment(path3.get(i), result);
   }
   return encodeSeparator(result);
 }
@@ -48235,19 +48257,19 @@ var LocalSerializer = class {
   }
 };
 function fromBundledQuery(bundledQuery) {
-  const query = convertQueryTargetToQuery({
+  const query2 = convertQueryTargetToQuery({
     parent: bundledQuery.parent,
     structuredQuery: bundledQuery.structuredQuery
   });
   if (bundledQuery.limitType === "LAST") {
     return queryWithLimit(
-      query,
-      query.limit,
+      query2,
+      query2.limit,
       "L"
       /* LimitType.Last */
     );
   }
-  return query;
+  return query2;
 }
 function fromProtoNamedQuery(namedQuery2) {
   return {
@@ -48435,8 +48457,8 @@ var FirestoreIndexValueWriter = class {
   writeIndexEntityRef(referenceValue, encoder2) {
     this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE);
     const segments = referenceValue.split("/").filter((segment) => segment.length > 0);
-    const path4 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
-    path4.forEach((segment) => {
+    const path3 = DocumentKey.fromSegments(segments.slice(DOCUMENT_NAME_OFFSET)).path;
+    path3.forEach((segment) => {
       this.writeValueTypeLabel(encoder2, INDEX_TYPE_REFERENCE_SEGMENT);
       this.writeUnlabeledIndexString(segment, encoder2);
     });
@@ -48584,8 +48606,8 @@ function runPipeline(pipeline, input) {
 function pipelineMatches(pipeline, data) {
   return runPipeline(pipeline, [data]).length > 0;
 }
-function queryOrPipelineMatches(query, data) {
-  return isPipeline(query) ? pipelineMatches(query, data) : queryMatches(query, data);
+function queryOrPipelineMatches(query2, data) {
+  return isPipeline(query2) ? pipelineMatches(query2, data) : queryMatches(query2, data);
 }
 function pipelineMatchesAllDocuments(pipeline) {
   for (const stage of pipeline.stages) {
@@ -48619,9 +48641,9 @@ function evaluate(context, stage, input) {
   }
   throw new Error(`Unknown stage: ${stage._name}`);
 }
-function evaluateWhere(context, where, input) {
+function evaluateWhere(context, where2, input) {
   return input.filter((value) => {
-    const result = valueOrUndefined(toEvaluable(where.condition).evaluate(context, value));
+    const result = valueOrUndefined(toEvaluable(where2.condition).evaluate(context, value));
     return result === void 0 ? false : valueEquals$1(result, TRUE_VALUE);
   });
 }
@@ -48945,15 +48967,15 @@ var LocalDocumentsView = class {
    * @param context - A optional tracker to keep a record of important details
    *   during database local query execution.
    */
-  getDocumentsMatchingQuery(transaction, query, offset, context) {
-    if (isPipeline(query)) {
-      return this.getDocumentsMatchingPipeline(transaction, query, offset, context);
-    } else if (isDocumentQuery$1(query)) {
-      return this.getDocumentsMatchingDocumentQuery(transaction, query.path);
-    } else if (isCollectionGroupQuery(query)) {
-      return this.getDocumentsMatchingCollectionGroupQuery(transaction, query, offset, context);
+  getDocumentsMatchingQuery(transaction, query2, offset, context) {
+    if (isPipeline(query2)) {
+      return this.getDocumentsMatchingPipeline(transaction, query2, offset, context);
+    } else if (isDocumentQuery$1(query2)) {
+      return this.getDocumentsMatchingDocumentQuery(transaction, query2.path);
+    } else if (isCollectionGroupQuery(query2)) {
+      return this.getDocumentsMatchingCollectionGroupQuery(transaction, query2, offset, context);
     } else {
-      return this.getDocumentsMatchingCollectionQuery(transaction, query, offset, context);
+      return this.getDocumentsMatchingCollectionQuery(transaction, query2, offset, context);
     }
   }
   /**
@@ -49003,12 +49025,12 @@ var LocalDocumentsView = class {
       return result;
     });
   }
-  getDocumentsMatchingCollectionGroupQuery(transaction, query, offset, context) {
-    const collectionId = query.collectionGroup;
+  getDocumentsMatchingCollectionGroupQuery(transaction, query2, offset, context) {
+    const collectionId = query2.collectionGroup;
     let results = documentMap();
     return this.indexManager.getCollectionParents(transaction, collectionId).next((parents) => {
       return PersistencePromise.forEach(parents, (parent2) => {
-        const collectionQuery = asCollectionQueryAtPath(query, parent2.child(collectionId));
+        const collectionQuery = asCollectionQueryAtPath(query2, parent2.child(collectionId));
         return this.getDocumentsMatchingCollectionQuery(transaction, collectionQuery, offset, context).next((r) => {
           r.forEach((key, doc3) => {
             results = results.insert(key, doc3);
@@ -49017,13 +49039,13 @@ var LocalDocumentsView = class {
       }).next(() => results);
     });
   }
-  getDocumentsMatchingCollectionQuery(transaction, query, offset, context) {
+  getDocumentsMatchingCollectionQuery(transaction, query2, offset, context) {
     let overlays;
-    return this.documentOverlayCache.getOverlaysForCollection(transaction, query.path, offset.largestBatchId).next((result) => {
+    return this.documentOverlayCache.getOverlaysForCollection(transaction, query2.path, offset.largestBatchId).next((result) => {
       overlays = result;
-      return this.remoteDocumentCache.getDocumentsMatchingQuery(transaction, query, offset, overlays, context);
+      return this.remoteDocumentCache.getDocumentsMatchingQuery(transaction, query2, offset, overlays, context);
     }).next((remoteDocuments) => {
-      return this.retrieveMatchingLocalDocuments(overlays, remoteDocuments, (doc3) => queryMatches(query, doc3));
+      return this.retrieveMatchingLocalDocuments(overlays, remoteDocuments, (doc3) => queryMatches(query2, doc3));
     });
   }
   getDocumentsMatchingPipeline(txn, pipeline, offset, context) {
@@ -49114,8 +49136,8 @@ var MemoryBundleCache = class {
   getNamedQuery(transaction, queryName) {
     return PersistencePromise.resolve(this.namedQueries.get(queryName));
   }
-  saveNamedQuery(transaction, query) {
-    this.namedQueries.set(query.name, fromProtoNamedQuery(query));
+  saveNamedQuery(transaction, query2) {
+    this.namedQueries.set(query2.name, fromProtoNamedQuery(query2));
     return PersistencePromise.resolve();
   }
 };
@@ -49381,8 +49403,8 @@ var MemoryMutationQueue = class {
     });
     return PersistencePromise.resolve(this.findMutationBatches(uniqueBatchIDs));
   }
-  getAllMutationBatchesAffectingQuery(transaction, query) {
-    const prefix = query.path;
+  getAllMutationBatchesAffectingQuery(transaction, query2) {
+    const prefix = query2.path;
     const immediateChildrenPathLength = prefix.length + 1;
     let startPath = prefix;
     if (!DocumentKey.isDocumentKey(startPath)) {
@@ -49546,15 +49568,15 @@ var MemoryRemoteDocumentCacheImpl = class {
     });
     return PersistencePromise.resolve(results);
   }
-  getDocumentsMatchingQuery(transaction, query, offset, mutatedDocs) {
+  getDocumentsMatchingQuery(transaction, query2, offset, mutatedDocs) {
     let collectionPath;
     let matcher;
-    if (isPipeline(query)) {
-      collectionPath = ResourcePath.fromString(getPipelineCollection(query));
-      matcher = (doc3) => pipelineMatches(query, doc3);
+    if (isPipeline(query2)) {
+      collectionPath = ResourcePath.fromString(getPipelineCollection(query2));
+      matcher = (doc3) => pipelineMatches(query2, doc3);
     } else {
-      collectionPath = query.path;
-      matcher = (doc3) => queryMatches(query, doc3);
+      collectionPath = query2.path;
+      matcher = (doc3) => queryMatches(query2, doc3);
     }
     let results = mutableDocumentMap();
     const prefix = new DocumentKey(collectionPath.child("__id" + MIN_LONG_VALUE + "__"));
@@ -49577,7 +49599,7 @@ var MemoryRemoteDocumentCacheImpl = class {
     }
     return PersistencePromise.resolve(results);
   }
-  getAllFromCollectionGroup(transaction, collectionGroup2, offset, limit) {
+  getAllFromCollectionGroup(transaction, collectionGroup2, offset, limit2) {
     fail(9500);
   }
   forEachDocumentKey(transaction, f) {
@@ -49855,8 +49877,8 @@ var MemoryEagerDelegate = class _MemoryEagerDelegate {
   onTransactionCommitted(txn) {
     const cache = this.persistence.getRemoteDocumentCache();
     const changeBuffer = cache.newChangeBuffer();
-    return PersistencePromise.forEach(this.orphanedDocuments, (path4) => {
-      const key = DocumentKey.fromPath(path4);
+    return PersistencePromise.forEach(this.orphanedDocuments, (path3) => {
+      const key = DocumentKey.fromPath(path3);
       return this.isReferenced(txn, key).next((isReferenced) => {
         if (!isReferenced) {
           changeBuffer.removeEntry(key, SnapshotVersion.min());
@@ -50301,7 +50323,7 @@ async function localStoreReleaseTarget(localStore, targetId, keepPersistedTarget
   localStoreImpl.targetDataByTarget = localStoreImpl.targetDataByTarget.remove(targetId);
   localStoreImpl.targetIdByTarget.delete(targetData.target);
 }
-function localStoreExecuteQuery(localStore, query, usePreviousResults) {
+function localStoreExecuteQuery(localStore, query2, usePreviousResults) {
   const localStoreImpl = debugCast(localStore);
   let lastLimboFreeSnapshotVersion = SnapshotVersion.min();
   let remoteKeys = documentKeySet();
@@ -50311,14 +50333,14 @@ function localStoreExecuteQuery(localStore, query, usePreviousResults) {
     // Use readwrite instead of readonly so indexes can be created
     // Use readwrite instead of readonly so indexes can be created
     (txn) => {
-      return localStoreGetTargetData(localStoreImpl, txn, isPipeline(query) ? query : queryToTarget(query)).next((targetData) => {
+      return localStoreGetTargetData(localStoreImpl, txn, isPipeline(query2) ? query2 : queryToTarget(query2)).next((targetData) => {
         if (targetData) {
           lastLimboFreeSnapshotVersion = targetData.lastLimboFreeSnapshotVersion;
           return localStoreImpl.targetCache.getMatchingKeysForTargetId(txn, targetData.targetId).next((result) => {
             remoteKeys = result;
           });
         }
-      }).next(() => localStoreImpl.queryEngine.getDocumentsMatchingQuery(txn, query, usePreviousResults ? lastLimboFreeSnapshotVersion : SnapshotVersion.min(), usePreviousResults ? remoteKeys : documentKeySet())).next((documents) => {
+      }).next(() => localStoreImpl.queryEngine.getDocumentsMatchingQuery(txn, query2, usePreviousResults ? lastLimboFreeSnapshotVersion : SnapshotVersion.min(), usePreviousResults ? remoteKeys : documentKeySet())).next((documents) => {
         setMaxReadTime(localStoreImpl, documents);
         return { documents, remoteKeys };
       });
@@ -51099,15 +51121,15 @@ var QueryEngine = class {
     this.initialized = true;
   }
   /** Returns all local documents matching the specified query. */
-  getDocumentsMatchingQuery(transaction, query, lastLimboFreeSnapshotVersion, remoteKeys) {
+  getDocumentsMatchingQuery(transaction, query2, lastLimboFreeSnapshotVersion, remoteKeys) {
     const queryResult = { result: null };
-    return this.performQueryUsingIndex(transaction, query).next((result) => {
+    return this.performQueryUsingIndex(transaction, query2).next((result) => {
       queryResult.result = result;
     }).next(() => {
       if (queryResult.result) {
         return;
       }
-      return this.performQueryUsingRemoteKeys(transaction, query, remoteKeys, lastLimboFreeSnapshotVersion).next((result) => {
+      return this.performQueryUsingRemoteKeys(transaction, query2, remoteKeys, lastLimboFreeSnapshotVersion).next((result) => {
         queryResult.result = result;
       });
     }).next(() => {
@@ -51115,32 +51137,32 @@ var QueryEngine = class {
         return;
       }
       const context = new QueryContext();
-      return this.executeFullCollectionScan(transaction, query, context).next((result) => {
+      return this.executeFullCollectionScan(transaction, query2, context).next((result) => {
         queryResult.result = result;
         if (this.indexAutoCreationEnabled) {
-          return this.createCacheIndexes(transaction, query, context, result.size);
+          return this.createCacheIndexes(transaction, query2, context, result.size);
         }
       });
     }).next(() => queryResult.result);
   }
-  createCacheIndexes(transaction, query, context, resultSize) {
-    if (isPipeline(query)) {
+  createCacheIndexes(transaction, query2, context, resultSize) {
+    if (isPipeline(query2)) {
       return PersistencePromise.resolve();
     }
     if (context.documentReadCount < this.indexAutoCreationMinCollectionSize) {
       if (getLogLevel() <= LogLevel.DEBUG) {
-        logDebug("QueryEngine", "SDK will not create cache indexes for query:", stringifyQuery(query), "since it only creates cache indexes for collection contains", "more than or equal to", this.indexAutoCreationMinCollectionSize, "documents");
+        logDebug("QueryEngine", "SDK will not create cache indexes for query:", stringifyQuery(query2), "since it only creates cache indexes for collection contains", "more than or equal to", this.indexAutoCreationMinCollectionSize, "documents");
       }
       return PersistencePromise.resolve();
     }
     if (getLogLevel() <= LogLevel.DEBUG) {
-      logDebug("QueryEngine", "Query:", stringifyQuery(query), "scans", context.documentReadCount, "local documents and returns", resultSize, "documents as results.");
+      logDebug("QueryEngine", "Query:", stringifyQuery(query2), "scans", context.documentReadCount, "local documents and returns", resultSize, "documents as results.");
     }
     if (context.documentReadCount > this.relativeIndexReadCostPerDocument * resultSize) {
       if (getLogLevel() <= LogLevel.DEBUG) {
-        logDebug("QueryEngine", "The SDK decides to create cache indexes for query:", stringifyQuery(query), "as using cache indexes may help improve performance.");
+        logDebug("QueryEngine", "The SDK decides to create cache indexes for query:", stringifyQuery(query2), "as using cache indexes may help improve performance.");
       }
-      return this.indexManager.createTargetIndexes(transaction, queryToTarget(query));
+      return this.indexManager.createTargetIndexes(transaction, queryToTarget(query2));
     }
     return PersistencePromise.resolve();
   }
@@ -51152,38 +51174,38 @@ var QueryEngine = class {
     if (isPipeline(queryOrPipeline)) {
       return PersistencePromise.resolve(null);
     }
-    let query = queryOrPipeline;
-    if (queryMatchesAllDocuments(query)) {
+    let query2 = queryOrPipeline;
+    if (queryMatchesAllDocuments(query2)) {
       return PersistencePromise.resolve(null);
     }
-    let target = queryToTarget(query);
+    let target = queryToTarget(query2);
     return this.indexManager.getIndexType(transaction, target).next((indexType) => {
       if (indexType === 0) {
         return null;
       }
-      if (query.limit !== null && indexType === 1) {
-        query = queryWithLimit(
-          query,
+      if (query2.limit !== null && indexType === 1) {
+        query2 = queryWithLimit(
+          query2,
           null,
           "F"
           /* LimitType.First */
         );
-        target = queryToTarget(query);
+        target = queryToTarget(query2);
       }
       return this.indexManager.getDocumentsMatchingTarget(transaction, target).next((keys) => {
         const sortedKeys = documentKeySet(...keys);
         return this.localDocumentsView.getDocuments(transaction, sortedKeys).next((indexedDocuments) => {
           return this.indexManager.getMinOffset(transaction, target).next((offset) => {
-            const previousResults = this.applyQuery(query, indexedDocuments);
-            if (this.needsRefill(query, previousResults, sortedKeys, offset.readTime)) {
+            const previousResults = this.applyQuery(query2, indexedDocuments);
+            if (this.needsRefill(query2, previousResults, sortedKeys, offset.readTime)) {
               return this.performQueryUsingIndex(transaction, queryWithLimit(
-                query,
+                query2,
                 null,
                 "F"
                 /* LimitType.First */
               ));
             }
-            return this.appendRemainingResults(transaction, previousResults, query, offset);
+            return this.appendRemainingResults(transaction, previousResults, query2, offset);
           });
         });
       });
@@ -51193,34 +51215,34 @@ var QueryEngine = class {
    * Performs a query based on the target's persisted query mapping. Returns
    * `null` if the mapping is not available or cannot be used.
    */
-  performQueryUsingRemoteKeys(transaction, query, remoteKeys, lastLimboFreeSnapshotVersion) {
-    if (isPipeline(query) ? pipelineMatchesAllDocuments(query) : queryMatchesAllDocuments(query)) {
+  performQueryUsingRemoteKeys(transaction, query2, remoteKeys, lastLimboFreeSnapshotVersion) {
+    if (isPipeline(query2) ? pipelineMatchesAllDocuments(query2) : queryMatchesAllDocuments(query2)) {
       return PersistencePromise.resolve(null);
     }
     if (lastLimboFreeSnapshotVersion.isEqual(SnapshotVersion.min())) {
       return PersistencePromise.resolve(null);
     }
     return this.localDocumentsView.getDocuments(transaction, remoteKeys).next((documents) => {
-      const previousResults = this.applyQuery(query, documents);
-      if (this.needsRefill(query, previousResults, remoteKeys, lastLimboFreeSnapshotVersion)) {
+      const previousResults = this.applyQuery(query2, documents);
+      if (this.needsRefill(query2, previousResults, remoteKeys, lastLimboFreeSnapshotVersion)) {
         return PersistencePromise.resolve(null);
       }
       if (getLogLevel() <= LogLevel.DEBUG) {
-        logDebug("QueryEngine", "Re-using previous result from %s to execute query: %s", lastLimboFreeSnapshotVersion.toString(), stringifyQueryOrPipeline(query));
+        logDebug("QueryEngine", "Re-using previous result from %s to execute query: %s", lastLimboFreeSnapshotVersion.toString(), stringifyQueryOrPipeline(query2));
       }
-      return this.appendRemainingResults(transaction, previousResults, query, newIndexOffsetSuccessorFromReadTime(lastLimboFreeSnapshotVersion, INITIAL_LARGEST_BATCH_ID)).next((results) => results);
+      return this.appendRemainingResults(transaction, previousResults, query2, newIndexOffsetSuccessorFromReadTime(lastLimboFreeSnapshotVersion, INITIAL_LARGEST_BATCH_ID)).next((results) => results);
     });
   }
   /** Applies the query filter and sorting to the provided documents.  */
-  applyQuery(query, documents) {
+  applyQuery(query2, documents) {
     let queryResults;
     let matcher;
-    if (isPipeline(query)) {
+    if (isPipeline(query2)) {
       queryResults = new SortedSet(compareByKey);
-      matcher = (doc3) => pipelineMatches(query, doc3);
+      matcher = (doc3) => pipelineMatches(query2, doc3);
     } else {
-      queryResults = new SortedSet(newQueryComparator(query));
-      matcher = (doc3) => queryMatches(query, doc3);
+      queryResults = new SortedSet(newQueryComparator(query2));
+      matcher = (doc3) => queryMatches(query2, doc3);
     }
     documents.forEach((_, maybeDoc) => {
       if (matcher(maybeDoc)) {
@@ -51241,34 +51263,34 @@ var QueryEngine = class {
    * @param limboFreeSnapshotVersion - The version of the snapshot when the
    * query was last synchronized.
    */
-  needsRefill(query, sortedPreviousResults, remoteKeys, limboFreeSnapshotVersion) {
-    if (isPipeline(query)) {
-      return pipelineHasRanges(query);
+  needsRefill(query2, sortedPreviousResults, remoteKeys, limboFreeSnapshotVersion) {
+    if (isPipeline(query2)) {
+      return pipelineHasRanges(query2);
     }
-    if (query.limit === null) {
+    if (query2.limit === null) {
       return false;
     }
     if (remoteKeys.size !== sortedPreviousResults.size) {
       return true;
     }
-    const docAtLimitEdge = query.limitType === "F" ? sortedPreviousResults.last() : sortedPreviousResults.first();
+    const docAtLimitEdge = query2.limitType === "F" ? sortedPreviousResults.last() : sortedPreviousResults.first();
     if (!docAtLimitEdge) {
       return false;
     }
     return docAtLimitEdge.hasPendingWrites || docAtLimitEdge.version.compareTo(limboFreeSnapshotVersion) > 0;
   }
-  executeFullCollectionScan(transaction, query, context) {
+  executeFullCollectionScan(transaction, query2, context) {
     if (getLogLevel() <= LogLevel.DEBUG) {
-      logDebug("QueryEngine", "Using full collection scan to execute query:", stringifyQueryOrPipeline(query));
+      logDebug("QueryEngine", "Using full collection scan to execute query:", stringifyQueryOrPipeline(query2));
     }
-    return this.localDocumentsView.getDocumentsMatchingQuery(transaction, query, IndexOffset.min(), context);
+    return this.localDocumentsView.getDocumentsMatchingQuery(transaction, query2, IndexOffset.min(), context);
   }
   /**
    * Combines the results from an indexed execution with the remaining documents
    * that have not yet been indexed.
    */
-  appendRemainingResults(transaction, indexedResults, query, offset) {
-    return this.localDocumentsView.getDocumentsMatchingQuery(transaction, query, offset).next((remainingResults) => {
+  appendRemainingResults(transaction, indexedResults, query2, offset) {
+    return this.localDocumentsView.getDocumentsMatchingQuery(transaction, query2, offset).next((remainingResults) => {
       indexedResults.forEach((d) => {
         remainingResults = remainingResults.insert(d.key, d);
       });
@@ -51506,8 +51528,8 @@ var DocumentChangeSet = class {
   }
 };
 var ViewSnapshot = class _ViewSnapshot {
-  constructor(query, docs, oldDocs, docChanges, mutatedKeys, fromCache, syncStateChanged, excludesMetadataChanges, hasCachedResults) {
-    this.query = query;
+  constructor(query2, docs, oldDocs, docChanges, mutatedKeys, fromCache, syncStateChanged, excludesMetadataChanges, hasCachedResults) {
+    this.query = query2;
     this.docs = docs;
     this.oldDocs = oldDocs;
     this.docChanges = docChanges;
@@ -51518,13 +51540,13 @@ var ViewSnapshot = class _ViewSnapshot {
     this.hasCachedResults = hasCachedResults;
   }
   /** Returns a view snapshot as if all documents in the snapshot were added. */
-  static fromInitialDocuments(query, documents, mutatedKeys, fromCache, hasCachedResults) {
+  static fromInitialDocuments(query2, documents, mutatedKeys, fromCache, hasCachedResults) {
     const changes = [];
     documents.forEach((doc3) => {
       changes.push({ type: 0, doc: doc3 });
     });
     return new _ViewSnapshot(
-      query,
+      query2,
       documents,
       DocumentSet.emptySet(documents),
       changes,
@@ -51586,8 +51608,8 @@ function newQueriesObjectMap() {
 async function eventManagerListen(eventManager, listener) {
   const eventManagerImpl = debugCast(eventManager);
   let listenerAction = 3;
-  const query = listener.query;
-  let queryInfo = eventManagerImpl.queries.get(query);
+  const query2 = listener.query;
+  let queryInfo = eventManagerImpl.queries.get(query2);
   if (!queryInfo) {
     queryInfo = new QueryListenersInfo();
     listenerAction = listener.listensToRemoteStore() ? 0 : 1;
@@ -51598,20 +51620,20 @@ async function eventManagerListen(eventManager, listener) {
     switch (listenerAction) {
       case 0:
         queryInfo.viewSnap = await eventManagerImpl.onListen(
-          query,
+          query2,
           /** enableRemoteListen= */
           true
         );
         break;
       case 1:
         queryInfo.viewSnap = await eventManagerImpl.onListen(
-          query,
+          query2,
           /** enableRemoteListen= */
           false
         );
         break;
       case 2:
-        await eventManagerImpl.onFirstRemoteStoreListen(query);
+        await eventManagerImpl.onFirstRemoteStoreListen(query2);
         break;
       default:
         break;
@@ -51621,7 +51643,7 @@ async function eventManagerListen(eventManager, listener) {
     listener.onError(firestoreError);
     return;
   }
-  eventManagerImpl.queries.set(query, queryInfo);
+  eventManagerImpl.queries.set(query2, queryInfo);
   queryInfo.listeners.push(listener);
   listener.applyOnlineStateChange(eventManagerImpl.onlineState);
   if (queryInfo.viewSnap) {
@@ -51633,9 +51655,9 @@ async function eventManagerListen(eventManager, listener) {
 }
 async function eventManagerUnlisten(eventManager, listener) {
   const eventManagerImpl = debugCast(eventManager);
-  const query = listener.query;
+  const query2 = listener.query;
   let listenerAction = 3;
-  const queryInfo = eventManagerImpl.queries.get(query);
+  const queryInfo = eventManagerImpl.queries.get(query2);
   if (queryInfo) {
     const i = queryInfo.listeners.indexOf(listener);
     if (i >= 0) {
@@ -51649,21 +51671,21 @@ async function eventManagerUnlisten(eventManager, listener) {
   }
   switch (listenerAction) {
     case 0:
-      eventManagerImpl.queries.delete(query);
+      eventManagerImpl.queries.delete(query2);
       return eventManagerImpl.onUnlisten(
-        query,
+        query2,
         /** disableRemoteListen= */
         true
       );
     case 1:
-      eventManagerImpl.queries.delete(query);
+      eventManagerImpl.queries.delete(query2);
       return eventManagerImpl.onUnlisten(
-        query,
+        query2,
         /** disableRemoteListen= */
         false
       );
     case 2:
-      return eventManagerImpl.onLastRemoteStoreUnlisten(query);
+      return eventManagerImpl.onLastRemoteStoreUnlisten(query2);
     default:
       return;
   }
@@ -51672,8 +51694,8 @@ function eventManagerOnWatchChange(eventManager, viewSnaps) {
   const eventManagerImpl = debugCast(eventManager);
   let raisedEvent = false;
   for (const viewSnap of viewSnaps) {
-    const query = viewSnap.query;
-    const queryInfo = eventManagerImpl.queries.get(query);
+    const query2 = viewSnap.query;
+    const queryInfo = eventManagerImpl.queries.get(query2);
     if (queryInfo) {
       for (const listener of queryInfo.listeners) {
         if (listener.onViewSnapshot(viewSnap)) {
@@ -51687,15 +51709,15 @@ function eventManagerOnWatchChange(eventManager, viewSnaps) {
     raiseSnapshotsInSyncEvent(eventManagerImpl);
   }
 }
-function eventManagerOnWatchError(eventManager, query, error) {
+function eventManagerOnWatchError(eventManager, query2, error) {
   const eventManagerImpl = debugCast(eventManager);
-  const queryInfo = eventManagerImpl.queries.get(query);
+  const queryInfo = eventManagerImpl.queries.get(query2);
   if (queryInfo) {
     for (const listener of queryInfo.listeners) {
       listener.onError(error);
     }
   }
-  eventManagerImpl.queries.delete(query);
+  eventManagerImpl.queries.delete(query2);
 }
 function eventManagerOnOnlineStateChange(eventManager, onlineState) {
   const eventManagerImpl = debugCast(eventManager);
@@ -51733,8 +51755,8 @@ var ListenerDataSource;
   ListenerDataSource2["Cache"] = "cache";
 })(ListenerDataSource || (ListenerDataSource = {}));
 var QueryListener = class {
-  constructor(query, queryObserver, options2) {
-    this.query = query;
+  constructor(query2, queryObserver, options2) {
+    this.query = query2;
     this.queryObserver = queryObserver;
     this.raisedInitialEvent = false;
     this.snap = null;
@@ -51860,15 +51882,15 @@ var RemovedLimboDocument = class {
   }
 };
 var View = class {
-  constructor(query, _syncedDocuments) {
-    this.query = query;
+  constructor(query2, _syncedDocuments) {
+    this.query = query2;
     this._syncedDocuments = _syncedDocuments;
     this.syncState = null;
     this.hasCachedResults = false;
     this.current = false;
     this.limboDocuments = documentKeySet();
     this.mutatedKeys = documentKeySet();
-    this.docComparator = isPipeline(query) ? newPipelineComparator(query) : newQueryComparator(query);
+    this.docComparator = isPipeline(query2) ? newPipelineComparator(query2) : newQueryComparator(query2);
     this.documentSet = new DocumentSet(this.docComparator);
   }
   /**
@@ -51944,8 +51966,8 @@ var View = class {
         }
       }
     });
-    const limit = this.getLimit(this.query);
-    if (limit) {
+    const limit2 = this.getLimit(this.query);
+    if (limit2) {
       if (isPipeline(this.query)) {
         const candidates = [];
         newDocumentSet.forEach((doc3) => candidates.push(doc3));
@@ -51963,7 +51985,7 @@ var View = class {
         newDocumentSet = newResults;
       } else {
         const limitType = this.getLimitType(this.query);
-        while (newDocumentSet.size > limit) {
+        while (newDocumentSet.size > limit2) {
           const oldDoc = limitType === "F" ? newDocumentSet.last() : newDocumentSet.first();
           newDocumentSet = newDocumentSet.delete(oldDoc.key);
           newMutatedKeys = newMutatedKeys.delete(oldDoc.key);
@@ -51978,26 +52000,26 @@ var View = class {
       mutatedKeys: newMutatedKeys
     };
   }
-  getLimit(query) {
-    return isPipeline(query) ? getLastEffectiveLimit(query)?.limit : query.limit || void 0;
+  getLimit(query2) {
+    return isPipeline(query2) ? getLastEffectiveLimit(query2)?.limit : query2.limit || void 0;
   }
-  getLimitType(query) {
-    if (isPipeline(query)) {
-      const effectiveLimit = getLastEffectiveLimit(query);
+  getLimitType(query2) {
+    if (isPipeline(query2)) {
+      const effectiveLimit = getLastEffectiveLimit(query2);
       return effectiveLimit && effectiveLimit.limit < 0 ? "L" : "F";
     }
-    return query.limitType;
+    return query2.limitType;
   }
-  getLimitEdges(query, oldDocumentSet) {
-    if (isPipeline(query)) {
-      const limit = getLastEffectiveLimit(query)?.limit;
+  getLimitEdges(query2, oldDocumentSet) {
+    if (isPipeline(query2)) {
+      const limit2 = getLastEffectiveLimit(query2)?.limit;
       return [
-        oldDocumentSet.size === limit ? oldDocumentSet.last() : null,
+        oldDocumentSet.size === limit2 ? oldDocumentSet.last() : null,
         null
       ];
     } else {
-      const lastDocInLimit = query.limitType === "F" && oldDocumentSet.size === this.getLimit(this.query) ? oldDocumentSet.last() : null;
-      const firstDocInLimit = query.limitType === "L" && oldDocumentSet.size === this.getLimit(this.query) ? oldDocumentSet.first() : null;
+      const lastDocInLimit = query2.limitType === "F" && oldDocumentSet.size === this.getLimit(this.query) ? oldDocumentSet.last() : null;
+      const firstDocInLimit = query2.limitType === "L" && oldDocumentSet.size === this.getLimit(this.query) ? oldDocumentSet.first() : null;
       return [lastDocInLimit, firstDocInLimit];
     }
   }
@@ -52186,8 +52208,8 @@ function compareChangeType(c1, c2) {
 }
 var LOG_TAG$2 = "SyncEngine";
 var QueryView = class {
-  constructor(query, targetId, view) {
-    this.query = query;
+  constructor(query2, targetId, view) {
+    this.query = query2;
     this.targetId = targetId;
     this.view = view;
   }
@@ -52230,17 +52252,17 @@ function newSyncEngine(localStore, remoteStore, eventManager, sharedClientState,
   }
   return syncEngine;
 }
-async function syncEngineListen(syncEngine, query, shouldListenToRemote = true) {
+async function syncEngineListen(syncEngine, query2, shouldListenToRemote = true) {
   const syncEngineImpl = ensureWatchCallbacks(syncEngine);
   let viewSnapshot;
-  const queryView = syncEngineImpl.queryViewsByQuery.get(query);
+  const queryView = syncEngineImpl.queryViewsByQuery.get(query2);
   if (queryView) {
     syncEngineImpl.sharedClientState.addLocalQueryTarget(queryView.targetId);
     viewSnapshot = queryView.view.computeInitialSnapshot();
   } else {
     viewSnapshot = await allocateTargetAndMaybeListen(
       syncEngineImpl,
-      query,
+      query2,
       shouldListenToRemote,
       /** shouldInitializeView= */
       true
@@ -52248,19 +52270,19 @@ async function syncEngineListen(syncEngine, query, shouldListenToRemote = true) 
   }
   return viewSnapshot;
 }
-async function triggerRemoteStoreListen(syncEngine, query) {
+async function triggerRemoteStoreListen(syncEngine, query2) {
   const syncEngineImpl = ensureWatchCallbacks(syncEngine);
   await allocateTargetAndMaybeListen(
     syncEngineImpl,
-    query,
+    query2,
     /** shouldListenToRemote= */
     true,
     /** shouldInitializeView= */
     false
   );
 }
-async function allocateTargetAndMaybeListen(syncEngineImpl, query, shouldListenToRemote, shouldInitializeView) {
-  const targetData = await localStoreAllocateTarget(syncEngineImpl.localStore, isPipeline(query) ? query : queryToTarget(query));
+async function allocateTargetAndMaybeListen(syncEngineImpl, query2, shouldListenToRemote, shouldInitializeView) {
+  const targetData = await localStoreAllocateTarget(syncEngineImpl.localStore, isPipeline(query2) ? query2 : queryToTarget(query2));
   const targetId = targetData.targetId;
   const status = syncEngineImpl.sharedClientState.addLocalQueryTarget(
     targetId,
@@ -52269,22 +52291,22 @@ async function allocateTargetAndMaybeListen(syncEngineImpl, query, shouldListenT
   );
   let viewSnapshot;
   if (shouldInitializeView) {
-    viewSnapshot = await initializeViewAndComputeSnapshot(syncEngineImpl, query, targetId, status === "current", targetData.resumeToken);
+    viewSnapshot = await initializeViewAndComputeSnapshot(syncEngineImpl, query2, targetId, status === "current", targetData.resumeToken);
   }
   if (syncEngineImpl.isPrimaryClient && shouldListenToRemote) {
     remoteStoreListen(syncEngineImpl.remoteStore, targetData);
   }
   return viewSnapshot;
 }
-async function initializeViewAndComputeSnapshot(syncEngineImpl, query, targetId, current, resumeToken) {
+async function initializeViewAndComputeSnapshot(syncEngineImpl, query2, targetId, current, resumeToken) {
   syncEngineImpl.applyDocChanges = (queryView, changes, remoteEvent) => applyDocChanges(syncEngineImpl, queryView, changes, remoteEvent);
   const queryResult = await localStoreExecuteQuery(
     syncEngineImpl.localStore,
-    query,
+    query2,
     /* usePreviousResults= */
     true
   );
-  const view = new View(query, queryResult.remoteKeys);
+  const view = new View(query2, queryResult.remoteKeys);
   const viewDocChanges = view.computeDocChanges(queryResult.documents);
   const synthesizedTargetChange = TargetChange.createSynthesizedTargetChangeForCurrentChange(targetId, current && syncEngineImpl.onlineState !== "Offline", resumeToken);
   const viewChange = view.applyChanges(
@@ -52294,22 +52316,22 @@ async function initializeViewAndComputeSnapshot(syncEngineImpl, query, targetId,
     synthesizedTargetChange
   );
   updateTrackedLimbos(syncEngineImpl, targetId, viewChange.limboChanges);
-  const data = new QueryView(query, targetId, view);
-  syncEngineImpl.queryViewsByQuery.set(query, data);
+  const data = new QueryView(query2, targetId, view);
+  syncEngineImpl.queryViewsByQuery.set(query2, data);
   if (syncEngineImpl.queriesByTarget.has(targetId)) {
-    syncEngineImpl.queriesByTarget.get(targetId).push(query);
+    syncEngineImpl.queriesByTarget.get(targetId).push(query2);
   } else {
-    syncEngineImpl.queriesByTarget.set(targetId, [query]);
+    syncEngineImpl.queriesByTarget.set(targetId, [query2]);
   }
   return viewChange.snapshot;
 }
-async function syncEngineUnlisten(syncEngine, query, shouldUnlistenToRemote) {
+async function syncEngineUnlisten(syncEngine, query2, shouldUnlistenToRemote) {
   const syncEngineImpl = debugCast(syncEngine);
-  const queryView = syncEngineImpl.queryViewsByQuery.get(query);
+  const queryView = syncEngineImpl.queryViewsByQuery.get(query2);
   const queries = syncEngineImpl.queriesByTarget.get(queryView.targetId);
   if (queries.length > 1) {
-    syncEngineImpl.queriesByTarget.set(queryView.targetId, queries.filter((q) => !queryOrPipelineEqual(q, query)));
-    syncEngineImpl.queryViewsByQuery.delete(query);
+    syncEngineImpl.queriesByTarget.set(queryView.targetId, queries.filter((q) => !queryOrPipelineEqual(q, query2)));
+    syncEngineImpl.queryViewsByQuery.delete(query2);
     return;
   }
   if (syncEngineImpl.isPrimaryClient) {
@@ -52339,9 +52361,9 @@ async function syncEngineUnlisten(syncEngine, query, shouldUnlistenToRemote) {
     );
   }
 }
-async function triggerRemoteStoreUnlisten(syncEngine, query) {
+async function triggerRemoteStoreUnlisten(syncEngine, query2) {
   const syncEngineImpl = debugCast(syncEngine);
-  const queryView = syncEngineImpl.queryViewsByQuery.get(query);
+  const queryView = syncEngineImpl.queryViewsByQuery.get(query2);
   const queries = syncEngineImpl.queriesByTarget.get(queryView.targetId);
   if (syncEngineImpl.isPrimaryClient && queries.length === 1) {
     syncEngineImpl.sharedClientState.removeLocalQueryTarget(queryView.targetId);
@@ -52389,7 +52411,7 @@ function syncEngineApplyOnlineStateChange(syncEngine, onlineState, source) {
   const syncEngineImpl = debugCast(syncEngine);
   if (syncEngineImpl.isPrimaryClient && source === 0 || !syncEngineImpl.isPrimaryClient && source === 1) {
     const newViewSnapshots = [];
-    syncEngineImpl.queryViewsByQuery.forEach((query, queryView) => {
+    syncEngineImpl.queryViewsByQuery.forEach((query2, queryView) => {
       const viewChange = queryView.view.applyOnlineStateChange(onlineState);
       if (viewChange.snapshot) {
         newViewSnapshots.push(viewChange.snapshot);
@@ -52507,10 +52529,10 @@ function processUserCallback(syncEngine, batchId, error) {
 }
 function removeAndCleanupTarget(syncEngineImpl, targetId, error = null) {
   syncEngineImpl.sharedClientState.removeLocalQueryTarget(targetId);
-  for (const query of syncEngineImpl.queriesByTarget.get(targetId)) {
-    syncEngineImpl.queryViewsByQuery.delete(query);
+  for (const query2 of syncEngineImpl.queriesByTarget.get(targetId)) {
+    syncEngineImpl.queryViewsByQuery.delete(query2);
     if (error) {
-      syncEngineImpl.syncEngineListener.onWatchError(query, error);
+      syncEngineImpl.syncEngineListener.onWatchError(query2, error);
     }
   }
   syncEngineImpl.queriesByTarget.delete(targetId);
@@ -52646,8 +52668,8 @@ function syncEngineGetRemoteKeysForTarget(syncEngine, targetId) {
     if (!queries) {
       return keySet;
     }
-    for (const query of queries ?? []) {
-      const queryView = syncEngineImpl.queryViewsByQuery.get(query);
+    for (const query2 of queries ?? []) {
+      const queryView = syncEngineImpl.queryViewsByQuery.get(query2);
       keySet = keySet.unionWith(queryView.view.syncedDocuments);
     }
     return keySet;
@@ -52931,11 +52953,11 @@ function firestoreClientGetDocumentViaSnapshotListener(client, key, options2 = {
   });
   return deferred.promise;
 }
-function firestoreClientGetDocumentsViaSnapshotListener(client, query, options2 = {}) {
+function firestoreClientGetDocumentsViaSnapshotListener(client, query2, options2 = {}) {
   const deferred = new Deferred2();
   client.asyncQueue.enqueueAndForget(async () => {
     const eventManager = await getEventManager(client);
-    return executeQueryViaSnapshotListener(eventManager, client.asyncQueue, query, options2, deferred);
+    return executeQueryViaSnapshotListener(eventManager, client.asyncQueue, query2, options2, deferred);
   });
   return deferred.promise;
 }
@@ -52969,7 +52991,7 @@ function readDocumentViaSnapshotListener(eventManager, asyncQueue, key, options2
   });
   return eventManagerListen(eventManager, listener);
 }
-function executeQueryViaSnapshotListener(eventManager, asyncQueue, query, options2, result) {
+function executeQueryViaSnapshotListener(eventManager, asyncQueue, query2, options2, result) {
   const wrappedObserver = new AsyncObserver({
     next: (snapshot) => {
       wrappedObserver.mute();
@@ -52982,10 +53004,10 @@ function executeQueryViaSnapshotListener(eventManager, asyncQueue, query, option
     },
     error: (e) => result.reject(e)
   });
-  const listener = query instanceof RealtimePipeline ? new QueryListener(toCorePipeline(query), wrappedObserver, {
+  const listener = query2 instanceof RealtimePipeline ? new QueryListener(toCorePipeline(query2), wrappedObserver, {
     includeMetadataChanges: true,
     waitForSyncWhenOnline: true
-  }) : new QueryListener(query, wrappedObserver, {
+  }) : new QueryListener(query2, wrappedObserver, {
     includeMetadataChanges: true,
     waitForSyncWhenOnline: true
   });
@@ -53519,9 +53541,243 @@ var QueryDocumentSnapshot$1 = class QueryDocumentSnapshot extends DocumentSnapsh
     return super.data();
   }
 };
-function validateHasExplicitOrderByForLimitToLast(query) {
-  if (query.limitType === "L" && query.explicitOrderBy.length === 0) {
+function validateHasExplicitOrderByForLimitToLast(query2) {
+  if (query2.limitType === "L" && query2.explicitOrderBy.length === 0) {
     throw new FirestoreError(Code.UNIMPLEMENTED, "limitToLast() queries require specifying at least one orderBy() clause");
+  }
+}
+var AppliableConstraint = class {
+};
+var QueryConstraint = class extends AppliableConstraint {
+};
+function query(query2, queryConstraint, ...additionalQueryConstraints) {
+  let queryConstraints = [];
+  if (queryConstraint instanceof AppliableConstraint) {
+    queryConstraints.push(queryConstraint);
+  }
+  queryConstraints = queryConstraints.concat(additionalQueryConstraints);
+  validateQueryConstraintArray(queryConstraints);
+  for (const constraint of queryConstraints) {
+    query2 = constraint._apply(query2);
+  }
+  return query2;
+}
+var QueryFieldFilterConstraint = class _QueryFieldFilterConstraint extends QueryConstraint {
+  /**
+   * @internal
+   */
+  constructor(_field2, _op, _value) {
+    super();
+    this._field = _field2;
+    this._op = _op;
+    this._value = _value;
+    this.type = "where";
+  }
+  static _create(_field2, _op, _value) {
+    return new _QueryFieldFilterConstraint(_field2, _op, _value);
+  }
+  _apply(query2) {
+    const filter = this._parse(query2);
+    validateNewFieldFilter(query2._query, filter);
+    return new Query(query2.firestore, query2.converter, queryWithAddedFilter(query2._query, filter));
+  }
+  _parse(query2) {
+    const reader = newUserDataReader(query2.firestore);
+    const filter = newQueryFilter(query2._query, "where", reader, query2.firestore._databaseId, this._field, this._op, this._value);
+    return filter;
+  }
+};
+function where(fieldPath, opStr, value) {
+  const op = opStr;
+  const field2 = fieldPathFromArgument("where", fieldPath);
+  return QueryFieldFilterConstraint._create(field2, op, value);
+}
+var QueryCompositeFilterConstraint = class _QueryCompositeFilterConstraint extends AppliableConstraint {
+  /**
+   * @internal
+   */
+  constructor(type, _queryConstraints) {
+    super();
+    this.type = type;
+    this._queryConstraints = _queryConstraints;
+  }
+  static _create(type, _queryConstraints) {
+    return new _QueryCompositeFilterConstraint(type, _queryConstraints);
+  }
+  _parse(query2) {
+    const parsedFilters = this._queryConstraints.map((queryConstraint) => {
+      return queryConstraint._parse(query2);
+    }).filter((parsedFilter) => parsedFilter.getFilters().length > 0);
+    if (parsedFilters.length === 1) {
+      return parsedFilters[0];
+    }
+    return CompositeFilter.create(parsedFilters, this._getOperator());
+  }
+  _apply(query2) {
+    const parsedFilter = this._parse(query2);
+    if (parsedFilter.getFilters().length === 0) {
+      return query2;
+    }
+    validateNewFilter(query2._query, parsedFilter);
+    return new Query(query2.firestore, query2.converter, queryWithAddedFilter(query2._query, parsedFilter));
+  }
+  _getQueryConstraints() {
+    return this._queryConstraints;
+  }
+  _getOperator() {
+    return this.type === "and" ? "and" : "or";
+  }
+};
+var QueryLimitConstraint = class _QueryLimitConstraint extends QueryConstraint {
+  /**
+   * @internal
+   */
+  constructor(type, _limit, _limitType) {
+    super();
+    this.type = type;
+    this._limit = _limit;
+    this._limitType = _limitType;
+  }
+  static _create(type, _limit, _limitType) {
+    return new _QueryLimitConstraint(type, _limit, _limitType);
+  }
+  _apply(query2) {
+    return new Query(query2.firestore, query2.converter, queryWithLimit(query2._query, this._limit, this._limitType));
+  }
+};
+function limit(limit2) {
+  validatePositiveNumber("limit", limit2);
+  return QueryLimitConstraint._create(
+    "limit",
+    limit2,
+    "F"
+    /* LimitType.First */
+  );
+}
+function newQueryFilter(query2, methodName, dataReader, databaseId, fieldPath, op, value) {
+  let fieldValue;
+  validateQueryOperator(value, op);
+  if (fieldPath.isKeyField()) {
+    if (op === "array-contains" || op === "array-contains-any") {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid Query. You can't perform '${op}' queries on documentId().`);
+    } else if (op === "in" || op === "not-in") {
+      validateDisjunctiveFilterElements(value, op);
+      const referenceList = [];
+      for (const arrayValue of value) {
+        referenceList.push(parseDocumentIdValue(databaseId, query2, arrayValue));
+      }
+      fieldValue = { arrayValue: { values: referenceList } };
+    } else {
+      fieldValue = parseDocumentIdValue(databaseId, query2, value);
+    }
+  } else {
+    if (op === "in" || op === "not-in" || op === "array-contains-any") {
+      validateDisjunctiveFilterElements(value, op);
+    }
+    fieldValue = parseQueryValue(
+      dataReader,
+      methodName,
+      value,
+      /* allowArrays= */
+      op === "in" || op === "not-in"
+      /* Operator.NOT_IN */
+    );
+  }
+  const filter = FieldFilter.create(fieldPath, op, fieldValue);
+  return filter;
+}
+function parseDocumentIdValue(databaseId, query2, documentIdValue) {
+  documentIdValue = getModularInstance(documentIdValue);
+  if (typeof documentIdValue === "string") {
+    if (documentIdValue === "") {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, "Invalid query. When querying with documentId(), you must provide a valid document ID, but it was an empty string.");
+    }
+    if (!isCollectionGroupQuery(query2) && documentIdValue.indexOf("/") !== -1) {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid query. When querying a collection by documentId(), you must provide a plain document ID, but '${documentIdValue}' contains a '/' character.`);
+    }
+    const path3 = query2.path.child(ResourcePath.fromString(documentIdValue));
+    if (!DocumentKey.isDocumentKey(path3)) {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid query. When querying a collection group by documentId(), the value provided must result in a valid document path, but '${path3}' is not because it has an odd number of segments (${path3.length}).`);
+    }
+    return refValue(databaseId, new DocumentKey(path3));
+  } else if (documentIdValue instanceof DocumentReference) {
+    return refValue(databaseId, documentIdValue._key);
+  } else {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid query. When querying with documentId(), you must provide a valid string or a DocumentReference, but it was: ${valueDescription(documentIdValue)}.`);
+  }
+}
+function validateDisjunctiveFilterElements(value, operator) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid Query. A non-empty array is required for '${operator.toString()}' filters.`);
+  }
+}
+function validateQueryOperator(value, operator) {
+  if (typeof value === "number" && isNaN(value) && operator !== "==" && operator !== "!=" && operator !== "array-contains") {
+    throw new Error("Invalid query. You can only perform '==' and '!=' comparisons on NaN.");
+  }
+  if (value === null && operator !== "==" && operator !== "!=" && operator !== "array-contains") {
+    throw new Error("Invalid query. You can only perform '==' and '!=' comparisons on Null.");
+  }
+}
+function conflictingOps(op) {
+  switch (op) {
+    case "!=":
+      return [
+        "!=",
+        "not-in"
+        /* Operator.NOT_IN */
+      ];
+    case "array-contains-any":
+    case "in":
+      return [
+        "not-in"
+        /* Operator.NOT_IN */
+      ];
+    case "not-in":
+      return [
+        "array-contains-any",
+        "in",
+        "not-in",
+        "!="
+        /* Operator.NOT_EQUAL */
+      ];
+    default:
+      return [];
+  }
+}
+function validateNewFieldFilter(query2, fieldFilter) {
+  const conflictingOp = findOpInsideFilters(query2.filters, conflictingOps(fieldFilter.op));
+  if (conflictingOp !== null) {
+    if (conflictingOp === fieldFilter.op) {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid query. You cannot use more than one '${fieldFilter.op.toString()}' filter.`);
+    } else {
+      throw new FirestoreError(Code.INVALID_ARGUMENT, `Invalid query. You cannot use '${fieldFilter.op.toString()}' filters with '${conflictingOp.toString()}' filters.`);
+    }
+  }
+}
+function validateNewFilter(query2, filter) {
+  let testQuery = query2;
+  const subFilters = filter.getFlattenedFilters();
+  for (const subFilter of subFilters) {
+    validateNewFieldFilter(testQuery, subFilter);
+    testQuery = queryWithAddedFilter(testQuery, subFilter);
+  }
+}
+function findOpInsideFilters(filters, operators) {
+  for (const filter of filters) {
+    for (const fieldFilter of filter.getFlattenedFilters()) {
+      if (operators.indexOf(fieldFilter.op) >= 0) {
+        return fieldFilter.op;
+      }
+    }
+  }
+  return null;
+}
+function validateQueryConstraintArray(queryConstraint) {
+  const compositeFilterCount = queryConstraint.filter((filter) => filter instanceof QueryCompositeFilterConstraint).length;
+  const fieldFilterCount = queryConstraint.filter((filter) => filter instanceof QueryFieldFilterConstraint).length;
+  if (compositeFilterCount > 1 || compositeFilterCount > 0 && fieldFilterCount > 0) {
+    throw new FirestoreError(Code.INVALID_ARGUMENT, "InvalidQuery. When using composite filters, you cannot use more than one filter at the top level. Consider nesting the multiple filters within an `and(...)` statement. For example: change `query(query, where(...), or(...))` to `query(query, and(where(...), or(...)))`.");
   }
 }
 function applyFirestoreDataConverter(converter, value, options2) {
@@ -53770,19 +54026,19 @@ var BundleBuilder = class {
     return bundleString;
   }
 };
-function buildDocumentSnapshotJsonBundle(db, document2, docData, path4) {
+function buildDocumentSnapshotJsonBundle(db, document2, docData, path3) {
   const builder = new BundleBuilder(db, AutoId.newId());
-  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path4, docData, document2));
+  builder.addBundleDocument(documentToDocumentSnapshotBundleData(path3, docData, document2));
   return builder.build();
 }
-function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, docs, documentData) {
+function buildQuerySnapshotJsonBundle(db, query2, bundleName, parent2, paths, docs, documentData) {
   const docBundleDataArray = [];
   for (let i = 0; i < docs.length; i++) {
     docBundleDataArray.push(documentToDocumentSnapshotBundleData(paths[i], documentData[i], docs[i]));
   }
   const bundleData = {
     name: bundleName,
-    query,
+    query: query2,
     parent: parent2,
     docBundleDataArray
   };
@@ -53790,11 +54046,11 @@ function buildQuerySnapshotJsonBundle(db, query, bundleName, parent2, paths, doc
   builder.addBundleQuery(bundleData);
   return builder.build();
 }
-function documentToDocumentSnapshotBundleData(path4, documentData, document2) {
+function documentToDocumentSnapshotBundleData(path3, documentData, document2) {
   return {
     documentData,
     documentKey: document2.mutableCopy().key,
-    documentPath: path4,
+    documentPath: path3,
     documentExists: true,
     createdTime: document2.createTime.toTimestamp(),
     readTime: document2.readTime.toTimestamp(),
@@ -53941,12 +54197,12 @@ var QueryDocumentSnapshot2 = class extends DocumentSnapshot2 {
 };
 var QuerySnapshot = class _QuerySnapshot {
   /** @hideconstructor */
-  constructor(_firestore, _userDataWriter, query, _snapshot) {
+  constructor(_firestore, _userDataWriter, query2, _snapshot) {
     this._firestore = _firestore;
     this._userDataWriter = _userDataWriter;
     this._snapshot = _snapshot;
     this.metadata = new SnapshotMetadata(_snapshot.hasPendingWrites, _snapshot.fromCache);
-    this.query = query;
+    this.query = query2;
   }
   /** An array of all the documents in the `QuerySnapshot`. */
   get docs() {
@@ -54092,13 +54348,13 @@ function getDoc(reference) {
   const client = ensureFirestoreConfigured(firestore);
   return firestoreClientGetDocumentViaSnapshotListener(client, reference._key).then((snapshot) => convertToDocSnapshot(firestore, reference, snapshot));
 }
-function getDocs(query) {
-  query = cast(query, Query);
-  const firestore = cast(query.firestore, Firestore2);
+function getDocs(query2) {
+  query2 = cast(query2, Query);
+  const firestore = cast(query2.firestore, Firestore2);
   const client = ensureFirestoreConfigured(firestore);
   const userDataWriter = new ExpUserDataWriter(firestore);
-  validateHasExplicitOrderByForLimitToLast(query._query);
-  return firestoreClientGetDocumentsViaSnapshotListener(client, query._query).then((snapshot) => new QuerySnapshot(firestore, userDataWriter, query, snapshot));
+  validateHasExplicitOrderByForLimitToLast(query2._query);
+  return firestoreClientGetDocumentsViaSnapshotListener(client, query2._query).then((snapshot) => new QuerySnapshot(firestore, userDataWriter, query2, snapshot));
 }
 function setDoc(reference, data, options2) {
   reference = cast(reference, DocumentReference);
@@ -54207,8 +54463,8 @@ function unknown() {
   const message = "An unknown error occurred, please check the error payload for server response.";
   return new StorageError(StorageErrorCode.UNKNOWN, message);
 }
-function objectNotFound(path4) {
-  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path4 + "' does not exist.");
+function objectNotFound(path3) {
+  return new StorageError(StorageErrorCode.OBJECT_NOT_FOUND, "Object '" + path3 + "' does not exist.");
 }
 function quotaExceeded(bucket) {
   return new StorageError(StorageErrorCode.QUOTA_EXCEEDED, "Quota for bucket '" + bucket + "' exceeded, please view quota on https://firebase.google.com/pricing/.");
@@ -54220,8 +54476,8 @@ function unauthenticated() {
 function unauthorizedApp() {
   return new StorageError(StorageErrorCode.UNAUTHORIZED_APP, "This app does not have permission to access Firebase Storage on this project.");
 }
-function unauthorized(path4) {
-  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path4 + "'.");
+function unauthorized(path3) {
+  return new StorageError(StorageErrorCode.UNAUTHORIZED, "User does not have permission to access '" + path3 + "'.");
 }
 function retryLimitExceeded() {
   return new StorageError(StorageErrorCode.RETRY_LIMIT_EXCEEDED, "Max retry time for operation exceeded, please try again.");
@@ -54251,9 +54507,9 @@ function internalError(message) {
   throw new StorageError(StorageErrorCode.INTERNAL_ERROR, "Internal error: " + message);
 }
 var Location = class _Location {
-  constructor(bucket, path4) {
+  constructor(bucket, path3) {
     this.bucket = bucket;
-    this.path_ = path4;
+    this.path_ = path3;
   }
   get path() {
     return this.path_;
@@ -54639,31 +54895,31 @@ function makeRequest(requestInfo, appId, authToken, appCheckToken, requestFactor
   addAppCheckHeader_(headers, appCheckToken);
   return new NetworkRequest(url, requestInfo.method, headers, requestInfo.body, requestInfo.successCodes, requestInfo.additionalRetryCodes, requestInfo.handler, requestInfo.errorHandler, requestInfo.timeout, requestInfo.progressCallback, requestFactory, retry, isUsingEmulator);
 }
-function parent(path4) {
-  if (path4.length === 0) {
+function parent(path3) {
+  if (path3.length === 0) {
     return null;
   }
-  const index = path4.lastIndexOf("/");
+  const index = path3.lastIndexOf("/");
   if (index === -1) {
     return "";
   }
-  const newPath = path4.slice(0, index);
+  const newPath = path3.slice(0, index);
   return newPath;
 }
-function child(path4, childPath) {
+function child(path3, childPath) {
   const canonicalChildPath = childPath.split("/").filter((component) => component.length > 0).join("/");
-  if (path4.length === 0) {
+  if (path3.length === 0) {
     return canonicalChildPath;
   } else {
-    return path4 + "/" + canonicalChildPath;
+    return path3 + "/" + canonicalChildPath;
   }
 }
-function lastComponent(path4) {
-  const index = path4.lastIndexOf("/", path4.length - 2);
+function lastComponent(path3) {
+  const index = path3.lastIndexOf("/", path3.length - 2);
   if (index === -1) {
-    return path4;
+    return path3;
   } else {
-    return path4.slice(index + 1);
+    return path3.slice(index + 1);
   }
 }
 var RequestInfo = class {
@@ -54928,27 +55184,27 @@ function _getChild$1(ref2, childPath) {
   const location = new Location(ref2._location.bucket, newPath);
   return new Reference(ref2.storage, location);
 }
-function isUrl(path4) {
-  return /^[A-Za-z]+:\/\//.test(path4);
+function isUrl(path3) {
+  return /^[A-Za-z]+:\/\//.test(path3);
 }
 function refFromURL(service, url) {
   return new Reference(service, url);
 }
-function refFromPath(ref2, path4) {
+function refFromPath(ref2, path3) {
   if (ref2 instanceof FirebaseStorageImpl) {
     const service = ref2;
     if (service._bucket == null) {
       throw noDefaultBucket();
     }
     const reference = new Reference(service, service._bucket);
-    if (path4 != null) {
-      return refFromPath(reference, path4);
+    if (path3 != null) {
+      return refFromPath(reference, path3);
     } else {
       return reference;
     }
   } else {
-    if (path4 !== void 0) {
-      return _getChild$1(ref2, path4);
+    if (path3 !== void 0) {
+      return _getChild$1(ref2, path3);
     } else {
       return ref2;
     }
@@ -54965,8 +55221,8 @@ function ref$1(serviceOrRef, pathOrUrl) {
     return refFromPath(serviceOrRef, pathOrUrl);
   }
 }
-function extractBucket(host, config) {
-  const bucketString = config?.[CONFIG_STORAGE_BUCKET_KEY];
+function extractBucket(host, config2) {
+  const bucketString = config2?.[CONFIG_STORAGE_BUCKET_KEY];
   if (bucketString == null) {
     return null;
   }
@@ -55280,13 +55536,13 @@ var Delay = class {
     return this.isMobile ? this.longDelay : this.shortDelay;
   }
 };
-function _emulatorUrl(config, path4) {
-  debugAssert2(config.emulator, "Emulator should always be set here");
-  const { url } = config.emulator;
-  if (!path4) {
+function _emulatorUrl(config2, path3) {
+  debugAssert2(config2.emulator, "Emulator should always be set here");
+  const { url } = config2.emulator;
+  if (!path3) {
     return url;
   }
-  return `${url}${path4.startsWith("/") ? path4.slice(1) : path4}`;
+  return `${url}${path3.startsWith("/") ? path3.slice(1) : path3}`;
 }
 var FetchProvider = class {
   static initialize(fetchImpl, headersImpl, responseImpl) {
@@ -55582,7 +55838,7 @@ function _addTidIfNecessary(auth, request) {
   }
   return request;
 }
-async function _performApiRequest(auth, method, path4, request, customErrorMap = {}) {
+async function _performApiRequest(auth, method, path3, request, customErrorMap = {}) {
   return _performFetchWithErrorHandling(auth, customErrorMap, async () => {
     let body = {};
     let params = {};
@@ -55595,7 +55851,7 @@ async function _performApiRequest(auth, method, path4, request, customErrorMap =
         };
       }
     }
-    const query = querystring({
+    const query2 = querystring({
       ...params,
       key: auth.config.apiKey
     }).slice(1);
@@ -55621,7 +55877,7 @@ async function _performApiRequest(auth, method, path4, request, customErrorMap =
     if (auth.emulatorConfig && isCloudWorkstation(auth.emulatorConfig.host)) {
       fetchArgs.credentials = "include";
     }
-    return FetchProvider.fetch()(await _getFinalTarget(auth, auth.config.apiHost, path4, query), fetchArgs);
+    return FetchProvider.fetch()(await _getFinalTarget(auth, auth.config.apiHost, path3, query2), fetchArgs);
   });
 }
 async function _performFetchWithErrorHandling(auth, customErrorMap, fetchFn) {
@@ -55664,8 +55920,8 @@ async function _performFetchWithErrorHandling(auth, customErrorMap, fetchFn) {
     _fail2(auth, "network-request-failed", { "message": String(e) });
   }
 }
-async function _performSignInRequest(auth, method, path4, request, customErrorMap = {}) {
-  const serverResponse = await _performApiRequest(auth, method, path4, request, customErrorMap);
+async function _performSignInRequest(auth, method, path3, request, customErrorMap = {}) {
+  const serverResponse = await _performApiRequest(auth, method, path3, request, customErrorMap);
   if ("mfaPendingCredential" in serverResponse) {
     _fail2(auth, "multi-factor-auth-required", {
       _serverResponse: serverResponse
@@ -55673,11 +55929,11 @@ async function _performSignInRequest(auth, method, path4, request, customErrorMa
   }
   return serverResponse;
 }
-async function _getFinalTarget(auth, host, path4, query) {
-  const base = `${host}${path4}?${query}`;
+async function _getFinalTarget(auth, host, path3, query2) {
+  const base = `${host}${path3}?${query2}`;
   const authInternal = auth;
   const finalTarget = authInternal.config.emulator ? _emulatorUrl(auth.config, base) : `${auth.config.apiScheme}://${base}`;
-  if (CookieAuthProxiedEndpoints.includes(path4)) {
+  if (CookieAuthProxiedEndpoints.includes(path3)) {
     await authInternal._persistenceManagerAvailable;
     if (authInternal._getPersistenceType() === "COOKIE") {
       const cookiePersistence = authInternal._getPersistence();
@@ -56480,9 +56736,9 @@ var PersistenceUserManager = class _PersistenceUserManager {
     this.persistence = persistence;
     this.auth = auth;
     this.userKey = userKey;
-    const { config, name: name6 } = this.auth;
-    this.fullUserKey = _persistenceKeyName(this.userKey, config.apiKey, name6);
-    this.fullPersistenceKey = _persistenceKeyName("persistence", config.apiKey, name6);
+    const { config: config2, name: name6 } = this.auth;
+    this.fullUserKey = _persistenceKeyName(this.userKey, config2.apiKey, name6);
+    this.fullPersistenceKey = _persistenceKeyName("persistence", config2.apiKey, name6);
     this.boundEventHandler = auth._onStorageEvent.bind(auth);
     try {
       this.persistence._addListener(this.fullUserKey, this.boundEventHandler);
@@ -56831,11 +57087,11 @@ var PasswordPolicyImpl = class {
   }
 };
 var AuthImpl = class {
-  constructor(app, heartbeatServiceProvider, appCheckServiceProvider, config) {
+  constructor(app, heartbeatServiceProvider, appCheckServiceProvider, config2) {
     this.app = app;
     this.heartbeatServiceProvider = heartbeatServiceProvider;
     this.appCheckServiceProvider = appCheckServiceProvider;
-    this.config = config;
+    this.config = config2;
     this.currentUser = null;
     this.emulatorConfig = null;
     this.operations = Promise.resolve();
@@ -56862,7 +57118,7 @@ var AuthImpl = class {
     this.settings = { appVerificationDisabledForTesting: false };
     this.frameworks = [];
     this.name = app.name;
-    this.clientVersion = config.sdkClientVersion;
+    this.clientVersion = config2.sdkClientVersion;
     this._persistenceManagerAvailable = new Promise((resolve) => this._resolvePersistenceManagerAvailable = resolve);
   }
   _initializeWithPersistence(persistenceHierarchy, popupRedirectResolver) {
@@ -57474,13 +57730,13 @@ var RecaptchaEnterpriseVerifier = class _RecaptchaEnterpriseVerifier {
           if (response.recaptchaKey === void 0) {
             reject(new Error("recaptcha Enterprise site key undefined"));
           } else {
-            const config = new RecaptchaConfig(response);
+            const config2 = new RecaptchaConfig(response);
             if (auth.tenantId == null) {
-              auth._agentRecaptchaConfig = config;
+              auth._agentRecaptchaConfig = config2;
             } else {
-              auth._tenantRecaptchaConfigs[auth.tenantId] = config;
+              auth._tenantRecaptchaConfigs[auth.tenantId] = config2;
             }
-            return resolve(config.siteKey);
+            return resolve(config2.siteKey);
           }
         }).catch((error) => {
           reject(error);
@@ -58681,7 +58937,7 @@ function registerAuth(clientPlatform) {
       const appCheckServiceProvider = container.getProvider("app-check-internal");
       const { apiKey, authDomain } = app.options;
       _assert(apiKey && !apiKey.includes(":"), "invalid-api-key", { appName: app.name });
-      const config = {
+      const config2 = {
         apiKey,
         authDomain,
         clientPlatform,
@@ -58690,7 +58946,7 @@ function registerAuth(clientPlatform) {
         apiScheme: "https",
         sdkClientVersion: _getClientVersion(clientPlatform)
       };
-      const authInstance = new AuthImpl(app, heartbeatServiceProvider, appCheckServiceProvider, config);
+      const authInstance = new AuthImpl(app, heartbeatServiceProvider, appCheckServiceProvider, config2);
       _initializeAuthInstance(authInstance, deps);
       return authInstance;
     },
@@ -59052,6 +59308,10 @@ async function ensureServerFirestoreAuth() {
 }
 function getDb() {
   if (!cachedDb) {
+    try {
+      setLogLevel2("error");
+    } catch {
+    }
     const app = getFirebaseApp();
     cachedDb = getFirestore(app, firebase_applet_config_default.firestoreDatabaseId);
   }
@@ -59110,7 +59370,23 @@ function formatBytes(bytes) {
 function isValidApkHeader(buffer) {
   return buffer.length >= 4 && buffer[0] === 80 && buffer[1] === 75 && buffer[2] === 3 && buffer[3] === 4;
 }
+var RELEASES_CACHE_TTL_MS = 6e4;
+var releasesCache = null;
+function logStorageNotice(context, err) {
+  const isQuota = err?.code === "resource-exhausted" || String(err?.message || err).includes("Quota limit exceeded");
+  if (isQuota) {
+    console.warn(`${context}: Daily free tier read/write quota limit reached. Using local/cached fallback.`);
+  } else {
+    console.warn(`${context}:`, err);
+  }
+}
+function clearReleasesInMemoryCache() {
+  releasesCache = null;
+}
 async function getAllReleases() {
+  if (releasesCache && Date.now() - releasesCache.cachedAt < RELEASES_CACHE_TTL_MS) {
+    return releasesCache.data;
+  }
   try {
     const db = await ensureServerFirestoreAuth();
     const snapshot = await getDocs(collection(db, "releases"));
@@ -59122,10 +59398,11 @@ async function getAllReleases() {
       }
     });
     if (releases.length > 0) {
+      releasesCache = { data: releases, cachedAt: Date.now() };
       return releases;
     }
   } catch (err) {
-    console.warn("Firestore read error, checking local backup:", err);
+    logStorageNotice("Firestore read notice, checking local backup", err);
   }
   ensureDataDirs();
   const { releasesFile } = getStoragePaths();
@@ -59133,12 +59410,14 @@ async function getAllReleases() {
     try {
       const raw = fs.readFileSync(releasesFile, "utf-8");
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        releasesCache = { data: parsed, cachedAt: Date.now() };
+        return parsed;
+      }
     } catch {
-      return [];
     }
   }
-  return [];
+  return releasesCache ? releasesCache.data : [];
 }
 async function getPublishedReleases() {
   const all = await getAllReleases();
@@ -59158,12 +59437,13 @@ async function getReleaseById(id) {
       return docSnap.data();
     }
   } catch (err) {
-    console.warn("Firestore getDoc error, falling back to getAllReleases:", err);
+    logStorageNotice("Firestore getDoc notice, falling back to getAllReleases", err);
   }
   const all = await getAllReleases();
   return all.find((r) => r.id === id) || null;
 }
 async function saveRelease(release) {
+  clearReleasesInMemoryCache();
   const rawRelease = {
     ...release,
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -59204,6 +59484,7 @@ async function deleteStoredChunks(storageKey, totalChunks) {
 }
 async function deleteRelease(id) {
   if (!id) return false;
+  clearReleasesInMemoryCache();
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
   const db = await ensureServerFirestoreAuth();
@@ -59318,7 +59599,7 @@ async function hasApkBinary(release) {
       }
     }
   } catch (err) {
-    console.warn("hasApkBinary Firestore check error:", err);
+    logStorageNotice("hasApkBinary Firestore notice", err);
   }
   const bundledFile = path.resolve(process.cwd(), ".data", "apks", release.storageKey);
   if (fs.existsSync(bundledFile)) {
@@ -59754,8 +60035,6 @@ function parseApkBuffer(apkBuffer) {
 
 // server/auth.ts
 import crypto4 from "crypto";
-import fs2 from "fs";
-import path2 from "path";
 var DEFAULT_ADMIN_PIN = "8825316434";
 var cachedDerivedJwtSecret = null;
 var loggedJwtSecretNotice = false;
@@ -59767,15 +60046,8 @@ function getAdminPin() {
   return DEFAULT_ADMIN_PIN;
 }
 function readServerIdentitySalt() {
-  try {
-    const configPath = path2.resolve(process.cwd(), "firebase-applet-config.json");
-    if (fs2.existsSync(configPath)) {
-      const parsed = JSON.parse(fs2.readFileSync(configPath, "utf-8"));
-      if (parsed && typeof parsed.firestoreDatabaseId === "string" && typeof parsed.appId === "string") {
-        return `${parsed.projectId || "zoya"}:${parsed.firestoreDatabaseId}:${parsed.appId}`;
-      }
-    }
-  } catch {
+  if (firebase_applet_config_default && typeof firebase_applet_config_default.firestoreDatabaseId === "string" && typeof firebase_applet_config_default.appId === "string") {
+    return `${firebase_applet_config_default.projectId || "zoya"}:${firebase_applet_config_default.firestoreDatabaseId}:${firebase_applet_config_default.appId}`;
   }
   return "zoya-server-jwt-derivation-v2";
 }
@@ -59880,7 +60152,10 @@ function extractAuthToken(reqHeaders) {
   if (!reqHeaders) return null;
   const authHeader = reqHeaders["authorization"] || reqHeaders["Authorization"];
   if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
-    return authHeader.substring(7).trim();
+    const bearer = authHeader.substring(7).trim();
+    if (bearer && bearer !== "cookie-session") {
+      return bearer;
+    }
   }
   const rawCookie = reqHeaders["cookie"] || reqHeaders["Cookie"];
   const cookieHeaders = Array.isArray(rawCookie) ? rawCookie : typeof rawCookie === "string" ? [rawCookie] : [];
@@ -59888,7 +60163,10 @@ function extractAuthToken(reqHeaders) {
     const cookies = cookieHeader.split(";").map((c) => c.trim());
     for (const c of cookies) {
       if (c.startsWith("zoya_admin_token=")) {
-        return c.substring("zoya_admin_token=".length);
+        const val = c.substring("zoya_admin_token=".length).trim();
+        if (val && val !== "cookie-session") {
+          return val;
+        }
       }
     }
   }
@@ -60603,6 +60881,8 @@ var LicenseStorageError = class extends Error {
   }
 };
 var simulatedStorageFailureForTesting = false;
+var useInMemoryStoreForTesting = false;
+var inMemoryTestStore = /* @__PURE__ */ new Map();
 function assertStorageAvailable() {
   if (simulatedStorageFailureForTesting) {
     throw new LicenseStorageError(
@@ -60668,7 +60948,28 @@ function sanitizeRecordForStorage(record) {
   );
   return cleaned;
 }
+var CACHE_TTL_MS = 6e4;
+var idToLicenseCache = /* @__PURE__ */ new Map();
+var keyHashToLicenseCache = /* @__PURE__ */ new Map();
+var allLicensesCache = null;
+function cacheLicenseRecord(record) {
+  const now = Date.now();
+  idToLicenseCache.set(record.id, { data: record, cachedAt: now });
+  if (record.keyHash) {
+    keyHashToLicenseCache.set(record.keyHash, { data: record, cachedAt: now });
+  }
+}
 async function getAllLicenses() {
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    const all = Array.from(inMemoryTestStore.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return all;
+  }
+  if (allLicensesCache && Date.now() - allLicensesCache.cachedAt < CACHE_TTL_MS) {
+    return allLicensesCache.data;
+  }
   assertStorageAvailable();
   try {
     const db = await ensureServerFirestoreAuth();
@@ -60677,10 +60978,13 @@ async function getAllLicenses() {
     snap.forEach((docSnap) => {
       const data = docSnap.data();
       if (data && data.id && data.keyHash) {
-        all.push(sanitizeRecordForStorage(data));
+        const sanitized = sanitizeRecordForStorage(data);
+        all.push(sanitized);
+        cacheLicenseRecord(sanitized);
       }
     });
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    allLicensesCache = { data: all, cachedAt: Date.now() };
     return all;
   } catch (err) {
     if (err instanceof LicenseStorageError) {
@@ -60695,6 +60999,14 @@ async function getAllLicenses() {
 async function getLicenseById(id) {
   const cleanId = sanitizeText(id, 100);
   if (!cleanId) return null;
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    return inMemoryTestStore.get(cleanId) || null;
+  }
+  const cached = idToLicenseCache.get(cleanId);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
   assertStorageAvailable();
   try {
     const db = await ensureServerFirestoreAuth();
@@ -60702,7 +61014,9 @@ async function getLicenseById(id) {
     if (snap.exists()) {
       const data = snap.data();
       if (data && data.id) {
-        return sanitizeRecordForStorage(data);
+        const sanitized = sanitizeRecordForStorage(data);
+        cacheLicenseRecord(sanitized);
+        return sanitized;
       }
     }
     return null;
@@ -60718,8 +61032,45 @@ async function getLicenseById(id) {
 }
 async function getLicenseByKeyHash(keyHash) {
   if (!keyHash) return null;
-  const all = await getAllLicenses();
-  return all.find((r) => r.keyHash === keyHash) || null;
+  if (useInMemoryStoreForTesting) {
+    assertStorageAvailable();
+    for (const record of inMemoryTestStore.values()) {
+      if (record.keyHash === keyHash) return record;
+    }
+    return null;
+  }
+  const cached = keyHashToLicenseCache.get(keyHash);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  assertStorageAvailable();
+  try {
+    const db = await ensureServerFirestoreAuth();
+    const q = query(
+      collection(db, "licenses"),
+      where("keyHash", "==", keyHash),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
+      if (data && data.id) {
+        const sanitized = sanitizeRecordForStorage(data);
+        cacheLicenseRecord(sanitized);
+        return sanitized;
+      }
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) is unavailable. Could not query license record by keyHash.",
+      err
+    );
+  }
 }
 async function saveLicenseRecord(record) {
   assertStorageAvailable();
@@ -60727,9 +61078,17 @@ async function saveLicenseRecord(record) {
     ...record,
     updatedAt: record.updatedAt || (/* @__PURE__ */ new Date()).toISOString()
   });
+  if (useInMemoryStoreForTesting) {
+    inMemoryTestStore.set(safeRecord.id, safeRecord);
+    cacheLicenseRecord(safeRecord);
+    allLicensesCache = null;
+    return safeRecord;
+  }
   try {
     const db = await ensureServerFirestoreAuth();
     await setDoc(doc(db, "licenses", safeRecord.id), safeRecord);
+    cacheLicenseRecord(safeRecord);
+    allLicensesCache = null;
     return safeRecord;
   } catch (err) {
     if (err instanceof LicenseStorageError) {
@@ -61053,6 +61412,55 @@ async function revokeLicense(licenseId, input, admin) {
     }
   });
 }
+function generateSignedEntitlementToken(payload) {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const expSec = nowSec + 30 * 24 * 60 * 60;
+  const body = Buffer.from(
+    JSON.stringify({
+      id: payload.licenseId,
+      kh: payload.keyHash,
+      mk: payload.maskedKey,
+      act: payload.activatedAt,
+      iat: nowSec,
+      exp: expSec
+    })
+  ).toString("base64url");
+  const signature = crypto6.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
+  return `${header}.${body}.${signature}`;
+}
+function verifySignedEntitlementToken(token, expectedKeyHash) {
+  if (!token || typeof token !== "string") {
+    return { valid: false, reason: "Entitlement token missing or invalid." };
+  }
+  const parts = token.trim().split(".");
+  if (parts.length !== 3) {
+    return { valid: false, reason: "Entitlement token malformed." };
+  }
+  const [header, body, signature] = parts;
+  const expectedSig = crypto6.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
+  const sigBuf = Buffer.from(signature, "utf-8");
+  const expBuf = Buffer.from(expectedSig, "utf-8");
+  if (sigBuf.length !== expBuf.length || !crypto6.timingSafeEqual(sigBuf, expBuf)) {
+    return { valid: false, reason: "Entitlement token signature mismatch or untrusted." };
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
+    if (!payload || typeof payload !== "object") {
+      return { valid: false, reason: "Entitlement token payload invalid." };
+    }
+    if (payload.kh !== expectedKeyHash) {
+      return { valid: false, reason: "Entitlement token key mismatch." };
+    }
+    const nowSec = Math.floor(Date.now() / 1e3);
+    if (!payload.exp || payload.exp < nowSec) {
+      return { valid: false, reason: "Entitlement token grace period expired." };
+    }
+    return { valid: true, payload };
+  } catch {
+    return { valid: false, reason: "Entitlement token parse error." };
+  }
+}
 async function validateLicenseForAndroid(payload) {
   if (!payload || typeof payload !== "object") {
     return {
@@ -61074,6 +61482,7 @@ async function validateLicenseForAndroid(payload) {
     };
   }
   const keyHash = hashLicenseKey(normalizedKey);
+  const rawToken = typeof payload.entitlementToken === "string" ? payload.entitlementToken.trim() : "";
   return withLicenseLock(async () => {
     try {
       const existing = await getLicenseByKeyHash(keyHash);
@@ -61153,11 +61562,18 @@ async function validateLicenseForAndroid(payload) {
         auditLog: updatedAuditLog
       };
       const saved = await saveLicenseRecord(updated);
+      const entitlementToken = generateSignedEntitlementToken({
+        licenseId: saved.id,
+        keyHash: saved.keyHash,
+        maskedKey: saved.maskedKey,
+        activatedAt: saved.activatedAt || nowIso
+      });
       return {
         valid: true,
         status: "active",
         code: "LICENSE_VALID",
         httpStatus: 200,
+        entitlementToken,
         license: {
           id: saved.id,
           maskedKey: saved.maskedKey,
@@ -61171,6 +61587,28 @@ async function validateLicenseForAndroid(payload) {
       };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
+        const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash);
+        if (tokenVerification.valid && tokenVerification.payload) {
+          return {
+            valid: true,
+            status: "active",
+            code: "LICENSE_VALID",
+            httpStatus: 200,
+            isOfflineGrace: true,
+            entitlementToken: rawToken,
+            error: "Server storage is temporarily unavailable. License validated via cryptographic offline grace token.",
+            license: {
+              id: tokenVerification.payload.id || "grace_id",
+              maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
+              licenseType: "Lifetime",
+              status: "active",
+              customerName: "Lifetime Subscriber",
+              activatedAt: tokenVerification.payload.act || (/* @__PURE__ */ new Date()).toISOString(),
+              lastSeenAt: (/* @__PURE__ */ new Date()).toISOString(),
+              linkedDevice: null
+            }
+          };
+        }
         return {
           valid: false,
           status: "storage_error",
@@ -61650,6 +62088,7 @@ async function handleApiRequest(req, res, explicitRoute) {
       }
       sendJson(res, 200, {
         authenticated: true,
+        token,
         user: { email: user.email, name: user.name, role: user.role }
       });
       return true;
@@ -61703,7 +62142,7 @@ async function handleApiRequest(req, res, explicitRoute) {
         if (phase === "finalize") {
           const body = await parseJsonBody(req);
           const storageKey = (body.storageKey || "").trim();
-          const fileName = path3.basename(body.fileName || "zoya-assistant.apk");
+          const fileName = path2.basename(body.fileName || "zoya-assistant.apk");
           const totalChunks = Number(body.totalChunks) || 0;
           if (!storageKey || !fileName.toLowerCase().endsWith(".apk") || totalChunks <= 0) {
             sendError(res, 400, "Invalid finalize parameters for APK upload.");
@@ -62153,6 +62592,11 @@ async function handleApiRequest(req, res, explicitRoute) {
 }
 
 // server/api/admin/upload.ts
+var config = {
+  api: {
+    bodyParser: false
+  }
+};
 async function handler(req, res) {
   try {
     const handled = await handleApiRequest(req, res, "/api/admin/upload");
@@ -62176,6 +62620,7 @@ async function handler(req, res) {
   }
 }
 export {
+  config,
   handler as default
 };
 /*! Bundled license information:
@@ -62251,7 +62696,6 @@ long/umd/index.js:
 @firebase/util/dist/node-esm/index.node.esm.js:
 @firebase/util/dist/node-esm/index.node.esm.js:
 @firebase/logger/dist/esm/index.esm.js:
-@firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
@@ -62580,7 +63024,6 @@ re2js/build/index.js:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
-@firebase/firestore/dist/common-C1sORuFu.node.mjs:
 @firebase/storage/dist/node-esm/index.node.esm.js:
   (**
    * @license
@@ -62652,22 +63095,6 @@ re2js/build/index.js:
 @firebase/firestore/dist/common-C1sORuFu.node.mjs:
   (**
    * @license
-   * Copyright 2025 Google LLC
-   *
-   * Licensed under the Apache License, Version 2.0 (the "License");
-   * you may not use this file except in compliance with the License.
-   * You may obtain a copy of the License at
-   *
-   *   http://www.apache.org/licenses/LICENSE-2.0
-   *
-   * Unless required by applicable law or agreed to in writing, software
-   * distributed under the License is distributed on an "AS IS" BASIS,
-   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   * See the License for the specific language governing permissions and
-   * limitations under the License.
-   *)
-  (**
-   * @license
    * Copyright 2017 Google LLC
    *
    * Licensed under the Apache License, Version 2.0 (the "License");
@@ -62685,6 +63112,22 @@ re2js/build/index.js:
   (**
    * @license
    * Copyright 2020 Google LLC
+   *
+   * Licensed under the Apache License, Version 2.0 (the "License");
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   *   http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   *)
+  (**
+   * @license
+   * Copyright 2025 Google LLC
    *
    * Licensed under the Apache License, Version 2.0 (the "License");
    * you may not use this file except in compliance with the License.

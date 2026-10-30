@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'http';
 import { handleApiRequest } from '../../apiHandler';
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   try {
     const handled = await handleApiRequest(req, res, '/api/admin/upload');
