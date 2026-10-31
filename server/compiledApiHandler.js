@@ -8,6 +8,7 @@ import fs from "fs";
 import path from "path";
 
 // server/firebase.ts
+import "dotenv/config";
 import {
   initializeApp as initializeAdminApp,
   getApps as getAdminApps,
@@ -24,17 +25,74 @@ var cachedAdminProjectId = null;
 var cachedAdminDatabaseId = null;
 var adminDbConfigured = false;
 var testAdapterOverride = null;
+function resetAdminFirestoreCache() {
+  cachedAdminApp = null;
+  cachedAdminDb = null;
+  cachedAdminProjectId = null;
+  cachedAdminDatabaseId = null;
+  adminDbConfigured = false;
+}
+function stripSurroundingQuotes(val) {
+  const trimmed = val.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+function resolveCanonicalProjectId(candidate, defaultProjectId) {
+  const cleaned = stripSurroundingQuotes(String(candidate || ""));
+  if (!cleaned || cleaned === "distinguished-arena-4wr9b") {
+    return defaultProjectId;
+  }
+  return cleaned;
+}
+function resolveCanonicalDatabaseId(candidate) {
+  const cleaned = stripSurroundingQuotes(String(candidate || ""));
+  if (!cleaned || cleaned === "(default)" || cleaned.startsWith("ai-studio-") || cleaned.includes("distinguished-arena")) {
+    return TARGET_FIRESTORE_DATABASE_ID;
+  }
+  return cleaned;
+}
+function parseServiceAccountJsonString(rawInput) {
+  const unquoted = stripSurroundingQuotes(rawInput);
+  if (!unquoted) return null;
+  const candidates = [];
+  if (unquoted.startsWith("{")) {
+    candidates.push(unquoted);
+  } else {
+    try {
+      const decoded = Buffer.from(unquoted, "base64").toString("utf-8").trim();
+      if (decoded.startsWith("{")) {
+        candidates.push(decoded);
+      }
+    } catch {
+    }
+    candidates.push(unquoted);
+  }
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      try {
+        const escapedNewlines = candidate.replace(/\r?\n/g, "\\n");
+        return JSON.parse(escapedNewlines);
+      } catch {
+      }
+    }
+  }
+  return null;
+}
 function getServerServiceAccountCredentials(defaultProjectId = TARGET_FIREBASE_PROJECT_ID) {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
   if (rawJson.length > 0) {
-    try {
-      const decoded = rawJson.startsWith("{") ? rawJson : Buffer.from(rawJson, "base64").toString("utf-8");
-      const parsed = JSON.parse(decoded.trim());
-      const projectId2 = String(
-        parsed.project_id || process.env.FIREBASE_PROJECT_ID || defaultProjectId
-      ).trim();
-      const clientEmail2 = String(parsed.client_email || "").trim();
-      const privateKey2 = String(parsed.private_key || "").replace(/\\n/g, "\n").trim();
+    const parsed = parseServiceAccountJsonString(rawJson);
+    if (parsed && typeof parsed === "object") {
+      const projectId2 = resolveCanonicalProjectId(
+        parsed.project_id || process.env.FIREBASE_PROJECT_ID,
+        defaultProjectId
+      );
+      const clientEmail2 = stripSurroundingQuotes(String(parsed.client_email || ""));
+      const privateKey2 = stripSurroundingQuotes(String(parsed.private_key || "")).replace(/\\n/g, "\n").trim();
       if (projectId2 && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
         return {
           projectId: projectId2,
@@ -42,12 +100,11 @@ function getServerServiceAccountCredentials(defaultProjectId = TARGET_FIREBASE_P
           privateKey: privateKey2
         };
       }
-    } catch {
     }
   }
-  const projectId = String(process.env.FIREBASE_PROJECT_ID || defaultProjectId).trim();
-  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || "").trim();
-  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  const projectId = resolveCanonicalProjectId(process.env.FIREBASE_PROJECT_ID, defaultProjectId);
+  const clientEmail = stripSurroundingQuotes(String(process.env.FIREBASE_CLIENT_EMAIL || ""));
+  const privateKey = stripSurroundingQuotes(String(process.env.FIREBASE_PRIVATE_KEY || "")).replace(/\\n/g, "\n").trim();
   if (projectId && clientEmail && privateKey.includes("PRIVATE KEY")) {
     return {
       projectId,
@@ -62,7 +119,7 @@ function getAdminFirestore() {
   if (!creds) {
     return null;
   }
-  const targetDbId = (process.env.FIRESTORE_DATABASE_ID || TARGET_FIRESTORE_DATABASE_ID).trim();
+  const targetDbId = resolveCanonicalDatabaseId(process.env.FIRESTORE_DATABASE_ID);
   const appName = `zoya-admin-${creds.projectId}`;
   if (!cachedAdminApp || cachedAdminProjectId !== creds.projectId) {
     const existing = getAdminApps().find((a) => a.name === appName);
@@ -86,7 +143,10 @@ function getAdminFirestore() {
     cachedAdminDatabaseId = targetDbId;
     if (!adminDbConfigured) {
       try {
-        cachedAdminDb.settings({ ignoreUndefinedProperties: true });
+        cachedAdminDb.settings({
+          ignoreUndefinedProperties: true,
+          preferRest: true
+        });
       } catch {
       }
       adminDbConfigured = true;
@@ -132,6 +192,18 @@ function normalizeDocumentPayloadForAdminSdk(data) {
   }
   return normalized;
 }
+async function withFirestoreRetry(initialDb, operation) {
+  try {
+    return await operation(initialDb);
+  } catch (firstErr) {
+    resetAdminFirestoreCache();
+    const freshInstance = getAdminFirestore();
+    if (!freshInstance) {
+      throw firstErr;
+    }
+    return await operation(freshInstance.db);
+  }
+}
 async function getActiveServerFirestoreAdapter() {
   if (testAdapterOverride) {
     return testAdapterOverride;
@@ -150,39 +222,80 @@ async function getActiveServerFirestoreAdapter() {
     projectId,
     databaseId,
     async getCollectionDocs(collectionName) {
-      const snap = await db.collection(collectionName).get();
-      return snap.docs.map((d) => ({
-        id: d.id,
-        data: d.data() || {}
-      }));
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb.collection(collectionName).get();
+        return snap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() || {}
+        }));
+      });
     },
     async getDocumentById(collectionName, docId) {
-      const snap = await db.collection(collectionName).doc(docId).get();
-      return {
-        exists: snap.exists,
-        id: snap.id,
-        data: snap.exists ? snap.data() || {} : void 0
-      };
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb.collection(collectionName).doc(docId).get();
+        return {
+          exists: snap.exists,
+          id: snap.id,
+          data: snap.exists ? snap.data() || {} : void 0
+        };
+      });
     },
     async queryDocumentsEq(collectionName, field, value, maxResults = 1) {
-      const snap = await db.collection(collectionName).where(field, "==", value).limit(maxResults).get();
-      return snap.docs.map((d) => ({
-        id: d.id,
-        data: d.data() || {}
-      }));
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb.collection(collectionName).where(field, "==", value).limit(maxResults).get();
+        return snap.docs.map((d) => ({
+          id: d.id,
+          data: d.data() || {}
+        }));
+      });
     },
     async setDocumentById(collectionName, docId, data, options) {
       const payload = normalizeDocumentPayloadForAdminSdk(data);
-      if (options?.merge) {
-        await db.collection(collectionName).doc(docId).set(payload, { merge: true });
-      } else {
-        await db.collection(collectionName).doc(docId).set(payload);
-      }
+      return withFirestoreRetry(db, async (activeDb) => {
+        if (options?.merge) {
+          await activeDb.collection(collectionName).doc(docId).set(payload, { merge: true });
+        } else {
+          await activeDb.collection(collectionName).doc(docId).set(payload);
+        }
+      });
     },
     async deleteDocumentById(collectionName, docId) {
-      await db.collection(collectionName).doc(docId).delete();
+      return withFirestoreRetry(db, async (activeDb) => {
+        await activeDb.collection(collectionName).doc(docId).delete();
+      });
+    },
+    async runTransaction(updateFunction) {
+      return withFirestoreRetry(db, async (activeDb) => {
+        return activeDb.runTransaction(async (t) => {
+          const txWrapper = {
+            async get(collectionName, docId) {
+              const docRef = activeDb.collection(collectionName).doc(docId);
+              const snap = await t.get(docRef);
+              return {
+                exists: snap.exists,
+                id: snap.id,
+                data: snap.exists ? snap.data() || {} : void 0
+              };
+            },
+            set(collectionName, docId, data, options) {
+              const docRef = activeDb.collection(collectionName).doc(docId);
+              const payload = normalizeDocumentPayloadForAdminSdk(data);
+              if (options?.merge) {
+                t.set(docRef, payload, { merge: true });
+              } else {
+                t.set(docRef, payload);
+              }
+            }
+          };
+          return updateFunction(txWrapper);
+        });
+      });
     }
   };
+}
+async function serverRunTransaction(updateFunction) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.runTransaction(updateFunction);
 }
 async function serverGetCollectionDocs(collectionName) {
   const adapter = await getActiveServerFirestoreAdapter();
@@ -252,7 +365,11 @@ function isValidApkHeader(buffer) {
 var RELEASES_CACHE_TTL_MS = 6e4;
 var releasesCache = null;
 function logStorageNotice(context, err) {
-  const isQuota = err?.code === "resource-exhausted" || String(err?.message || err).includes("Quota limit exceeded");
+  const errMessage = String(err?.message || err);
+  if (errMessage.includes("FIREBASE_SERVICE_ACCOUNT_JSON is required")) {
+    return;
+  }
+  const isQuota = err?.code === "resource-exhausted" || errMessage.includes("Quota limit exceeded");
   if (isQuota) {
     console.warn(`${context}: Daily free tier read/write quota limit reached. Using local/cached fallback.`);
   } else {
@@ -925,8 +1042,8 @@ function createToken(user) {
       role: user.role,
       name: user.name,
       iat: Math.floor(Date.now() / 1e3),
-      exp: Math.floor(Date.now() / 1e3) + 60 * 60 * 24 * 7
-      // 7 days
+      exp: Math.floor(Date.now() / 1e3) + 60 * 60 * 2
+      // 2-hour session expiration
     })
   ).toString("base64url");
   const signature = crypto2.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
@@ -998,13 +1115,18 @@ function authenticateAdmin(email, password) {
 }
 function extractAuthToken(reqHeaders) {
   if (!reqHeaders) return null;
+  let bearerCandidate = null;
   const authHeader = reqHeaders["authorization"] || reqHeaders["Authorization"];
   if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
     const bearer = authHeader.substring(7).trim();
     if (bearer && bearer !== "cookie-session") {
-      return bearer;
+      bearerCandidate = bearer;
+      if (verifyToken(bearerCandidate)) {
+        return bearerCandidate;
+      }
     }
   }
+  let cookieCandidate = null;
   const rawCookie = reqHeaders["cookie"] || reqHeaders["Cookie"];
   const cookieHeaders = Array.isArray(rawCookie) ? rawCookie : typeof rawCookie === "string" ? [rawCookie] : [];
   for (const cookieHeader of cookieHeaders) {
@@ -1013,18 +1135,21 @@ function extractAuthToken(reqHeaders) {
       if (c.startsWith("zoya_admin_token=")) {
         const val = c.substring("zoya_admin_token=".length).trim();
         if (val && val !== "cookie-session") {
-          return val;
+          cookieCandidate = val;
+          if (verifyToken(cookieCandidate)) {
+            return cookieCandidate;
+          }
         }
       }
     }
   }
-  return null;
+  return bearerCandidate || cookieCandidate || null;
 }
 
 // server/fcm.ts
 import crypto3 from "crypto";
 var DEFAULT_FCM_TOPIC = "zoya_releases";
-var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-opal.vercel.app";
+var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-eta.vercel.app";
 var cachedAccessToken = null;
 function getPublicSiteOrigin() {
   const envUrl = (process.env.PUBLIC_SITE_URL || DEFAULT_PRODUCTION_SITE_URL).trim();
@@ -1721,6 +1846,46 @@ function withLicenseLock(fn) {
   );
   return next;
 }
+function isValidDeviceId(id) {
+  if (typeof id !== "string") return false;
+  if (id !== id.trim()) return false;
+  const trimmed = id.trim();
+  if (trimmed.length < 8 || trimmed.length > 120) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower === "unknown" || lower === "null" || lower === "undefined" || lower === "none" || lower === "12345678" || /^0+$/.test(lower)) {
+    return false;
+  }
+  return /^[a-zA-Z0-9_\-.:]+$/.test(trimmed);
+}
+function validateClientDeviceInfo(deviceInfo) {
+  if (!deviceInfo || typeof deviceInfo !== "object") {
+    return {
+      valid: false,
+      error: "Device information is required to activate or validate a lifetime license on this phone."
+    };
+  }
+  const raw = deviceInfo;
+  const deviceId = typeof raw.deviceId === "string" ? raw.deviceId.trim() : "";
+  const deviceModel = typeof raw.deviceModel === "string" ? raw.deviceModel.trim().slice(0, 120) : "";
+  if (!isValidDeviceId(deviceId)) {
+    return {
+      valid: false,
+      error: "A valid Android device identifier (minimum 8 alphanumeric characters) is required for device binding."
+    };
+  }
+  const cleanModel = deviceModel.length >= 2 ? deviceModel : "Android Device";
+  const androidVersion = typeof raw.androidVersion === "string" ? raw.androidVersion.trim().slice(0, 60) : null;
+  const appVersion = typeof raw.appVersion === "string" ? raw.appVersion.trim().slice(0, 60) : null;
+  return {
+    valid: true,
+    data: {
+      deviceId,
+      deviceModel: cleanModel,
+      androidVersion,
+      appVersion
+    }
+  };
+}
 function generateCryptographicLicenseKey() {
   const group = () => {
     let chars = "";
@@ -1753,6 +1918,75 @@ function maskLicenseKey(rawKey) {
     keyLastFour: lastFour
   };
 }
+var LicenseEncryptionConfigurationError = class extends Error {
+  constructor(message = "LICENSE_KEY_ENCRYPTION_SECRET is not configured or shorter than 32 bytes. Server fails closed per security policy.") {
+    super(message);
+    this.status = 500;
+    this.code = "ENCRYPTION_NOT_CONFIGURED";
+    this.name = "LicenseEncryptionConfigurationError";
+  }
+};
+function getLicenseEncryptionSecret() {
+  const envSecret = process.env.LICENSE_KEY_ENCRYPTION_SECRET;
+  if (!envSecret || typeof envSecret !== "string") {
+    throw new LicenseEncryptionConfigurationError(
+      "LICENSE_KEY_ENCRYPTION_SECRET is not configured. Server fails closed per security policy."
+    );
+  }
+  const trimmed = envSecret.trim();
+  if (Buffer.byteLength(trimmed, "utf-8") < 32) {
+    throw new LicenseEncryptionConfigurationError(
+      "LICENSE_KEY_ENCRYPTION_SECRET is too short (must be at least 32 cryptographically random bytes). Server fails closed per security policy."
+    );
+  }
+  return trimmed;
+}
+function getLicenseKeyEncryptionBuffer() {
+  const secret = getLicenseEncryptionSecret();
+  return crypto4.createHash("sha256").update(`zoya_aes_256_gcm:${secret}`).digest();
+}
+function encryptLicenseKey(plaintextKey, licenseId) {
+  if (!plaintextKey || typeof plaintextKey !== "string") {
+    throw new Error("Cannot encrypt empty license key.");
+  }
+  const key = getLicenseKeyEncryptionBuffer();
+  const iv = crypto4.randomBytes(12);
+  const cipher = crypto4.createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(`zoya_lic_aad:${licenseId}`, "utf-8"));
+  let ciphertext = cipher.update(plaintextKey.trim(), "utf-8", "hex");
+  ciphertext += cipher.final("hex");
+  const authTag = cipher.getAuthTag().toString("hex");
+  const ivHex = iv.toString("hex");
+  return `${ivHex}:${authTag}:${ciphertext}`;
+}
+function decryptLicenseKey(encryptedPayload, licenseId) {
+  if (!encryptedPayload || typeof encryptedPayload !== "string") {
+    throw new Error("Encrypted license payload is required.");
+  }
+  const parts = encryptedPayload.split(":");
+  if (parts.length !== 3) {
+    throw new Error("Invalid encrypted license key payload format. Expected iv:authTag:ciphertext.");
+  }
+  const [ivHex, authTagHex, ciphertextHex] = parts;
+  if (!ivHex || !authTagHex || !ciphertextHex) {
+    throw new Error("Encrypted license key payload is missing required cryptographic components.");
+  }
+  const iv = Buffer.from(ivHex, "hex");
+  const authTag = Buffer.from(authTagHex, "hex");
+  if (iv.length !== 12) {
+    throw new Error(`Invalid IV length for AES-256-GCM. Expected 12 bytes, got ${iv.length}.`);
+  }
+  if (authTag.length !== 16) {
+    throw new Error(`Invalid authentication tag length for AES-256-GCM. Expected 16 bytes, got ${authTag.length}.`);
+  }
+  const key = getLicenseKeyEncryptionBuffer();
+  const decipher = crypto4.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAAD(Buffer.from(`zoya_lic_aad:${licenseId}`, "utf-8"));
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(ciphertextHex, "hex", "utf-8");
+  decrypted += decipher.final("utf-8");
+  return decrypted;
+}
 function sanitizeText(raw, maxLen = 200) {
   if (typeof raw !== "string") return "";
   return raw.replace(/[\x00-\x1F\x7F]/g, " ").trim().slice(0, maxLen);
@@ -1763,6 +1997,14 @@ function sanitizeRecordForStorage(record) {
   delete copy.licenseKey;
   delete copy.plaintextKey;
   delete copy.rawKey;
+  delete copy.paymentReference;
+  delete copy.paymentVerified;
+  delete copy.amount;
+  delete copy.currency;
+  delete copy.verifiedBy;
+  delete copy.verifiedAt;
+  delete copy.isComplimentary;
+  delete copy.complimentaryReason;
   const cleaned = Object.fromEntries(
     Object.entries(copy).filter(([, v]) => v !== void 0)
   );
@@ -1778,6 +2020,50 @@ function cacheLicenseRecord(record) {
   if (record.keyHash) {
     keyHashToLicenseCache.set(record.keyHash, { data: record, cachedAt: now });
   }
+}
+function normalizeRecordOnRead(raw) {
+  const statusRaw = String(raw.status || "").trim();
+  let status = "unactivated";
+  if (statusRaw === "active") {
+    status = "active";
+  } else if (statusRaw === "revoked") {
+    status = "revoked";
+  } else {
+    status = "unactivated";
+  }
+  let linkedDevice = null;
+  if (raw.linkedDevice && typeof raw.linkedDevice === "object" && raw.linkedDevice.deviceId) {
+    linkedDevice = {
+      deviceId: String(raw.linkedDevice.deviceId).trim(),
+      deviceModel: String(raw.linkedDevice.deviceModel || "Android Device").trim(),
+      androidVersion: raw.linkedDevice.androidVersion ? String(raw.linkedDevice.androidVersion).trim() : null,
+      appVersion: raw.linkedDevice.appVersion ? String(raw.linkedDevice.appVersion).trim() : null,
+      linkedAt: String(raw.linkedDevice.linkedAt || raw.activatedAt || raw.createdAt || (/* @__PURE__ */ new Date()).toISOString())
+    };
+  }
+  const record = {
+    id: String(raw.id || ""),
+    keyHash: String(raw.keyHash || ""),
+    maskedKey: String(raw.maskedKey || ""),
+    keyLastFour: String(raw.keyLastFour || raw.maskedKey?.slice(-4) || ""),
+    encryptedKey: raw.encryptedKey && typeof raw.encryptedKey === "string" ? raw.encryptedKey.trim() : null,
+    customerName: String(raw.customerName || ""),
+    customerEmail: String(raw.customerEmail || ""),
+    licenseType: "Lifetime",
+    status,
+    createdBy: raw.createdBy && typeof raw.createdBy === "object" ? { email: String(raw.createdBy.email || ""), name: String(raw.createdBy.name || "") } : { email: "admin@zoya.ai", name: "Administrator" },
+    createdAt: String(raw.createdAt || (/* @__PURE__ */ new Date()).toISOString()),
+    updatedAt: String(raw.updatedAt || (/* @__PURE__ */ new Date()).toISOString()),
+    activatedAt: raw.activatedAt ? String(raw.activatedAt) : null,
+    revokedAt: raw.revokedAt ? String(raw.revokedAt) : null,
+    revokedBy: raw.revokedBy && typeof raw.revokedBy === "object" ? { email: String(raw.revokedBy.email || ""), name: String(raw.revokedBy.name || "") } : null,
+    revokeReason: raw.revokeReason ? String(raw.revokeReason) : null,
+    linkedDevice,
+    lastSeenAt: raw.lastSeenAt ? String(raw.lastSeenAt) : null,
+    validationCount: Number(raw.validationCount) || (status === "active" ? 1 : 0),
+    auditLog: Array.isArray(raw.auditLog) ? raw.auditLog : []
+  };
+  return sanitizeRecordForStorage(record);
 }
 async function getAllLicenses() {
   if (useInMemoryStoreForTesting) {
@@ -1797,9 +2083,9 @@ async function getAllLicenses() {
     for (const docSnap of docs) {
       const data = docSnap.data;
       if (data && data.id && data.keyHash) {
-        const sanitized = sanitizeRecordForStorage(data);
-        all.push(sanitized);
-        cacheLicenseRecord(sanitized);
+        const normalized = normalizeRecordOnRead(data);
+        all.push(normalized);
+        cacheLicenseRecord(normalized);
       }
     }
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1830,12 +2116,9 @@ async function getLicenseById(id) {
   try {
     const snap = await serverGetDocumentById("licenses", cleanId);
     if (snap.exists && snap.data) {
-      const data = snap.data;
-      if (data && data.id) {
-        const sanitized = sanitizeRecordForStorage(data);
-        cacheLicenseRecord(sanitized);
-        return sanitized;
-      }
+      const normalized = normalizeRecordOnRead(snap.data);
+      cacheLicenseRecord(normalized);
+      return normalized;
     }
     return null;
   } catch (err) {
@@ -1865,12 +2148,9 @@ async function getLicenseByKeyHash(keyHash) {
   try {
     const docs = await serverQueryDocumentsEq("licenses", "keyHash", keyHash, 1);
     if (docs.length > 0) {
-      const data = docs[0].data;
-      if (data && data.id) {
-        const sanitized = sanitizeRecordForStorage(data);
-        cacheLicenseRecord(sanitized);
-        return sanitized;
-      }
+      const normalized = normalizeRecordOnRead(docs[0].data);
+      cacheLicenseRecord(normalized);
+      return normalized;
     }
     return null;
   } catch (err) {
@@ -1911,22 +2191,23 @@ async function saveLicenseRecord(record) {
   }
 }
 function computeLicenseStats(licenses) {
-  let active = 0;
-  let pendingPayment = 0;
+  let activated = 0;
+  let unactivated = 0;
   let revoked = 0;
-  let complimentary = 0;
   for (const lic of licenses) {
-    if (lic.status === "active") active += 1;
-    else if (lic.status === "pending_payment") pendingPayment += 1;
-    else if (lic.status === "revoked") revoked += 1;
-    if (lic.isComplimentary) complimentary += 1;
+    if (lic.status === "active") {
+      activated += 1;
+    } else if (lic.status === "revoked") {
+      revoked += 1;
+    } else {
+      unactivated += 1;
+    }
   }
   return {
     total: licenses.length,
-    active,
-    pendingPayment,
-    revoked,
-    complimentary
+    activated,
+    unactivated,
+    revoked
   };
 }
 async function createLifetimeLicense(input, admin, customKeyGenerator) {
@@ -1960,32 +2241,6 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
       error: "Only Lifetime licenses are supported."
     };
   }
-  const isComplimentary = Boolean(input.isComplimentary === true);
-  const complimentaryReason = isComplimentary ? sanitizeText(input.complimentaryReason, 300) : null;
-  if (isComplimentary && (!complimentaryReason || complimentaryReason.length < 3)) {
-    return {
-      success: false,
-      status: 400,
-      error: "A complimentary license requires a recorded reason (minimum 3 characters)."
-    };
-  }
-  const paymentReferenceRaw = sanitizeText(input.paymentReference, 120);
-  const paymentReference = paymentReferenceRaw.length > 0 ? paymentReferenceRaw : null;
-  let amount = null;
-  if (input.amount !== void 0 && input.amount !== null && String(input.amount).trim() !== "") {
-    const rawAmount = String(input.amount).trim();
-    const numericAmount = Number(rawAmount);
-    if (isNaN(numericAmount) || numericAmount < 0 || numericAmount > 1e6) {
-      return {
-        success: false,
-        status: 400,
-        error: "Amount must be a valid non-negative number."
-      };
-    }
-    amount = rawAmount;
-  }
-  const currencyRaw = sanitizeText(input.currency, 12).toUpperCase();
-  const currency = currencyRaw.length > 0 ? currencyRaw : amount ? "INR" : null;
   return withLicenseLock(async () => {
     try {
       const existingLicenses = await getAllLicenses();
@@ -2017,42 +2272,38 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
       const nowIso = (/* @__PURE__ */ new Date()).toISOString();
       const licenseId = `lic_${Date.now()}_${crypto4.randomBytes(4).toString("hex")}`;
       const actorLabel = `${admin.name} <${admin.email}>`;
-      const initialStatus = isComplimentary ? "active" : "pending_payment";
       const auditLog = [
         {
           id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
           action: "created",
           timestamp: nowIso,
           actor: actorLabel,
-          details: isComplimentary ? `Created Lifetime complimentary license (${maskedKey}) for ${customerName} (${customerEmail}).` : `Created Lifetime license (${maskedKey}) for ${customerName} (${customerEmail}) in Pending Payment status.${paymentReference ? ` Recorded unverified payment reference: ${paymentReference}.` : ""}`
+          details: `Created Lifetime license (${maskedKey}) for ${customerName} (${customerEmail}) in Unactivated status.`
         }
       ];
-      if (isComplimentary && complimentaryReason) {
-        auditLog.push({
-          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}_comp`,
-          action: "complimentary_issued",
-          timestamp: nowIso,
-          actor: actorLabel,
-          details: `Activated as admin-authorized complimentary license. Reason: ${complimentaryReason}`
-        });
+      let encryptedKey = null;
+      try {
+        encryptedKey = encryptLicenseKey(rawKey, licenseId);
+      } catch (encErr) {
+        if (encErr instanceof LicenseEncryptionConfigurationError) {
+          return {
+            success: false,
+            status: 500,
+            error: "License creation failed: LICENSE_KEY_ENCRYPTION_SECRET is not configured on the server. Server fails closed per security policy."
+          };
+        }
+        throw encErr;
       }
       const record = {
         id: licenseId,
         keyHash,
         maskedKey,
         keyLastFour,
+        encryptedKey,
         customerName,
         customerEmail,
         licenseType: "Lifetime",
-        status: initialStatus,
-        isComplimentary,
-        complimentaryReason,
-        paymentReference,
-        amount,
-        currency,
-        paymentVerified: false,
-        verifiedBy: null,
-        verifiedAt: null,
+        status: "unactivated",
         createdBy: {
           email: admin.email,
           name: admin.name
@@ -2086,72 +2337,114 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
     }
   });
 }
-async function verifyLicensePayment(licenseId, input, admin) {
+async function revealLicenseKeyByAdmin(licenseId, admin) {
+  if (!admin || admin.role !== "admin") {
+    return {
+      success: false,
+      status: 401,
+      code: "UNAUTHORIZED",
+      error: "Unauthorized administrator session."
+    };
+  }
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return {
+      success: false,
+      status: 400,
+      error: "License ID is required."
+    };
+  }
+  try {
+    const license = await getLicenseById(cleanId);
+    if (!license) {
+      return {
+        success: false,
+        status: 404,
+        code: "LICENSE_NOT_FOUND",
+        error: "License record not found."
+      };
+    }
+    if (!license.encryptedKey) {
+      return {
+        success: false,
+        status: 404,
+        code: "KEY_NOT_RECOVERABLE",
+        error: "This license key was generated prior to reversible encryption. Per security architecture, the original key cannot be recovered."
+      };
+    }
+    try {
+      const decryptedKey = decryptLicenseKey(license.encryptedKey, license.id);
+      return {
+        success: true,
+        status: 200,
+        licenseKey: decryptedKey
+      };
+    } catch (decErr) {
+      if (decErr instanceof LicenseEncryptionConfigurationError) {
+        return {
+          success: false,
+          status: 500,
+          code: "CONFIGURATION_ERROR",
+          error: "License key decryption unavailable: LICENSE_KEY_ENCRYPTION_SECRET is not configured on the server. Server fails closed per security policy."
+        };
+      }
+      return {
+        success: false,
+        status: 500,
+        code: "DECRYPTION_FAILED",
+        error: "Failed to decrypt license key. Ciphertext may be corrupted, tampered, or encrypted with a different secret."
+      };
+    }
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      return {
+        success: false,
+        status: 503,
+        error: err.message
+      };
+    }
+    throw err;
+  }
+}
+async function rebindLicenseDeviceByAdmin(licenseId, input, admin) {
   if (!admin || admin.role !== "admin") {
     return { success: false, status: 401, error: "Unauthorized administrator session." };
   }
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return { success: false, status: 400, error: "License ID is required." };
+  }
+  const reason = sanitizeText(input.reason, 300);
+  if (!reason || reason.length < 3) {
+    return {
+      success: false,
+      status: 400,
+      error: "Administrator authorization reason is required to rebind a device (minimum 3 characters)."
+    };
+  }
   return withLicenseLock(async () => {
     try {
-      const existing = await getLicenseById(licenseId);
+      const existing = await getLicenseById(cleanId);
       if (!existing) {
         return { success: false, status: 404, error: "License record not found." };
       }
       if (existing.status === "revoked") {
-        return {
-          success: false,
-          status: 400,
-          error: "Cannot verify payment or activate a revoked license."
-        };
+        return { success: false, status: 400, error: "Cannot rebind a revoked license." };
       }
-      if (existing.status === "active" || existing.paymentVerified) {
-        return {
-          success: false,
-          status: 400,
-          error: "Payment for this license has already been verified."
-        };
-      }
-      const providedRef = sanitizeText(input?.paymentReference, 120);
-      const finalPaymentRef = providedRef || existing.paymentReference || null;
-      let finalAmount = existing.amount;
-      if (input?.amount !== void 0 && input?.amount !== null && String(input.amount).trim() !== "") {
-        const rawAmount = String(input.amount).trim();
-        const num = Number(rawAmount);
-        if (isNaN(num) || num < 0 || num > 1e6) {
-          return {
-            success: false,
-            status: 400,
-            error: "Amount must be a valid non-negative number."
-          };
-        }
-        finalAmount = rawAmount;
-      }
-      const providedCurrency = sanitizeText(input?.currency, 12).toUpperCase();
-      const finalCurrency = providedCurrency || existing.currency || (finalAmount ? "INR" : null);
-      const verificationNote = sanitizeText(input?.verificationNote, 240);
+      const prevDeviceLabel = existing.linkedDevice?.deviceModel ? `${existing.linkedDevice.deviceModel} (${existing.linkedDevice.deviceId})` : "previous device";
       const nowIso = (/* @__PURE__ */ new Date()).toISOString();
       const actorLabel = `${admin.name} <${admin.email}>`;
-      const refDetail = finalPaymentRef ? `Ref: ${finalPaymentRef}` : "No payment reference recorded";
-      const amountDetail = finalAmount ? `, Amount: ${finalCurrency || ""} ${finalAmount}`.trim() : "";
       const auditEntry = {
         id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
-        action: "payment_verified",
+        action: "device_rebound",
         timestamp: nowIso,
         actor: actorLabel,
-        details: `Payment independently verified by ${admin.name} (${refDetail}${amountDetail}). Status changed to Active.${verificationNote ? ` Note: ${verificationNote}` : ""}`
+        details: `Device binding reset by ${admin.name}. Released from ${prevDeviceLabel}. Reason: ${reason}`
       };
       const updated = {
         ...existing,
-        paymentReference: finalPaymentRef,
-        amount: finalAmount,
-        currency: finalCurrency,
-        paymentVerified: true,
-        verifiedBy: {
-          email: admin.email,
-          name: admin.name
-        },
-        verifiedAt: nowIso,
-        activatedAt: existing.activatedAt || nowIso,
-        status: "active",
+        status: "unactivated",
+        linkedDevice: null,
         updatedAt: nowIso,
         auditLog: [...existing.auditLog || [], auditEntry]
       };
@@ -2159,11 +2452,7 @@ async function verifyLicensePayment(licenseId, input, admin) {
       return { success: true, license: saved };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
-        return {
-          success: false,
-          status: 503,
-          error: err.message
-        };
+        return { success: false, status: 503, error: err.message };
       }
       throw err;
     }
@@ -2232,6 +2521,7 @@ function generateSignedEntitlementToken(payload) {
       kh: payload.keyHash,
       mk: payload.maskedKey,
       act: payload.activatedAt,
+      did: payload.deviceId || null,
       iat: nowSec,
       exp: expSec
     })
@@ -2239,7 +2529,7 @@ function generateSignedEntitlementToken(payload) {
   const signature = crypto4.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
-function verifySignedEntitlementToken(token, expectedKeyHash) {
+function verifySignedEntitlementToken(token, expectedKeyHash, expectedDeviceId) {
   if (!token || typeof token !== "string") {
     return { valid: false, reason: "Entitlement token missing or invalid." };
   }
@@ -2265,6 +2555,9 @@ function verifySignedEntitlementToken(token, expectedKeyHash) {
     const nowSec = Math.floor(Date.now() / 1e3);
     if (!payload.exp || payload.exp < nowSec) {
       return { valid: false, reason: "Entitlement token grace period expired." };
+    }
+    if (expectedDeviceId && payload.did && payload.did !== expectedDeviceId) {
+      return { valid: false, reason: "Entitlement token was issued to a different Android device." };
     }
     return { valid: true, payload };
   } catch {
@@ -2293,6 +2586,17 @@ async function validateLicenseForAndroid(payload) {
   }
   const keyHash = hashLicenseKey(normalizedKey);
   const rawToken = typeof payload.entitlementToken === "string" ? payload.entitlementToken.trim() : "";
+  const deviceValidation = validateClientDeviceInfo(payload.deviceInfo);
+  if (!deviceValidation.valid || !deviceValidation.data) {
+    return {
+      valid: false,
+      status: "malformed",
+      code: "INVALID_DEVICE_INFO",
+      httpStatus: 400,
+      error: deviceValidation.error || "A valid Android device identifier is required."
+    };
+  }
+  const clientDevice = deviceValidation.data;
   return withLicenseLock(async () => {
     try {
       const existing = await getLicenseByKeyHash(keyHash);
@@ -2312,71 +2616,112 @@ async function validateLicenseForAndroid(payload) {
           code: "LICENSE_REVOKED",
           httpStatus: 403,
           revokedAt: existing.revokedAt,
-          error: "This license has been revoked and is no longer valid."
+          error: "This lifetime license has been revoked and is no longer valid."
         };
       }
-      const isAuthorizedActive = existing.status === "active" && (existing.paymentVerified || existing.isComplimentary);
-      if (!isAuthorizedActive) {
-        return {
-          valid: false,
-          status: "pending_payment",
-          code: "PAYMENT_UNVERIFIED",
-          httpStatus: 403,
-          error: "This license is pending manual payment verification by an administrator and cannot be activated yet."
-        };
-      }
-      const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-      const isFirstActivation = (existing.validationCount || 0) === 0 && !(existing.auditLog || []).some((e) => e.action === "activated");
-      const activatedAt = existing.activatedAt || nowIso;
-      let linkedDevice = existing.linkedDevice || null;
-      if (payload.deviceInfo && typeof payload.deviceInfo === "object") {
-        const deviceId = sanitizeText(payload.deviceInfo.deviceId, 120) || null;
-        const deviceModel = sanitizeText(payload.deviceInfo.deviceModel, 120) || null;
-        const androidVersion = sanitizeText(payload.deviceInfo.androidVersion, 60) || null;
-        const appVersion = sanitizeText(payload.deviceInfo.appVersion, 60) || null;
-        if (deviceId || deviceModel || androidVersion || appVersion) {
-          linkedDevice = {
-            deviceId: deviceId ?? linkedDevice?.deviceId ?? null,
-            deviceModel: deviceModel ?? linkedDevice?.deviceModel ?? null,
-            androidVersion: androidVersion ?? linkedDevice?.androidVersion ?? null,
-            appVersion: appVersion ?? linkedDevice?.appVersion ?? null,
-            linkedAt: linkedDevice?.linkedAt || nowIso
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get("licenses", existing.id);
+        if (!snap.exists || !snap.data) {
+          throw new Error("License document missing during transaction.");
+        }
+        const current = normalizeRecordOnRead(snap.data);
+        if (current.status === "revoked") {
+          return {
+            type: "revoked",
+            revokedAt: current.revokedAt
           };
         }
-      }
-      const updatedAuditLog = [...existing.auditLog || []];
-      if (isFirstActivation) {
-        updatedAuditLog.push({
+        const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+        if (current.linkedDevice && current.linkedDevice.deviceId) {
+          if (current.linkedDevice.deviceId !== clientDevice.deviceId) {
+            return {
+              type: "mismatch",
+              boundModel: current.linkedDevice.deviceModel
+            };
+          }
+          const updatedAudit2 = [...current.auditLog || []];
+          if (updatedAudit2.length < 50) {
+            updatedAudit2.push({
+              id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
+              action: "validated",
+              timestamp: nowIso,
+              actor: "Zoya Android Phone",
+              details: `Validated on bound device (${clientDevice.deviceModel}).`
+            });
+          }
+          const updated2 = {
+            ...current,
+            status: "active",
+            lastSeenAt: nowIso,
+            validationCount: (current.validationCount || 0) + 1,
+            linkedDevice: {
+              ...current.linkedDevice,
+              deviceModel: clientDevice.deviceModel || current.linkedDevice.deviceModel,
+              androidVersion: clientDevice.androidVersion || current.linkedDevice.androidVersion,
+              appVersion: clientDevice.appVersion || current.linkedDevice.appVersion
+            },
+            updatedAt: nowIso,
+            auditLog: updatedAudit2
+          };
+          tx.set("licenses", current.id, updated2);
+          return { type: "success", record: updated2, isFirstActivation: false };
+        }
+        const newLinkedDevice = {
+          deviceId: clientDevice.deviceId,
+          deviceModel: clientDevice.deviceModel,
+          androidVersion: clientDevice.androidVersion,
+          appVersion: clientDevice.appVersion,
+          linkedAt: nowIso
+        };
+        const updatedAudit = [...current.auditLog || []];
+        updatedAudit.push({
           id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
           action: "activated",
           timestamp: nowIso,
-          actor: "Zoya Android Client",
-          details: linkedDevice?.deviceModel ? `License activated on device (${linkedDevice.deviceModel}).` : "License activated via validation endpoint."
+          actor: "Zoya Android Phone",
+          details: `Lifetime license activated and permanently bound to ${clientDevice.deviceModel} (${clientDevice.deviceId}).`
         });
-      } else if (updatedAuditLog.length < 50) {
-        updatedAuditLog.push({
-          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
-          action: "validated",
-          timestamp: nowIso,
-          actor: "Zoya Android Client",
-          details: linkedDevice?.deviceModel ? `License validated from device (${linkedDevice.deviceModel}).` : "License validated."
-        });
+        const updated = {
+          ...current,
+          status: "active",
+          activatedAt: current.activatedAt || nowIso,
+          lastSeenAt: nowIso,
+          validationCount: 1,
+          linkedDevice: newLinkedDevice,
+          updatedAt: nowIso,
+          auditLog: updatedAudit
+        };
+        tx.set("licenses", current.id, updated);
+        return { type: "success", record: updated, isFirstActivation: true };
+      });
+      if (txResult.type === "revoked") {
+        return {
+          valid: false,
+          status: "revoked",
+          code: "LICENSE_REVOKED",
+          httpStatus: 403,
+          revokedAt: txResult.revokedAt,
+          error: "This lifetime license has been revoked."
+        };
       }
-      const updated = {
-        ...existing,
-        activatedAt,
-        lastSeenAt: nowIso,
-        linkedDevice,
-        validationCount: (existing.validationCount || 0) + 1,
-        updatedAt: nowIso,
-        auditLog: updatedAuditLog
-      };
-      const saved = await saveLicenseRecord(updated);
+      if (txResult.type === "mismatch") {
+        return {
+          valid: false,
+          status: "device_mismatch",
+          code: "DEVICE_MISMATCH",
+          httpStatus: 403,
+          error: `This lifetime license is already bound to another phone (${txResult.boundModel}). One-phone lifetime license policy is strictly enforced.`
+        };
+      }
+      const saved = txResult.record;
+      cacheLicenseRecord(saved);
+      allLicensesCache = null;
       const entitlementToken = generateSignedEntitlementToken({
         licenseId: saved.id,
         keyHash: saved.keyHash,
         maskedKey: saved.maskedKey,
-        activatedAt: saved.activatedAt || nowIso
+        activatedAt: saved.activatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+        deviceId: saved.linkedDevice?.deviceId || clientDevice.deviceId
       });
       return {
         valid: true,
@@ -2390,14 +2735,14 @@ async function validateLicenseForAndroid(payload) {
           licenseType: "Lifetime",
           status: "active",
           customerName: saved.customerName,
-          activatedAt: saved.activatedAt || nowIso,
-          lastSeenAt: saved.lastSeenAt || nowIso,
+          activatedAt: saved.activatedAt || (/* @__PURE__ */ new Date()).toISOString(),
+          lastSeenAt: saved.lastSeenAt || (/* @__PURE__ */ new Date()).toISOString(),
           linkedDevice: saved.linkedDevice
         }
       };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
-        const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash);
+        const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
         if (tokenVerification.valid && tokenVerification.payload) {
           return {
             valid: true,
@@ -2406,7 +2751,7 @@ async function validateLicenseForAndroid(payload) {
             httpStatus: 200,
             isOfflineGrace: true,
             entitlementToken: rawToken,
-            error: "Server storage is temporarily unavailable. License validated via cryptographic offline grace token.",
+            error: "Server storage is temporarily unavailable. License validated via cryptographic offline grace token on bound device.",
             license: {
               id: tokenVerification.payload.id || "grace_id",
               maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
@@ -2415,8 +2760,21 @@ async function validateLicenseForAndroid(payload) {
               customerName: "Lifetime Subscriber",
               activatedAt: tokenVerification.payload.act || (/* @__PURE__ */ new Date()).toISOString(),
               lastSeenAt: (/* @__PURE__ */ new Date()).toISOString(),
-              linkedDevice: null
+              linkedDevice: {
+                deviceId: clientDevice.deviceId,
+                deviceModel: clientDevice.deviceModel,
+                linkedAt: tokenVerification.payload.act || (/* @__PURE__ */ new Date()).toISOString()
+              }
             }
+          };
+        }
+        if (tokenVerification.reason?.includes("different Android device")) {
+          return {
+            valid: false,
+            status: "device_mismatch",
+            code: "DEVICE_MISMATCH",
+            httpStatus: 403,
+            error: "Offline grace token was issued to a different Android device."
           };
         }
         return {
@@ -2509,6 +2867,7 @@ function sendJson(res, status, data) {
   }
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   res.end(JSON.stringify(data));
 }
 function sendError(res, status, message, code) {
@@ -2789,7 +3148,7 @@ async function handleApiRequest(req, res, explicitRoute) {
       });
       return true;
     }
-    if (pathname === "/api/licenses/validate") {
+    if (pathname === "/api/licenses/validate" || pathname === "/api/licenses/activate") {
       if (method !== "POST") {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
         return true;
@@ -2876,7 +3235,7 @@ async function handleApiRequest(req, res, explicitRoute) {
       const token = createToken(user);
       res.setHeader(
         "Set-Cookie",
-        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`
+        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=7200`
       );
       sendJson(res, 200, {
         success: true,
@@ -2904,7 +3263,7 @@ async function handleApiRequest(req, res, explicitRoute) {
       return true;
     }
     if (pathname === "/api/admin/logout" && method === "POST") {
-      res.setHeader("Set-Cookie", "zoya_admin_token=; Path=/; HttpOnly; Max-Age=0");
+      res.setHeader("Set-Cookie", "zoya_admin_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
       sendJson(res, 200, { success: true, message: "Logged out successfully." });
       return true;
     }
@@ -3315,7 +3674,7 @@ async function handleApiRequest(req, res, explicitRoute) {
         }
         sendJson(res, 201, {
           success: true,
-          message: created.license.isComplimentary ? `Complimentary Lifetime license generated and activated for ${created.license.customerName}.` : `Lifetime license generated for ${created.license.customerName} (Pending Payment verification).`,
+          message: `Lifetime license generated for ${created.license.customerName} (Unactivated).`,
           generatedKey: created.generatedKey,
           license: created.license
         });
@@ -3325,9 +3684,23 @@ async function handleApiRequest(req, res, explicitRoute) {
         const anyReq = req;
         const queryId = anyReq.query?.id || parsedUrl.searchParams.get("id");
         const rawSubPath = pathname.substring("/api/admin/licenses/".length).trim();
-        const licenseId = (rawSubPath && rawSubPath !== ":id" && rawSubPath !== "[id]" ? rawSubPath : queryId || "").trim();
+        const isKeyRequest = rawSubPath.endsWith("/key");
+        const cleanSubPath = isKeyRequest ? rawSubPath.slice(0, -"/key".length).trim() : rawSubPath;
+        const licenseId = (cleanSubPath && cleanSubPath !== ":id" && cleanSubPath !== "[id]" ? cleanSubPath : queryId || "").trim();
         if (!licenseId) {
           sendError(res, 400, "License ID is required.");
+          return true;
+        }
+        if (isKeyRequest) {
+          const revealed = await revealLicenseKeyByAdmin(licenseId, user);
+          if (!revealed.success) {
+            sendError(res, revealed.status, revealed.error || "Failed to retrieve license key.", revealed.code);
+            return true;
+          }
+          sendJson(res, 200, {
+            success: true,
+            licenseKey: revealed.licenseKey
+          });
           return true;
         }
         if (method === "GET") {
@@ -3351,16 +3724,28 @@ async function handleApiRequest(req, res, explicitRoute) {
             return true;
           }
           const action = typeof body.action === "string" ? body.action.trim() : "";
-          if (action === "verify_payment") {
-            const verified = await verifyLicensePayment(licenseId, body, user);
-            if (!verified.success) {
-              sendError(res, verified.status, verified.error);
+          if (action === "reveal" || action === "get_key") {
+            const revealed = await revealLicenseKeyByAdmin(licenseId, user);
+            if (!revealed.success) {
+              sendError(res, revealed.status, revealed.error || "Failed to retrieve license key.", revealed.code);
               return true;
             }
             sendJson(res, 200, {
               success: true,
-              message: `Payment verified by ${user.name}. License is now Active.`,
-              license: verified.license
+              licenseKey: revealed.licenseKey
+            });
+            return true;
+          }
+          if (action === "rebind") {
+            const rebound = await rebindLicenseDeviceByAdmin(licenseId, body, user);
+            if (!rebound.success) {
+              sendError(res, rebound.status, rebound.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `License device binding cleared by administrator (${user.name}). Key is now ready for activation on a new phone.`,
+              license: rebound.license
             });
             return true;
           }
@@ -3380,7 +3765,7 @@ async function handleApiRequest(req, res, explicitRoute) {
           sendError(
             res,
             400,
-            'Invalid license action. Supported actions: "verify_payment", "revoke".'
+            'Invalid license action. Supported actions: "reveal", "rebind", "revoke".'
           );
           return true;
         }

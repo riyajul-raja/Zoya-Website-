@@ -41,7 +41,6 @@ import {
   getLicenseById,
   computeLicenseStats,
   createLifetimeLicense,
-  activateLifetimeLicenseByAdmin,
   rebindLicenseDeviceByAdmin,
   revokeLicense,
   revealLicenseKeyByAdmin,
@@ -1136,14 +1135,10 @@ export async function handleApiRequest(
           return true;
         }
 
-        // POST or PATCH /api/admin/licenses/:id (Reveal, Activate, Rebind, or Revoke license)
+        // POST or PATCH /api/admin/licenses/:id (Reveal, Rebind, or Revoke license)
         if (method === 'POST' || method === 'PATCH') {
           let body: {
             action?: unknown;
-            deviceModel?: unknown;
-            deviceId?: unknown;
-            androidVersion?: unknown;
-            appVersion?: unknown;
             reason?: unknown;
           } = {};
           try {
@@ -1164,20 +1159,6 @@ export async function handleApiRequest(
             sendJson(res, 200, {
               success: true,
               licenseKey: revealed.licenseKey,
-            });
-            return true;
-          }
-
-          if (action === 'activate') {
-            const activated = await activateLifetimeLicenseByAdmin(licenseId, body, user);
-            if (!activated.success) {
-              sendError(res, activated.status, activated.error);
-              return true;
-            }
-            sendJson(res, 200, {
-              success: true,
-              message: `Lifetime license activated and bound to phone (${activated.license.linkedDevice?.deviceModel || 'Phone'}).`,
-              license: activated.license,
             });
             return true;
           }
@@ -1213,7 +1194,7 @@ export async function handleApiRequest(
           sendError(
             res,
             400,
-            'Invalid license action. Supported actions: "reveal", "activate", "rebind", "revoke".'
+            'Invalid license action. Supported actions: "reveal", "rebind", "revoke".'
           );
           return true;
         }

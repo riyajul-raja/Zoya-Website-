@@ -21,7 +21,6 @@ import {
   EyeOff,
   Lock,
   X,
-  SmartphoneNfc,
 } from 'lucide-react';
 import type {
   LicenseRecord,
@@ -77,13 +76,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
 
   // Selected License for Details + Actions
   const [selectedLicenseId, setSelectedLicenseId] = useState<string | null>(null);
-
-  // Admin Manual Activation State
-  const [activatingLicenseId, setActivatingLicenseId] = useState<string | null>(null);
-  const [activateDeviceModel, setActivateDeviceModel] = useState('');
-  const [activateDeviceId, setActivateDeviceId] = useState('');
-  const [activateAndroidVersion, setActivateAndroidVersion] = useState('Android 14');
-  const [submittingActivate, setSubmittingActivate] = useState(false);
 
   // Rebind Device Action State
   const [rebindLicenseId, setRebindLicenseId] = useState<string | null>(null);
@@ -439,97 +431,10 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
     }, 2500);
   };
 
-  // Open activation panel
-  const openActivatePanel = (lic: LicenseRecord) => {
-    setActionFeedback(null);
-    setRevokingLicenseId(null);
-    setRebindLicenseId(null);
-    setActivatingLicenseId(lic.id);
-    setActivateDeviceModel('');
-    setActivateDeviceId('');
-    setActivateAndroidVersion('Android 14');
-  };
-
-  // Admin Manual Activation Submission
-  const handleConfirmActivate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activatingLicenseId || submittingActivate) return;
-
-    const trimmedModel = activateDeviceModel.trim();
-    const trimmedDeviceId = activateDeviceId.trim();
-
-    if (trimmedModel.length < 2) {
-      setActionFeedback({
-        type: 'error',
-        text: 'Phone / Device Model is required (e.g., Pixel 8 Pro, Samsung S24).',
-      });
-      return;
-    }
-
-    if (trimmedDeviceId.length < 8) {
-      setActionFeedback({
-        type: 'error',
-        text: 'Device ID is required and must be at least 8 characters.',
-      });
-      return;
-    }
-
-    setSubmittingActivate(true);
-    setActionFeedback(null);
-
-    try {
-      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(activatingLicenseId)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'activate',
-          deviceModel: trimmedModel,
-          deviceId: trimmedDeviceId,
-          androidVersion: activateAndroidVersion.trim() || 'Android',
-          appVersion: '2.5.0',
-        }),
-      });
-
-      const rawText = await res.text();
-      if (res.status === 401) {
-        onUnauthorized?.();
-        return;
-      }
-      let data: any = {};
-      try {
-        data = rawText ? JSON.parse(rawText) : {};
-      } catch {
-        throw new Error(`Unexpected response from server (HTTP ${res.status}).`);
-      }
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to activate license (${res.status}).`);
-      }
-
-      setActivatingLicenseId(null);
-      setActionFeedback({
-        type: 'success',
-        text: data.message || 'Lifetime license activated and bound to phone.',
-      });
-      await fetchLicenses();
-    } catch (err: unknown) {
-      setActionFeedback({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to activate license.',
-      });
-    } finally {
-      setSubmittingActivate(false);
-    }
-  };
-
   // Open rebind panel
   const openRebindPanel = (lic: LicenseRecord) => {
     setActionFeedback(null);
     setRevokingLicenseId(null);
-    setActivatingLicenseId(null);
     setRebindLicenseId(lic.id);
     setRebindReason('');
   };
@@ -599,7 +504,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
   // Open revoke panel
   const openRevokePanel = (lic: LicenseRecord) => {
     setActionFeedback(null);
-    setActivatingLicenseId(null);
     setRebindLicenseId(null);
     setRevokingLicenseId(lic.id);
     setRevokeReason('');
@@ -1050,7 +954,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                     onClick={() => {
                       setSelectedLicenseId(lic.id);
                       setActionFeedback(null);
-                      setActivatingLicenseId(null);
                       setRebindLicenseId(null);
                       setRevokingLicenseId(null);
                     }}
@@ -1379,80 +1282,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
 
               {/* Administrative Action Controls */}
               <div className="space-y-2.5 pt-1">
-                {/* 1. ACTIVATE ACTION (Only if unactivated) */}
-                {selectedLicense.status === 'unactivated' && activatingLicenseId !== selectedLicense.id && (
-                  <button
-                    type="button"
-                    onClick={() => openActivatePanel(selectedLicense)}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all cursor-pointer"
-                  >
-                    <SmartphoneNfc className="w-4 h-4" />
-                    <span>Activate Lifetime License</span>
-                  </button>
-                )}
-
-                {/* Inline Activate Confirmation Form */}
-                {activatingLicenseId === selectedLicense.id && (
-                  <form
-                    onSubmit={handleConfirmActivate}
-                    className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3 text-xs"
-                  >
-                    <div className="font-bold text-emerald-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
-                      <span>Activate &amp; Bind Phone</span>
-                      <button
-                        type="button"
-                        onClick={() => setActivatingLicenseId(null)}
-                        className="text-slate-400 hover:text-white"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-slate-300 mb-1">
-                        Phone Model <span className="text-emerald-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={activateDeviceModel}
-                        onChange={(e) => setActivateDeviceModel(e.target.value)}
-                        placeholder="e.g., Google Pixel 8 Pro / Samsung S24"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-slate-300 mb-1">
-                        Device Identifier <span className="text-emerald-400">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={activateDeviceId}
-                        onChange={(e) => setActivateDeviceId(e.target.value)}
-                        placeholder="e.g., ANDROID_ID / Hardware UUID (min 8 chars)"
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        type="submit"
-                        disabled={submittingActivate}
-                        className="flex-1 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
-                      >
-                        {submittingActivate ? 'Activating...' : 'Confirm Activation'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setActivatingLicenseId(null)}
-                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                {/* 2. REBIND ACTION (Only if active and has bound phone) */}
+                {/* 1. REBIND ACTION (Only if active and has bound phone) */}
                 {selectedLicense.status === 'active' && selectedLicense.linkedDevice && rebindLicenseId !== selectedLicense.id && (
                   <button
                     type="button"

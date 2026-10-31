@@ -669,6 +669,23 @@ async function runTests() {
     // ---------------------------------------------------------
     console.log('Test 6: Admin-authorized device rebind, license revocation & audit history...');
 
+    // Verify admin-side manual activation action is removed (customer activates via POST /api/licenses/validate)
+    const removedAdminActivateRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${createdLic.id}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        action: 'activate',
+        deviceModel: 'Manual Admin Phone',
+        deviceId: 'manual_admin_device_001',
+      },
+    });
+    assert.equal(
+      removedAdminActivateRes.statusCode,
+      400,
+      'Admin manual activation action must be rejected with HTTP 400 (customers activate via Zoya Android)'
+    );
+
     // 6a. Admin Rebind Device
     // Currently plaintextKey is bound to Phone A. Admin rebinds it with explicit reason.
     const rebindRes = await invokeHandler({
