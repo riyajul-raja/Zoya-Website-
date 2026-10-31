@@ -276,12 +276,11 @@ async function runTests() {
       );
     }
 
-    // Activate the zoya-updates/(default) adapter for the test suite
+    // Always activate the isolated in-memory zoya-updates/(default) adapter for the test suite
+    // so test execution never modifies live Firestore records or generates production licenses.
     setUseInMemoryStoreForTesting(false);
     setSimulatedStorageFailureForTesting(false);
-    if (!liveAdmin) {
-      setServerFirestoreTestAdapter(zoyaUpdatesAdapter);
-    }
+    setServerFirestoreTestAdapter(zoyaUpdatesAdapter);
     clearLicenseInMemoryCache();
     clearReleasesInMemoryCache();
     resetRateLimits();

@@ -124,9 +124,13 @@ const RELEASES_CACHE_TTL_MS = 60_000;
 let releasesCache: { data: ReleaseMetadata[]; cachedAt: number } | null = null;
 
 function logStorageNotice(context: string, err: unknown): void {
+  const errMessage = String((err as any)?.message || err);
+  if (errMessage.includes('FIREBASE_SERVICE_ACCOUNT_JSON is required')) {
+    return;
+  }
   const isQuota =
     (err as any)?.code === 'resource-exhausted' ||
-    String((err as any)?.message || err).includes('Quota limit exceeded');
+    errMessage.includes('Quota limit exceeded');
   if (isQuota) {
     console.warn(`${context}: Daily free tier read/write quota limit reached. Using local/cached fallback.`);
   } else {
