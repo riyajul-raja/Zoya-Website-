@@ -1,22 +1,13 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { ensureServerFirestoreAuth, getStorageInstance } from './firebase';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  Bytes,
-} from 'firebase/firestore';
-import {
-  ref,
-  uploadBytes,
-  getBytes,
-  deleteObject,
-} from 'firebase/storage';
+  serverGetCollectionDocs,
+  serverGetDocumentById,
+  serverSetDocumentById,
+  serverDeleteDocumentById,
+  extractBinaryBuffer,
+} from './firebase';
 
 // 512 KB per chunk — safely under Firestore's 1 MiB document limit and Vercel's 4.5 MB request limit
 export const APK_CHUNK_SIZE = 524288;
@@ -153,15 +144,14 @@ export async function getAllReleases(): Promise<ReleaseMetadata[]> {
   }
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snapshot = await getDocs(collection(db, 'releases'));
+    const docs = await serverGetCollectionDocs('releases');
     const releases: ReleaseMetadata[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data() as ReleaseMetadata;
+    for (const docSnap of docs) {
+      const data = docSnap.data as ReleaseMetadata;
       if (data && data.id) {
         releases.push(data);
       }
-    });
+    }
     if (releases.length > 0) {
       releasesCache = { data: releases, cachedAt: Date.now() };
       return releases;
@@ -202,11 +192,9 @@ export async function getLatestPublishedRelease(): Promise<ReleaseMetadata | nul
 export async function getReleaseById(id: string): Promise<ReleaseMetadata | null> {
   if (!id) return null;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const docRef = doc(db, 'releases', id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as ReleaseMetadata;
+    const docSnap = await serverGetDocumentById('releases', id);
+    if (docSnap.exists && docSnap.data) {
+      return docSnap.data as ReleaseMetadata;
     }
   } catch (err) {
     logStorageNotice('Firestore getDoc notice, falling back to getAllReleases', err);
@@ -228,9 +216,7 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
   ) as unknown as ReleaseMetadata;
 
   // 1. Persist permanently to Cloud Firestore
-  const db = await ensureServerFirestoreAuth();
-  const docRef = doc(db, 'releases', updatedRelease.id);
-  await setDoc(docRef, updatedRelease);
+  await serverSetDocumentById('releases', updatedRelease.id, updatedRelease);
 
   // 2. Also save to local storage file as backup
   try {
@@ -252,10 +238,9 @@ export async function saveRelease(release: ReleaseMetadata): Promise<void> {
 export async function deleteStoredChunks(storageKey: string, totalChunks: number): Promise<void> {
   if (!storageKey || totalChunks <= 0) return;
   try {
-    const db = await ensureServerFirestoreAuth();
     const delPromises: Promise<void>[] = [];
     for (let i = 0; i < totalChunks; i++) {
-      delPromises.push(deleteDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${i}`)));
+      delPromises.push(serverDeleteDocumentById('apk_chunks', `${storageKey}_chunk_${i}`));
     }
     await Promise.allSettled(delPromises);
   } catch (err) {
@@ -270,11 +255,9 @@ export async function deleteRelease(id: string): Promise<boolean> {
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
 
-  const db = await ensureServerFirestoreAuth();
-
   // 1. Delete permanently from Cloud Firestore releases collection
   try {
-    await deleteDoc(doc(db, 'releases', id));
+    await serverDeleteDocumentById('releases', id);
   } catch (err) {
     console.error('Firestore deleteRelease error:', err);
   }
@@ -284,32 +267,22 @@ export async function deleteRelease(id: string): Promise<boolean> {
     try {
       let totalChunks = existingRecord.chunkCount || 0;
       if (!totalChunks) {
-        const chunk0 = await getDoc(doc(db, 'apk_chunks', `${existingRecord.storageKey}_chunk_0`));
-        if (chunk0.exists()) {
-          totalChunks = Number(chunk0.data()?.totalChunks) || 1;
+        const chunk0 = await serverGetDocumentById('apk_chunks', `${existingRecord.storageKey}_chunk_0`);
+        if (chunk0.exists && chunk0.data) {
+          totalChunks = Number(chunk0.data.totalChunks) || 1;
         }
       }
       if (totalChunks > 0) {
         const delPromises: Promise<void>[] = [];
         for (let i = 0; i < totalChunks; i++) {
-          delPromises.push(deleteDoc(doc(db, 'apk_chunks', `${existingRecord.storageKey}_chunk_${i}`)));
+          delPromises.push(
+            serverDeleteDocumentById('apk_chunks', `${existingRecord.storageKey}_chunk_${i}`)
+          );
         }
         await Promise.allSettled(delPromises);
       }
     } catch (err) {
       console.warn('Firestore apk_chunks cleanup notice:', err);
-    }
-
-    // 3. Also attempt delete from Firebase Cloud Storage if bucket exists
-    const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
-    if (storageObjectPath.startsWith('apks/')) {
-      try {
-        const storage = getStorageInstance();
-        const storageRef = ref(storage, storageObjectPath);
-        await deleteObject(storageRef);
-      } catch {
-        // Ignore if bucket not provisioned
-      }
     }
   }
 
@@ -362,14 +335,13 @@ export async function storeApkChunk(
     throw new Error(`Chunk size (${chunkBuffer.length} bytes) exceeds safe Firestore document limit.`);
   }
 
-  const db = await ensureServerFirestoreAuth();
-  const uint8 = new Uint8Array(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
-  await setDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${index}`), {
+  const binarySlice = Buffer.from(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
+  await serverSetDocumentById('apk_chunks', `${storageKey}_chunk_${index}`, {
     storageKey,
     index,
     totalChunks,
     size: chunkBuffer.length,
-    data: Bytes.fromUint8Array(uint8),
+    data: binarySlice,
     createdAt: new Date().toISOString(),
   });
 }
@@ -383,17 +355,17 @@ export async function verifyStoredChunks(
 ): Promise<boolean> {
   if (!storageKey || totalChunks <= 0) return false;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const firstSnap = await getDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_0`));
-    if (!firstSnap.exists()) return false;
-    const firstData = firstSnap.data();
-    if (!firstData || !firstData.data) return false;
-    const firstBytes: Uint8Array = firstData.data.toUint8Array();
-    if (!isValidApkHeader(firstBytes)) return false;
+    const firstSnap = await serverGetDocumentById('apk_chunks', `${storageKey}_chunk_0`);
+    if (!firstSnap.exists || !firstSnap.data) return false;
+    const firstBytes = extractBinaryBuffer(firstSnap.data.data);
+    if (!firstBytes || !isValidApkHeader(firstBytes)) return false;
 
     if (totalChunks > 1) {
-      const lastSnap = await getDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${totalChunks - 1}`));
-      if (!lastSnap.exists()) return false;
+      const lastSnap = await serverGetDocumentById(
+        'apk_chunks',
+        `${storageKey}_chunk_${totalChunks - 1}`
+      );
+      if (!lastSnap.exists) return false;
     }
     return true;
   } catch (err) {
@@ -410,15 +382,11 @@ export async function hasApkBinary(release: ReleaseMetadata | null | undefined):
 
   // 1. Check Cloud Firestore apk_chunks (primary persistent cross-instance store)
   try {
-    const db = await ensureServerFirestoreAuth();
-    const chunk0Snap = await getDoc(doc(db, 'apk_chunks', `${release.storageKey}_chunk_0`));
-    if (chunk0Snap.exists()) {
-      const d = chunk0Snap.data();
-      if (d && d.data && typeof d.data.toUint8Array === 'function') {
-        const bytes = d.data.toUint8Array();
-        if (isValidApkHeader(bytes)) {
-          return true;
-        }
+    const chunk0Snap = await serverGetDocumentById('apk_chunks', `${release.storageKey}_chunk_0`);
+    if (chunk0Snap.exists && chunk0Snap.data) {
+      const bytes = extractBinaryBuffer(chunk0Snap.data.data);
+      if (bytes && isValidApkHeader(bytes)) {
+        return true;
       }
     }
   } catch (err) {
@@ -429,21 +397,6 @@ export async function hasApkBinary(release: ReleaseMetadata | null | undefined):
   const bundledFile = path.resolve(process.cwd(), '.data', 'apks', release.storageKey);
   if (fs.existsSync(bundledFile)) {
     return true;
-  }
-
-  // 3. Check Firebase Cloud Storage if bucket exists
-  const objectPath = release.storagePath || `apks/${release.storageKey}`;
-  if (objectPath.startsWith('apks/')) {
-    try {
-      const storage = getStorageInstance();
-      const storageRef = ref(storage, objectPath);
-      const bytes = await getBytes(storageRef, 16);
-      if (bytes && bytes.byteLength >= 4) {
-        return true;
-      }
-    } catch {
-      // Bucket not provisioned or object does not exist
-    }
   }
 
   return false;
@@ -552,17 +505,16 @@ export async function getApkBuffer(
 
   // 2. Download permanently from Cloud Firestore `apk_chunks` across separate Vercel Lambdas
   try {
-    const db = await ensureServerFirestoreAuth();
     let total = chunkCount && chunkCount > 0 ? chunkCount : 0;
     let chunk0Buffer: Buffer | null = null;
 
     if (!total) {
-      const snap0 = await getDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_0`));
-      if (snap0.exists()) {
-        const data0 = snap0.data();
-        if (data0 && data0.data && typeof data0.data.toUint8Array === 'function') {
-          total = Number(data0.totalChunks) || 1;
-          chunk0Buffer = Buffer.from(data0.data.toUint8Array());
+      const snap0 = await serverGetDocumentById('apk_chunks', `${storageKey}_chunk_0`);
+      if (snap0.exists && snap0.data) {
+        const bytes0 = extractBinaryBuffer(snap0.data.data);
+        if (bytes0) {
+          total = Number(snap0.data.totalChunks) || 1;
+          chunk0Buffer = bytes0;
         }
       }
     }
@@ -577,22 +529,22 @@ export async function getApkBuffer(
       if (startIndex < total) {
         const indices = Array.from({ length: total - startIndex }, (_, idx) => idx + startIndex);
         const snaps = await Promise.all(
-          indices.map((idx) => getDoc(doc(db, 'apk_chunks', `${storageKey}_chunk_${idx}`)))
+          indices.map((idx) => serverGetDocumentById('apk_chunks', `${storageKey}_chunk_${idx}`))
         );
 
         let allFound = true;
         for (let k = 0; k < snaps.length; k++) {
           const snap = snaps[k];
-          if (!snap.exists()) {
+          if (!snap.exists || !snap.data) {
             allFound = false;
             break;
           }
-          const d = snap.data();
-          if (!d || !d.data || typeof d.data.toUint8Array !== 'function') {
+          const buf = extractBinaryBuffer(snap.data.data);
+          if (!buf) {
             allFound = false;
             break;
           }
-          chunkBuffers[indices[k]] = Buffer.from(d.data.toUint8Array());
+          chunkBuffers[indices[k]] = buf;
         }
 
         if (allFound) {
@@ -617,25 +569,6 @@ export async function getApkBuffer(
     }
   } catch (err) {
     console.error(`Firestore apk_chunks download error for ${storageKey}:`, err);
-  }
-
-  // 3. Fallback: try Firebase Cloud Storage if bucket is provisioned
-  const objectPath = storagePath && storagePath.startsWith('apks/') ? storagePath : `apks/${storageKey}`;
-  try {
-    const storage = getStorageInstance();
-    const storageRef = ref(storage, objectPath);
-    const arrayBuffer = await getBytes(storageRef);
-    const buffer = Buffer.from(arrayBuffer);
-    if (isValidApkHeader(buffer)) {
-      try {
-        fs.writeFileSync(localPath, buffer);
-      } catch {
-        // Ignored
-      }
-      return buffer;
-    }
-  } catch {
-    // Storage bucket not provisioned or object missing
   }
 
   return null;

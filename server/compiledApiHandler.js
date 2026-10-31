@@ -1,68 +1,43 @@
 // server/apiHandler.ts
-import crypto6 from "crypto";
+import crypto5 from "crypto";
 import path2 from "path";
 
 // server/storage.ts
-import crypto2 from "crypto";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
 // server/firebase.ts
-import crypto from "crypto";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, setLogLevel } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 import {
-  getAuth,
-  signInWithCustomToken,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword
-} from "firebase/auth";
-
-// firebase-applet-config.json
-var firebase_applet_config_default = {
-  projectId: "distinguished-arena-4wr9b",
-  appId: "1:637371888461:web:07815ddf5396a2648cfd04",
-  apiKey: "AIzaSyC12px3Oua-fE5zvKlNkC8GBlqQpwqAxmE",
-  authDomain: "distinguished-arena-4wr9b.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-zoyaaiassistant-e56902ff-e9da-4d13-ba83-43ec01e84e99",
-  storageBucket: "distinguished-arena-4wr9b.firebasestorage.app",
-  messagingSenderId: "637371888461",
-  measurementId: "",
-  oAuthClientId: "637371888461-of1t68o1p0g16og0amo50fid6lf6kl1g.apps.googleusercontent.com",
-  recaptchaSiteKey: ""
-};
-
-// server/firebase.ts
-var PINNED_SERVER_UID = "ukJVtQYppkV4awTHZImYEPV7dH53";
-var cachedApp = null;
-var cachedDb = null;
-var cachedStorage = null;
-var cachedAuth = null;
-var pendingAuthPromise = null;
-function getFirebaseApp() {
-  if (!cachedApp) {
-    cachedApp = getApps().length === 0 ? initializeApp(firebase_applet_config_default) : getApp();
-  }
-  return cachedApp;
-}
-function getFirebaseAuth() {
-  if (!cachedAuth) {
-    cachedAuth = getAuth(getFirebaseApp());
-  }
-  return cachedAuth;
-}
-function getServiceAccountForFirestore() {
+  initializeApp as initializeAdminApp,
+  getApps as getAdminApps,
+  cert
+} from "firebase-admin/app";
+import {
+  getFirestore as getAdminFirestoreInstance
+} from "firebase-admin/firestore";
+var TARGET_FIREBASE_PROJECT_ID = "zoya-updates";
+var TARGET_FIRESTORE_DATABASE_ID = "(default)";
+var cachedAdminApp = null;
+var cachedAdminDb = null;
+var cachedAdminProjectId = null;
+var cachedAdminDatabaseId = null;
+var adminDbConfigured = false;
+var testAdapterOverride = null;
+function getServerServiceAccountCredentials(defaultProjectId = TARGET_FIREBASE_PROJECT_ID) {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
   if (rawJson.length > 0) {
     try {
       const decoded = rawJson.startsWith("{") ? rawJson : Buffer.from(rawJson, "base64").toString("utf-8");
       const parsed = JSON.parse(decoded.trim());
-      const projectMatches = !parsed.project_id || String(parsed.project_id).trim() === firebase_applet_config_default.projectId;
+      const projectId2 = String(
+        parsed.project_id || process.env.FIREBASE_PROJECT_ID || defaultProjectId
+      ).trim();
       const clientEmail2 = String(parsed.client_email || "").trim();
       const privateKey2 = String(parsed.private_key || "").replace(/\\n/g, "\n").trim();
-      if (projectMatches && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
+      if (projectId2 && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
         return {
+          projectId: projectId2,
           clientEmail: clientEmail2,
           privateKey: privateKey2
         };
@@ -70,128 +45,167 @@ function getServiceAccountForFirestore() {
     } catch {
     }
   }
-  const envProjectId = (process.env.FIREBASE_PROJECT_ID || "").trim();
-  if (envProjectId && envProjectId !== firebase_applet_config_default.projectId) {
-    return null;
-  }
-  const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || "").trim();
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
-  if (clientEmail && privateKey.includes("PRIVATE KEY")) {
-    return { clientEmail, privateKey };
+  const projectId = String(process.env.FIREBASE_PROJECT_ID || defaultProjectId).trim();
+  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || "").trim();
+  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  if (projectId && clientEmail && privateKey.includes("PRIVATE KEY")) {
+    return {
+      projectId,
+      clientEmail,
+      privateKey
+    };
   }
   return null;
 }
-function createServiceAccountCustomToken(clientEmail, privateKey) {
-  const now = Math.floor(Date.now() / 1e3);
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
-    JSON.stringify({
-      iss: clientEmail,
-      sub: clientEmail,
-      aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
-      iat: now,
-      exp: now + 3600,
-      uid: PINNED_SERVER_UID,
-      claims: {
-        serverAdmin: true
+function getAdminFirestore() {
+  const creds = getServerServiceAccountCredentials(TARGET_FIREBASE_PROJECT_ID);
+  if (!creds) {
+    return null;
+  }
+  const targetDbId = (process.env.FIRESTORE_DATABASE_ID || TARGET_FIRESTORE_DATABASE_ID).trim();
+  const appName = `zoya-admin-${creds.projectId}`;
+  if (!cachedAdminApp || cachedAdminProjectId !== creds.projectId) {
+    const existing = getAdminApps().find((a) => a.name === appName);
+    cachedAdminApp = existing || initializeAdminApp(
+      {
+        credential: cert({
+          projectId: creds.projectId,
+          clientEmail: creds.clientEmail,
+          privateKey: creds.privateKey
+        }),
+        projectId: creds.projectId
+      },
+      appName
+    );
+    cachedAdminProjectId = creds.projectId;
+    cachedAdminDb = null;
+    adminDbConfigured = false;
+  }
+  if (!cachedAdminDb || cachedAdminDatabaseId !== targetDbId) {
+    cachedAdminDb = targetDbId && targetDbId !== "(default)" ? getAdminFirestoreInstance(cachedAdminApp, targetDbId) : getAdminFirestoreInstance(cachedAdminApp);
+    cachedAdminDatabaseId = targetDbId;
+    if (!adminDbConfigured) {
+      try {
+        cachedAdminDb.settings({ ignoreUndefinedProperties: true });
+      } catch {
       }
-    })
-  ).toString("base64url");
-  const signer = crypto.createSign("RSA-SHA256");
-  signer.update(`${header}.${payload}`);
-  signer.end();
-  const signature = signer.sign(privateKey, "base64url");
-  return `${header}.${payload}.${signature}`;
-}
-function deriveServerAuthCredentials() {
-  const seed = (process.env.FIREBASE_SERVER_AUTH_SECRET || "8825316434").trim();
-  const derivedKey = crypto.pbkdf2Sync(
-    seed,
-    `zoya-firestore-server-auth-v1:${firebase_applet_config_default.firestoreDatabaseId}:${firebase_applet_config_default.appId}`,
-    1e5,
-    32,
-    "sha256"
-  ).toString("base64url");
-  const emailHash = crypto.createHash("sha256").update(firebase_applet_config_default.firestoreDatabaseId).digest("hex").slice(0, 12);
+      adminDbConfigured = true;
+    }
+  }
   return {
-    email: `zoya-server-${emailHash}@zoya-internal.local`,
-    password: `Zy!${derivedKey}#9a`
+    db: cachedAdminDb,
+    projectId: creds.projectId,
+    databaseId: targetDbId || TARGET_FIRESTORE_DATABASE_ID
   };
 }
-async function ensureServerFirestoreAuth() {
-  const db = getDb();
-  const auth = getFirebaseAuth();
-  if (auth.currentUser && auth.currentUser.uid === PINNED_SERVER_UID) {
-    return db;
+function extractBinaryBuffer(rawField) {
+  if (!rawField) return null;
+  if (Buffer.isBuffer(rawField)) {
+    return rawField;
   }
-  if (!pendingAuthPromise) {
-    pendingAuthPromise = (async () => {
-      try {
-        const serviceAccount = getServiceAccountForFirestore();
-        if (serviceAccount) {
-          try {
-            const customToken = createServiceAccountCustomToken(
-              serviceAccount.clientEmail,
-              serviceAccount.privateKey
-            );
-            await signInWithCustomToken(auth, customToken);
-            return;
-          } catch {
-          }
-        }
-        const { email, password } = deriveServerAuthCredentials();
-        try {
-          await signInWithEmailAndPassword(auth, email, password);
-        } catch (err) {
-          if (err?.code === "auth/user-not-found") {
-            await createUserWithEmailAndPassword(auth, email, password);
-          } else {
-            throw err;
-          }
-        }
-      } finally {
-        pendingAuthPromise = null;
-      }
-    })();
+  if (rawField instanceof Uint8Array) {
+    return Buffer.from(rawField.buffer, rawField.byteOffset, rawField.byteLength);
   }
-  await pendingAuthPromise;
-  return db;
+  if (typeof rawField.toUint8Array === "function") {
+    const uint8 = rawField.toUint8Array();
+    return Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength);
+  }
+  if (typeof rawField.toBuffer === "function") {
+    return rawField.toBuffer();
+  }
+  return null;
 }
-function getDb() {
-  if (!cachedDb) {
-    try {
-      setLogLevel("error");
-    } catch {
+function normalizeDocumentPayloadForAdminSdk(data) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === void 0) continue;
+    if (Buffer.isBuffer(value)) {
+      normalized[key] = value;
+    } else if (value instanceof Uint8Array) {
+      normalized[key] = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    } else if (value && typeof value.toUint8Array === "function") {
+      const uint8 = value.toUint8Array();
+      normalized[key] = Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength);
+    } else {
+      normalized[key] = value;
     }
-    const app = getFirebaseApp();
-    cachedDb = getFirestore(app, firebase_applet_config_default.firestoreDatabaseId);
   }
-  return cachedDb;
+  return normalized;
 }
-function getStorageInstance() {
-  if (!cachedStorage) {
-    const app = getFirebaseApp();
-    const bucketName = firebase_applet_config_default.storageBucket || `${firebase_applet_config_default.projectId}.appspot.com`;
-    cachedStorage = getStorage(app, `gs://${bucketName}`);
+async function getActiveServerFirestoreAdapter() {
+  if (testAdapterOverride) {
+    return testAdapterOverride;
   }
-  return cachedStorage;
+  const adminInstance = getAdminFirestore();
+  if (!adminInstance) {
+    const err = new Error(
+      `Firebase Admin SDK for ${TARGET_FIREBASE_PROJECT_ID}/${TARGET_FIRESTORE_DATABASE_ID} is not configured: FIREBASE_SERVICE_ACCOUNT_JSON is required.`
+    );
+    err.code = "STORAGE_UNAVAILABLE";
+    throw err;
+  }
+  const { db, projectId, databaseId } = adminInstance;
+  return {
+    backendType: "firebase-admin",
+    projectId,
+    databaseId,
+    async getCollectionDocs(collectionName) {
+      const snap = await db.collection(collectionName).get();
+      return snap.docs.map((d) => ({
+        id: d.id,
+        data: d.data() || {}
+      }));
+    },
+    async getDocumentById(collectionName, docId) {
+      const snap = await db.collection(collectionName).doc(docId).get();
+      return {
+        exists: snap.exists,
+        id: snap.id,
+        data: snap.exists ? snap.data() || {} : void 0
+      };
+    },
+    async queryDocumentsEq(collectionName, field, value, maxResults = 1) {
+      const snap = await db.collection(collectionName).where(field, "==", value).limit(maxResults).get();
+      return snap.docs.map((d) => ({
+        id: d.id,
+        data: d.data() || {}
+      }));
+    },
+    async setDocumentById(collectionName, docId, data, options) {
+      const payload = normalizeDocumentPayloadForAdminSdk(data);
+      if (options?.merge) {
+        await db.collection(collectionName).doc(docId).set(payload, { merge: true });
+      } else {
+        await db.collection(collectionName).doc(docId).set(payload);
+      }
+    },
+    async deleteDocumentById(collectionName, docId) {
+      await db.collection(collectionName).doc(docId).delete();
+    }
+  };
+}
+async function serverGetCollectionDocs(collectionName) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.getCollectionDocs(collectionName);
+}
+async function serverGetDocumentById(collectionName, docId) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.getDocumentById(collectionName, docId);
+}
+async function serverQueryDocumentsEq(collectionName, field, value, maxResults = 1) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.queryDocumentsEq(collectionName, field, value, maxResults);
+}
+async function serverSetDocumentById(collectionName, docId, data, options) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.setDocumentById(collectionName, docId, data, options);
+}
+async function serverDeleteDocumentById(collectionName, docId) {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.deleteDocumentById(collectionName, docId);
 }
 
 // server/storage.ts
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  Bytes
-} from "firebase/firestore";
-import {
-  ref,
-  getBytes,
-  deleteObject
-} from "firebase/storage";
 var APK_CHUNK_SIZE = 524288;
 var IS_SERVERLESS = Boolean(
   process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT
@@ -253,15 +267,14 @@ async function getAllReleases() {
     return releasesCache.data;
   }
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snapshot = await getDocs(collection(db, "releases"));
+    const docs = await serverGetCollectionDocs("releases");
     const releases = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
+    for (const docSnap of docs) {
+      const data = docSnap.data;
       if (data && data.id) {
         releases.push(data);
       }
-    });
+    }
     if (releases.length > 0) {
       releasesCache = { data: releases, cachedAt: Date.now() };
       return releases;
@@ -295,11 +308,9 @@ async function getLatestPublishedRelease() {
 async function getReleaseById(id) {
   if (!id) return null;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const docRef = doc(db, "releases", id);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-      return docSnap.data();
+    const docSnap = await serverGetDocumentById("releases", id);
+    if (docSnap.exists && docSnap.data) {
+      return docSnap.data;
     }
   } catch (err) {
     logStorageNotice("Firestore getDoc notice, falling back to getAllReleases", err);
@@ -316,9 +327,7 @@ async function saveRelease(release) {
   const updatedRelease = Object.fromEntries(
     Object.entries(rawRelease).filter(([, v]) => v !== void 0)
   );
-  const db = await ensureServerFirestoreAuth();
-  const docRef = doc(db, "releases", updatedRelease.id);
-  await setDoc(docRef, updatedRelease);
+  await serverSetDocumentById("releases", updatedRelease.id, updatedRelease);
   try {
     ensureDataDirs();
     const { releasesFile } = getStoragePaths();
@@ -337,10 +346,9 @@ async function saveRelease(release) {
 async function deleteStoredChunks(storageKey, totalChunks) {
   if (!storageKey || totalChunks <= 0) return;
   try {
-    const db = await ensureServerFirestoreAuth();
     const delPromises = [];
     for (let i = 0; i < totalChunks; i++) {
-      delPromises.push(deleteDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${i}`)));
+      delPromises.push(serverDeleteDocumentById("apk_chunks", `${storageKey}_chunk_${i}`));
     }
     await Promise.allSettled(delPromises);
   } catch (err) {
@@ -352,9 +360,8 @@ async function deleteRelease(id) {
   clearReleasesInMemoryCache();
   const existingRecord = await getReleaseById(id);
   if (!existingRecord) return false;
-  const db = await ensureServerFirestoreAuth();
   try {
-    await deleteDoc(doc(db, "releases", id));
+    await serverDeleteDocumentById("releases", id);
   } catch (err) {
     console.error("Firestore deleteRelease error:", err);
   }
@@ -362,29 +369,22 @@ async function deleteRelease(id) {
     try {
       let totalChunks = existingRecord.chunkCount || 0;
       if (!totalChunks) {
-        const chunk0 = await getDoc(doc(db, "apk_chunks", `${existingRecord.storageKey}_chunk_0`));
-        if (chunk0.exists()) {
-          totalChunks = Number(chunk0.data()?.totalChunks) || 1;
+        const chunk0 = await serverGetDocumentById("apk_chunks", `${existingRecord.storageKey}_chunk_0`);
+        if (chunk0.exists && chunk0.data) {
+          totalChunks = Number(chunk0.data.totalChunks) || 1;
         }
       }
       if (totalChunks > 0) {
         const delPromises = [];
         for (let i = 0; i < totalChunks; i++) {
-          delPromises.push(deleteDoc(doc(db, "apk_chunks", `${existingRecord.storageKey}_chunk_${i}`)));
+          delPromises.push(
+            serverDeleteDocumentById("apk_chunks", `${existingRecord.storageKey}_chunk_${i}`)
+          );
         }
         await Promise.allSettled(delPromises);
       }
     } catch (err) {
       console.warn("Firestore apk_chunks cleanup notice:", err);
-    }
-    const storageObjectPath = existingRecord.storagePath || `apks/${existingRecord.storageKey}`;
-    if (storageObjectPath.startsWith("apks/")) {
-      try {
-        const storage = getStorageInstance();
-        const storageRef = ref(storage, storageObjectPath);
-        await deleteObject(storageRef);
-      } catch {
-      }
     }
   }
   ensureDataDirs();
@@ -418,30 +418,29 @@ async function storeApkChunk(storageKey, index, totalChunks, chunkBuffer) {
   if (chunkBuffer.length > 9e5) {
     throw new Error(`Chunk size (${chunkBuffer.length} bytes) exceeds safe Firestore document limit.`);
   }
-  const db = await ensureServerFirestoreAuth();
-  const uint8 = new Uint8Array(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
-  await setDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${index}`), {
+  const binarySlice = Buffer.from(chunkBuffer.buffer, chunkBuffer.byteOffset, chunkBuffer.byteLength);
+  await serverSetDocumentById("apk_chunks", `${storageKey}_chunk_${index}`, {
     storageKey,
     index,
     totalChunks,
     size: chunkBuffer.length,
-    data: Bytes.fromUint8Array(uint8),
+    data: binarySlice,
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   });
 }
 async function verifyStoredChunks(storageKey, totalChunks) {
   if (!storageKey || totalChunks <= 0) return false;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const firstSnap = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_0`));
-    if (!firstSnap.exists()) return false;
-    const firstData = firstSnap.data();
-    if (!firstData || !firstData.data) return false;
-    const firstBytes = firstData.data.toUint8Array();
-    if (!isValidApkHeader(firstBytes)) return false;
+    const firstSnap = await serverGetDocumentById("apk_chunks", `${storageKey}_chunk_0`);
+    if (!firstSnap.exists || !firstSnap.data) return false;
+    const firstBytes = extractBinaryBuffer(firstSnap.data.data);
+    if (!firstBytes || !isValidApkHeader(firstBytes)) return false;
     if (totalChunks > 1) {
-      const lastSnap = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${totalChunks - 1}`));
-      if (!lastSnap.exists()) return false;
+      const lastSnap = await serverGetDocumentById(
+        "apk_chunks",
+        `${storageKey}_chunk_${totalChunks - 1}`
+      );
+      if (!lastSnap.exists) return false;
     }
     return true;
   } catch (err) {
@@ -452,15 +451,11 @@ async function verifyStoredChunks(storageKey, totalChunks) {
 async function hasApkBinary(release) {
   if (!release || !release.storageKey) return false;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const chunk0Snap = await getDoc(doc(db, "apk_chunks", `${release.storageKey}_chunk_0`));
-    if (chunk0Snap.exists()) {
-      const d = chunk0Snap.data();
-      if (d && d.data && typeof d.data.toUint8Array === "function") {
-        const bytes = d.data.toUint8Array();
-        if (isValidApkHeader(bytes)) {
-          return true;
-        }
+    const chunk0Snap = await serverGetDocumentById("apk_chunks", `${release.storageKey}_chunk_0`);
+    if (chunk0Snap.exists && chunk0Snap.data) {
+      const bytes = extractBinaryBuffer(chunk0Snap.data.data);
+      if (bytes && isValidApkHeader(bytes)) {
+        return true;
       }
     }
   } catch (err) {
@@ -470,25 +465,13 @@ async function hasApkBinary(release) {
   if (fs.existsSync(bundledFile)) {
     return true;
   }
-  const objectPath = release.storagePath || `apks/${release.storageKey}`;
-  if (objectPath.startsWith("apks/")) {
-    try {
-      const storage = getStorageInstance();
-      const storageRef = ref(storage, objectPath);
-      const bytes = await getBytes(storageRef, 16);
-      if (bytes && bytes.byteLength >= 4) {
-        return true;
-      }
-    } catch {
-    }
-  }
   return false;
 }
 async function storeApkBuffer(buffer, originalFilename) {
   if (!isValidApkHeader(buffer)) {
     throw new Error("Invalid APK file: Header does not match Android Package / ZIP format (magic bytes PK\\x03\\x04).");
   }
-  const sha256 = crypto2.createHash("sha256").update(buffer).digest("hex");
+  const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
   const fileSize = buffer.length;
   const fileSizeFormatted = formatBytes(fileSize);
   const safeBase = path.basename(originalFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -547,16 +530,15 @@ async function getApkBuffer(storageKey, storagePath, chunkCount) {
     }
   }
   try {
-    const db = await ensureServerFirestoreAuth();
     let total = chunkCount && chunkCount > 0 ? chunkCount : 0;
     let chunk0Buffer = null;
     if (!total) {
-      const snap0 = await getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_0`));
-      if (snap0.exists()) {
-        const data0 = snap0.data();
-        if (data0 && data0.data && typeof data0.data.toUint8Array === "function") {
-          total = Number(data0.totalChunks) || 1;
-          chunk0Buffer = Buffer.from(data0.data.toUint8Array());
+      const snap0 = await serverGetDocumentById("apk_chunks", `${storageKey}_chunk_0`);
+      if (snap0.exists && snap0.data) {
+        const bytes0 = extractBinaryBuffer(snap0.data.data);
+        if (bytes0) {
+          total = Number(snap0.data.totalChunks) || 1;
+          chunk0Buffer = bytes0;
         }
       }
     }
@@ -569,21 +551,21 @@ async function getApkBuffer(storageKey, storagePath, chunkCount) {
       if (startIndex < total) {
         const indices = Array.from({ length: total - startIndex }, (_, idx) => idx + startIndex);
         const snaps = await Promise.all(
-          indices.map((idx) => getDoc(doc(db, "apk_chunks", `${storageKey}_chunk_${idx}`)))
+          indices.map((idx) => serverGetDocumentById("apk_chunks", `${storageKey}_chunk_${idx}`))
         );
         let allFound = true;
         for (let k = 0; k < snaps.length; k++) {
           const snap = snaps[k];
-          if (!snap.exists()) {
+          if (!snap.exists || !snap.data) {
             allFound = false;
             break;
           }
-          const d = snap.data();
-          if (!d || !d.data || typeof d.data.toUint8Array !== "function") {
+          const buf = extractBinaryBuffer(snap.data.data);
+          if (!buf) {
             allFound = false;
             break;
           }
-          chunkBuffers[indices[k]] = Buffer.from(d.data.toUint8Array());
+          chunkBuffers[indices[k]] = buf;
         }
         if (allFound) {
           const fullBuffer = Buffer.concat(chunkBuffers);
@@ -605,21 +587,6 @@ async function getApkBuffer(storageKey, storagePath, chunkCount) {
     }
   } catch (err) {
     console.error(`Firestore apk_chunks download error for ${storageKey}:`, err);
-  }
-  const objectPath = storagePath && storagePath.startsWith("apks/") ? storagePath : `apks/${storageKey}`;
-  try {
-    const storage = getStorageInstance();
-    const storageRef = ref(storage, objectPath);
-    const arrayBuffer = await getBytes(storageRef);
-    const buffer = Buffer.from(arrayBuffer);
-    if (isValidApkHeader(buffer)) {
-      try {
-        fs.writeFileSync(localPath, buffer);
-      } catch {
-      }
-      return buffer;
-    }
-  } catch {
   }
   return null;
 }
@@ -899,7 +866,23 @@ function parseApkBuffer(apkBuffer) {
 }
 
 // server/auth.ts
-import crypto3 from "crypto";
+import crypto2 from "crypto";
+
+// firebase-applet-config.json
+var firebase_applet_config_default = {
+  projectId: "distinguished-arena-4wr9b",
+  appId: "1:637371888461:web:07815ddf5396a2648cfd04",
+  apiKey: "AIzaSyC12px3Oua-fE5zvKlNkC8GBlqQpwqAxmE",
+  authDomain: "distinguished-arena-4wr9b.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-zoyaaiassistant-e56902ff-e9da-4d13-ba83-43ec01e84e99",
+  storageBucket: "distinguished-arena-4wr9b.firebasestorage.app",
+  messagingSenderId: "637371888461",
+  measurementId: "",
+  oAuthClientId: "637371888461-of1t68o1p0g16og0amo50fid6lf6kl1g.apps.googleusercontent.com",
+  recaptchaSiteKey: ""
+};
+
+// server/auth.ts
 var DEFAULT_ADMIN_PIN = "8825316434";
 var cachedDerivedJwtSecret = null;
 var loggedJwtSecretNotice = false;
@@ -930,7 +913,7 @@ function getJwtSecret() {
     }
     const pinSeed = getAdminPin();
     const salt = `zoya-admin-jwt-v2:${readServerIdentitySalt()}`;
-    cachedDerivedJwtSecret = crypto3.pbkdf2Sync(pinSeed, salt, 1e5, 32, "sha256").toString("hex");
+    cachedDerivedJwtSecret = crypto2.pbkdf2Sync(pinSeed, salt, 1e5, 32, "sha256").toString("hex");
   }
   return cachedDerivedJwtSecret;
 }
@@ -946,7 +929,7 @@ function createToken(user) {
       // 7 days
     })
   ).toString("base64url");
-  const signature = crypto3.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
+  const signature = crypto2.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
 }
 function verifyToken(token) {
@@ -955,10 +938,10 @@ function verifyToken(token) {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, payload, signature] = parts;
-    const expectedSignature = crypto3.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
+    const expectedSignature = crypto2.createHmac("sha256", getJwtSecret()).update(`${header}.${payload}`).digest("base64url");
     const sigBuf = Buffer.from(signature, "utf-8");
     const expectedBuf = Buffer.from(expectedSignature, "utf-8");
-    if (sigBuf.length !== expectedBuf.length || !crypto3.timingSafeEqual(sigBuf, expectedBuf)) {
+    if (sigBuf.length !== expectedBuf.length || !crypto2.timingSafeEqual(sigBuf, expectedBuf)) {
       return null;
     }
     const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf-8"));
@@ -984,7 +967,7 @@ function authenticateAdminPin(pin) {
   if (!cleanPin || !targetPin) return null;
   const cleanBuf = Buffer.from(cleanPin, "utf-8");
   const targetBuf = Buffer.from(targetPin, "utf-8");
-  if (cleanBuf.length === targetBuf.length && crypto3.timingSafeEqual(cleanBuf, targetBuf)) {
+  if (cleanBuf.length === targetBuf.length && crypto2.timingSafeEqual(cleanBuf, targetBuf)) {
     return {
       email: "admin@zoya.ai",
       role: "admin",
@@ -1004,7 +987,7 @@ function authenticateAdmin(email, password) {
   }
   const passBuf = Buffer.from(password, "utf-8");
   const targetBuf = Buffer.from(targetPassword, "utf-8");
-  if (passBuf.length === targetBuf.length && crypto3.timingSafeEqual(passBuf, targetBuf)) {
+  if (passBuf.length === targetBuf.length && crypto2.timingSafeEqual(passBuf, targetBuf)) {
     return {
       email: email?.trim().toLowerCase() || "riyajulansari113b@gmail.com",
       role: "admin",
@@ -1039,15 +1022,7 @@ function extractAuthToken(reqHeaders) {
 }
 
 // server/fcm.ts
-import crypto4 from "crypto";
-import {
-  collection as collection2,
-  doc as doc2,
-  getDoc as getDoc2,
-  getDocs as getDocs2,
-  setDoc as setDoc2,
-  deleteDoc as deleteDoc2
-} from "firebase/firestore";
+import crypto3 from "crypto";
 var DEFAULT_FCM_TOPIC = "zoya_releases";
 var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-opal.vercel.app";
 var cachedAccessToken = null;
@@ -1063,30 +1038,7 @@ function getFcmTopic() {
   return custom || DEFAULT_FCM_TOPIC;
 }
 function getServiceAccountCredentials() {
-  const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "").trim();
-  if (rawJson) {
-    try {
-      const decoded = rawJson.startsWith("{") ? rawJson : Buffer.from(rawJson, "base64").toString("utf-8");
-      const parsed = JSON.parse(decoded);
-      const projectId2 = String(parsed.project_id || firebase_applet_config_default.projectId || "").trim();
-      const clientEmail2 = String(parsed.client_email || "").trim();
-      const privateKey2 = String(parsed.private_key || "").replace(/\\n/g, "\n").trim();
-      if (projectId2 && clientEmail2 && privateKey2.includes("PRIVATE KEY")) {
-        return { projectId: projectId2, clientEmail: clientEmail2, privateKey: privateKey2 };
-      }
-    } catch (err) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", err);
-    }
-  }
-  const projectId = String(
-    process.env.FIREBASE_PROJECT_ID || firebase_applet_config_default.projectId || ""
-  ).trim();
-  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || "").trim();
-  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
-  if (projectId && clientEmail && privateKey.includes("PRIVATE KEY")) {
-    return { projectId, clientEmail, privateKey };
-  }
-  return null;
+  return getServerServiceAccountCredentials(TARGET_FIREBASE_PROJECT_ID);
 }
 async function getFcmAccessToken(creds) {
   const nowSec = Math.floor(Date.now() / 1e3);
@@ -1107,7 +1059,7 @@ async function getFcmAccessToken(creds) {
     })
   ).toString("base64url");
   const unsignedJwt = `${header}.${payload}`;
-  const signer = crypto4.createSign("RSA-SHA256");
+  const signer = crypto3.createSign("RSA-SHA256");
   signer.update(unsignedJwt);
   signer.end();
   const signature = signer.sign(creds.privateKey, "base64url");
@@ -1219,11 +1171,11 @@ async function registerFcmDeviceToken(params) {
   if (!cleanToken || cleanToken.length < 20) {
     throw new Error("A valid FCM registration token is required.");
   }
-  const deviceId = crypto4.createHash("sha256").update(cleanToken).digest("hex").substring(0, 40);
-  const db = await ensureServerFirestoreAuth();
+  const deviceId = crypto3.createHash("sha256").update(cleanToken).digest("hex").substring(0, 40);
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  await setDoc2(
-    doc2(db, "fcm_devices", deviceId),
+  await serverSetDocumentById(
+    "fcm_devices",
+    deviceId,
     {
       token: cleanToken,
       platform: String(params.platform || "android"),
@@ -1239,13 +1191,12 @@ async function registerFcmDeviceToken(params) {
 }
 async function getFcmStatus() {
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  const projectId = creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
   const topic = getFcmTopic();
   let registeredDevicesCount = 0;
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDocs2(collection2(db, "fcm_devices"));
-    registeredDevicesCount = snap.size;
+    const docs = await serverGetCollectionDocs("fcm_devices");
+    registeredDevicesCount = docs.length;
   } catch {
   }
   return {
@@ -1260,7 +1211,7 @@ async function sendReleasePushNotification(release) {
   const idempotencyKey = `${release.id}_v${release.versionCode}`;
   const { title, body, data } = buildReleaseNotificationContent(release);
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  const projectId = creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
   if (!release.isPublished || !release.id || !release.versionName || release.versionCode <= 0) {
     return {
       sent: false,
@@ -1290,13 +1241,11 @@ async function sendReleasePushNotification(release) {
       data
     };
   }
-  const db = await ensureServerFirestoreAuth();
-  const notifDocRef = doc2(db, "fcm_notifications", idempotencyKey);
   try {
-    const existingSnap = await getDoc2(notifDocRef);
-    if (existingSnap.exists()) {
-      const existingData = existingSnap.data();
-      if (existingData && existingData.status === "sent") {
+    const existingSnap = await serverGetDocumentById("fcm_notifications", idempotencyKey);
+    if (existingSnap.exists && existingSnap.data) {
+      const existingData = existingSnap.data;
+      if (existingData.status === "sent") {
         return {
           sent: false,
           alreadySent: true,
@@ -1361,11 +1310,11 @@ async function sendReleasePushNotification(release) {
     let devicesTargeted = 0;
     let devicesSucceeded = 0;
     try {
-      const devicesSnap = await getDocs2(collection2(db, "fcm_devices"));
-      devicesTargeted = devicesSnap.size;
+      const deviceDocs = await serverGetCollectionDocs("fcm_devices");
+      devicesTargeted = deviceDocs.length;
       const staleDeviceIds = [];
-      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
-        const devData = deviceDoc.data();
+      const tokenPromises = deviceDocs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data;
         const devToken = String(devData?.token || "").trim();
         if (!devToken) return;
         const res = await sendFcmV1Request(
@@ -1386,7 +1335,7 @@ async function sendReleasePushNotification(release) {
       await Promise.allSettled(tokenPromises);
       if (staleDeviceIds.length > 0) {
         await Promise.allSettled(
-          staleDeviceIds.map((id) => deleteDoc2(doc2(db, "fcm_devices", id)))
+          staleDeviceIds.map((id) => serverDeleteDocumentById("fcm_devices", id))
         );
       }
     } catch (devErr) {
@@ -1410,7 +1359,7 @@ async function sendReleasePushNotification(release) {
     const sentAt = (/* @__PURE__ */ new Date()).toISOString();
     const messageId = topicResult.messageId || `devices:${devicesSucceeded}`;
     try {
-      await setDoc2(notifDocRef, {
+      await serverSetDocumentById("fcm_notifications", idempotencyKey, {
         idempotencyKey,
         releaseId: release.id,
         versionName: release.versionName,
@@ -1500,7 +1449,7 @@ async function sendManualPushNotification(params) {
   const validation = validateAndSanitizeManualNotification(params);
   const topic = getFcmTopic();
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebase_applet_config_default.projectId || "";
+  const projectId = creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
   if (!validation.valid) {
     return {
       sent: false,
@@ -1515,9 +1464,9 @@ async function sendManualPushNotification(params) {
     };
   }
   const { title, message, requestId } = validation;
-  const contentHash = crypto4.createHash("sha256").update(`${title}
+  const contentHash = crypto3.createHash("sha256").update(`${title}
 ${message}`).digest("hex").substring(0, 32);
-  const idempotencyKey = requestId ? `manual_req_${crypto4.createHash("sha256").update(requestId).digest("hex").substring(0, 32)}` : `manual_msg_${contentHash}`;
+  const idempotencyKey = requestId ? `manual_req_${crypto3.createHash("sha256").update(requestId).digest("hex").substring(0, 32)}` : `manual_msg_${contentHash}`;
   const contentDedupKey = `manual_msg_${contentHash}`;
   const nowMs = Date.now();
   const sentAtIso = new Date(nowMs).toISOString();
@@ -1561,12 +1510,10 @@ ${message}`).digest("hex").substring(0, 32);
       data
     };
   }
-  const db = await ensureServerFirestoreAuth();
-  const notifDocRef = doc2(db, "fcm_notifications", contentDedupKey);
   try {
-    const existingSnap = await getDoc2(notifDocRef);
-    if (existingSnap.exists()) {
-      const existingData = existingSnap.data();
+    const existingSnap = await serverGetDocumentById("fcm_notifications", contentDedupKey);
+    if (existingSnap.exists && existingSnap.data) {
+      const existingData = existingSnap.data;
       const prevSentMs = existingData?.sentAt ? Date.parse(String(existingData.sentAt)) : 0;
       if (existingData?.status === "sent" && (requestId && existingData.requestId === requestId || prevSentMs > 0 && nowMs - prevSentMs < MANUAL_DEDUP_WINDOW_MS)) {
         return {
@@ -1622,11 +1569,11 @@ ${message}`).digest("hex").substring(0, 32);
     let devicesTargeted = 0;
     let devicesSucceeded = 0;
     try {
-      const devicesSnap = await getDocs2(collection2(db, "fcm_devices"));
-      devicesTargeted = devicesSnap.size;
+      const deviceDocs = await serverGetCollectionDocs("fcm_devices");
+      devicesTargeted = deviceDocs.length;
       const staleDeviceIds = [];
-      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
-        const devData = deviceDoc.data();
+      const tokenPromises = deviceDocs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data;
         const devToken = String(devData?.token || "").trim();
         if (!devToken) return;
         const res = await sendFcmV1Request(
@@ -1651,7 +1598,7 @@ ${message}`).digest("hex").substring(0, 32);
       await Promise.allSettled(tokenPromises);
       if (staleDeviceIds.length > 0) {
         await Promise.allSettled(
-          staleDeviceIds.map((id) => deleteDoc2(doc2(db, "fcm_devices", id)))
+          staleDeviceIds.map((id) => serverDeleteDocumentById("fcm_devices", id))
         );
       }
     } catch {
@@ -1690,7 +1637,7 @@ ${message}`).digest("hex").substring(0, 32);
       messageId
     });
     try {
-      await setDoc2(notifDocRef, {
+      await serverSetDocumentById("fcm_notifications", contentDedupKey, {
         idempotencyKey,
         requestId: requestId || null,
         type: "manual_notification",
@@ -1743,18 +1690,7 @@ ${message}`).digest("hex").substring(0, 32);
 }
 
 // server/licenses.ts
-import crypto5 from "crypto";
-import {
-  collection as collection3,
-  doc as doc3,
-  getDoc as getDoc3,
-  getDocs as getDocs3,
-  setDoc as setDoc3,
-  deleteDoc as deleteDoc3,
-  query,
-  where,
-  limit
-} from "firebase/firestore";
+import crypto4 from "crypto";
 var LicenseStorageError = class extends Error {
   constructor(message, cause) {
     super(message);
@@ -1789,7 +1725,7 @@ function generateCryptographicLicenseKey() {
   const group = () => {
     let chars = "";
     for (let i = 0; i < 4; i++) {
-      const idx = crypto5.randomInt(0, LICENSE_ALPHABET.length);
+      const idx = crypto4.randomInt(0, LICENSE_ALPHABET.length);
       chars += LICENSE_ALPHABET[idx];
     }
     return chars;
@@ -1806,7 +1742,7 @@ function isValidLicenseKeyFormat(rawKey) {
 }
 function hashLicenseKey(rawKey) {
   const normalized = normalizeLicenseKey(rawKey);
-  return crypto5.createHash("sha256").update(`zoya_license_v1:${normalized}`).digest("hex");
+  return crypto4.createHash("sha256").update(`zoya_license_v1:${normalized}`).digest("hex");
 }
 function maskLicenseKey(rawKey) {
   const normalized = normalizeLicenseKey(rawKey);
@@ -1856,17 +1792,16 @@ async function getAllLicenses() {
   }
   assertStorageAvailable();
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDocs3(collection3(db, "licenses"));
+    const docs = await serverGetCollectionDocs("licenses");
     const all = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data();
+    for (const docSnap of docs) {
+      const data = docSnap.data;
       if (data && data.id && data.keyHash) {
         const sanitized = sanitizeRecordForStorage(data);
         all.push(sanitized);
         cacheLicenseRecord(sanitized);
       }
-    });
+    }
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     allLicensesCache = { data: all, cachedAt: Date.now() };
     return all;
@@ -1893,10 +1828,9 @@ async function getLicenseById(id) {
   }
   assertStorageAvailable();
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDoc3(doc3(db, "licenses", cleanId));
-    if (snap.exists()) {
-      const data = snap.data();
+    const snap = await serverGetDocumentById("licenses", cleanId);
+    if (snap.exists && snap.data) {
+      const data = snap.data;
       if (data && data.id) {
         const sanitized = sanitizeRecordForStorage(data);
         cacheLicenseRecord(sanitized);
@@ -1929,16 +1863,9 @@ async function getLicenseByKeyHash(keyHash) {
   }
   assertStorageAvailable();
   try {
-    const db = await ensureServerFirestoreAuth();
-    const q = query(
-      collection3(db, "licenses"),
-      where("keyHash", "==", keyHash),
-      limit(1)
-    );
-    const snap = await getDocs3(q);
-    if (!snap.empty) {
-      const docSnap = snap.docs[0];
-      const data = docSnap.data();
+    const docs = await serverQueryDocumentsEq("licenses", "keyHash", keyHash, 1);
+    if (docs.length > 0) {
+      const data = docs[0].data;
       if (data && data.id) {
         const sanitized = sanitizeRecordForStorage(data);
         cacheLicenseRecord(sanitized);
@@ -1969,8 +1896,7 @@ async function saveLicenseRecord(record) {
     return safeRecord;
   }
   try {
-    const db = await ensureServerFirestoreAuth();
-    await setDoc3(doc3(db, "licenses", safeRecord.id), safeRecord);
+    await serverSetDocumentById("licenses", safeRecord.id, safeRecord);
     cacheLicenseRecord(safeRecord);
     allLicensesCache = null;
     return safeRecord;
@@ -2089,12 +2015,12 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
       }
       const { maskedKey, keyLastFour } = maskLicenseKey(rawKey);
       const nowIso = (/* @__PURE__ */ new Date()).toISOString();
-      const licenseId = `lic_${Date.now()}_${crypto5.randomBytes(4).toString("hex")}`;
+      const licenseId = `lic_${Date.now()}_${crypto4.randomBytes(4).toString("hex")}`;
       const actorLabel = `${admin.name} <${admin.email}>`;
       const initialStatus = isComplimentary ? "active" : "pending_payment";
       const auditLog = [
         {
-          id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
           action: "created",
           timestamp: nowIso,
           actor: actorLabel,
@@ -2103,7 +2029,7 @@ async function createLifetimeLicense(input, admin, customKeyGenerator) {
       ];
       if (isComplimentary && complimentaryReason) {
         auditLog.push({
-          id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}_comp`,
+          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}_comp`,
           action: "complimentary_issued",
           timestamp: nowIso,
           actor: actorLabel,
@@ -2207,7 +2133,7 @@ async function verifyLicensePayment(licenseId, input, admin) {
       const refDetail = finalPaymentRef ? `Ref: ${finalPaymentRef}` : "No payment reference recorded";
       const amountDetail = finalAmount ? `, Amount: ${finalCurrency || ""} ${finalAmount}`.trim() : "";
       const auditEntry = {
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+        id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
         action: "payment_verified",
         timestamp: nowIso,
         actor: actorLabel,
@@ -2264,7 +2190,7 @@ async function revokeLicense(licenseId, input, admin) {
       const nowIso = (/* @__PURE__ */ new Date()).toISOString();
       const actorLabel = `${admin.name} <${admin.email}>`;
       const auditEntry = {
-        id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+        id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
         action: "revoked",
         timestamp: nowIso,
         actor: actorLabel,
@@ -2310,7 +2236,7 @@ function generateSignedEntitlementToken(payload) {
       exp: expSec
     })
   ).toString("base64url");
-  const signature = crypto5.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
+  const signature = crypto4.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
 function verifySignedEntitlementToken(token, expectedKeyHash) {
@@ -2322,10 +2248,10 @@ function verifySignedEntitlementToken(token, expectedKeyHash) {
     return { valid: false, reason: "Entitlement token malformed." };
   }
   const [header, body, signature] = parts;
-  const expectedSig = crypto5.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
+  const expectedSig = crypto4.createHmac("sha256", getJwtSecret()).update(`${header}.${body}`).digest("base64url");
   const sigBuf = Buffer.from(signature, "utf-8");
   const expBuf = Buffer.from(expectedSig, "utf-8");
-  if (sigBuf.length !== expBuf.length || !crypto5.timingSafeEqual(sigBuf, expBuf)) {
+  if (sigBuf.length !== expBuf.length || !crypto4.timingSafeEqual(sigBuf, expBuf)) {
     return { valid: false, reason: "Entitlement token signature mismatch or untrusted." };
   }
   try {
@@ -2421,7 +2347,7 @@ async function validateLicenseForAndroid(payload) {
       const updatedAuditLog = [...existing.auditLog || []];
       if (isFirstActivation) {
         updatedAuditLog.push({
-          id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
           action: "activated",
           timestamp: nowIso,
           actor: "Zoya Android Client",
@@ -2429,7 +2355,7 @@ async function validateLicenseForAndroid(payload) {
         });
       } else if (updatedAuditLog.length < 50) {
         updatedAuditLog.push({
-          id: `aud_${Date.now()}_${crypto5.randomBytes(3).toString("hex")}`,
+          id: `aud_${Date.now()}_${crypto4.randomBytes(3).toString("hex")}`,
           action: "validated",
           timestamp: nowIso,
           actor: "Zoya Android Client",
@@ -3070,7 +2996,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             );
             return true;
           }
-          const serverSha256 = crypto6.createHash("sha256").update(apkBuffer).digest("hex");
+          const serverSha256 = crypto5.createHash("sha256").update(apkBuffer).digest("hex");
           const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
           const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();

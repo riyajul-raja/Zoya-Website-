@@ -1,16 +1,11 @@
 import crypto from 'crypto';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  query,
-  where,
-  limit,
-} from 'firebase/firestore';
-import { ensureServerFirestoreAuth } from './firebase';
+  serverGetCollectionDocs,
+  serverGetDocumentById,
+  serverQueryDocumentsEq,
+  serverSetDocumentById,
+  serverDeleteDocumentById,
+} from './firebase';
 import { getJwtSecret, type AdminUser } from './auth';
 
 export class LicenseStorageError extends Error {
@@ -250,17 +245,16 @@ export async function getAllLicenses(): Promise<LicenseRecord[]> {
   assertStorageAvailable();
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDocs(collection(db, 'licenses'));
+    const docs = await serverGetCollectionDocs('licenses');
     const all: LicenseRecord[] = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as LicenseRecord;
+    for (const docSnap of docs) {
+      const data = docSnap.data as LicenseRecord;
       if (data && data.id && data.keyHash) {
         const sanitized = sanitizeRecordForStorage(data);
         all.push(sanitized);
         cacheLicenseRecord(sanitized);
       }
-    });
+    }
     all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     allLicensesCache = { data: all, cachedAt: Date.now() };
     return all;
@@ -296,10 +290,9 @@ export async function getLicenseById(id: string): Promise<LicenseRecord | null> 
   assertStorageAvailable();
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDoc(doc(db, 'licenses', cleanId));
-    if (snap.exists()) {
-      const data = snap.data() as LicenseRecord;
+    const snap = await serverGetDocumentById('licenses', cleanId);
+    if (snap.exists && snap.data) {
+      const data = snap.data as LicenseRecord;
       if (data && data.id) {
         const sanitized = sanitizeRecordForStorage(data);
         cacheLicenseRecord(sanitized);
@@ -340,16 +333,9 @@ export async function getLicenseByKeyHash(keyHash: string): Promise<LicenseRecor
   assertStorageAvailable();
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    const q = query(
-      collection(db, 'licenses'),
-      where('keyHash', '==', keyHash),
-      limit(1)
-    );
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      const docSnap = snap.docs[0];
-      const data = docSnap.data() as LicenseRecord;
+    const docs = await serverQueryDocumentsEq('licenses', 'keyHash', keyHash, 1);
+    if (docs.length > 0) {
+      const data = docs[0].data as LicenseRecord;
       if (data && data.id) {
         const sanitized = sanitizeRecordForStorage(data);
         cacheLicenseRecord(sanitized);
@@ -388,8 +374,7 @@ export async function saveLicenseRecord(record: LicenseRecord): Promise<LicenseR
   }
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    await setDoc(doc(db, 'licenses', safeRecord.id), safeRecord);
+    await serverSetDocumentById('licenses', safeRecord.id, safeRecord);
     cacheLicenseRecord(safeRecord);
     allLicensesCache = null; // Invalidate all-list cache
     return safeRecord;
@@ -426,8 +411,7 @@ export async function deleteLicenseRecord(id: string): Promise<boolean> {
 
   try {
     const existing = await getLicenseById(cleanId);
-    const db = await ensureServerFirestoreAuth();
-    await deleteDoc(doc(db, 'licenses', cleanId));
+    await serverDeleteDocumentById('licenses', cleanId);
 
     idToLicenseCache.delete(cleanId);
     if (existing?.keyHash) {

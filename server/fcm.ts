@@ -1,14 +1,12 @@
 import crypto from 'crypto';
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-} from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
-import { ensureServerFirestoreAuth } from './firebase';
+  TARGET_FIREBASE_PROJECT_ID,
+  getServerServiceAccountCredentials,
+  serverGetCollectionDocs,
+  serverGetDocumentById,
+  serverSetDocumentById,
+  serverDeleteDocumentById,
+} from './firebase';
 import { ReleaseMetadata, hasApkBinary } from './storage';
 
 export const DEFAULT_FCM_TOPIC = 'zoya_releases';
@@ -58,41 +56,11 @@ export function getFcmTopic(): string {
 
 /**
  * Resolves Firebase Service Account credentials strictly from server-side environment variables.
+ * Defaults projectId to "zoya-updates" when not explicitly overridden.
  * Never exposes private keys or credentials to client code.
  */
 export function getServiceAccountCredentials(): ServiceAccountCredentials | null {
-  const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
-  if (rawJson) {
-    try {
-      const decoded = rawJson.startsWith('{')
-        ? rawJson
-        : Buffer.from(rawJson, 'base64').toString('utf-8');
-      const parsed = JSON.parse(decoded);
-      const projectId = String(parsed.project_id || firebaseConfig.projectId || '').trim();
-      const clientEmail = String(parsed.client_email || '').trim();
-      const privateKey = String(parsed.private_key || '').replace(/\\n/g, '\n').trim();
-
-      if (projectId && clientEmail && privateKey.includes('PRIVATE KEY')) {
-        return { projectId, clientEmail, privateKey };
-      }
-    } catch (err) {
-      console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', err);
-    }
-  }
-
-  const projectId = String(
-    process.env.FIREBASE_PROJECT_ID || firebaseConfig.projectId || ''
-  ).trim();
-  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || '').trim();
-  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '')
-    .replace(/\\n/g, '\n')
-    .trim();
-
-  if (projectId && clientEmail && privateKey.includes('PRIVATE KEY')) {
-    return { projectId, clientEmail, privateKey };
-  }
-
-  return null;
+  return getServerServiceAccountCredentials(TARGET_FIREBASE_PROJECT_ID);
 }
 
 /**
@@ -299,10 +267,10 @@ export async function registerFcmDeviceToken(params: {
     .digest('hex')
     .substring(0, 40);
 
-  const db = await ensureServerFirestoreAuth();
   const now = new Date().toISOString();
-  await setDoc(
-    doc(db, 'fcm_devices', deviceId),
+  await serverSetDocumentById(
+    'fcm_devices',
+    deviceId,
     {
       token: cleanToken,
       platform: String(params.platform || 'android'),
@@ -328,14 +296,14 @@ export async function getFcmStatus(): Promise<{
   registeredDevicesCount: number;
 }> {
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebaseConfig.projectId || '';
+  const projectId =
+    creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
   const topic = getFcmTopic();
   let registeredDevicesCount = 0;
 
   try {
-    const db = await ensureServerFirestoreAuth();
-    const snap = await getDocs(collection(db, 'fcm_devices'));
-    registeredDevicesCount = snap.size;
+    const docs = await serverGetCollectionDocs('fcm_devices');
+    registeredDevicesCount = docs.length;
   } catch {
     // Ignore
   }
@@ -360,7 +328,8 @@ export async function sendReleasePushNotification(
   const idempotencyKey = `${release.id}_v${release.versionCode}`;
   const { title, body, data } = buildReleaseNotificationContent(release);
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebaseConfig.projectId || '';
+  const projectId =
+    creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
 
   // 1. Guard: Never send for unpublished drafts
   if (!release.isPublished || !release.id || !release.versionName || release.versionCode <= 0) {
@@ -396,13 +365,11 @@ export async function sendReleasePushNotification(
   }
 
   // 3. Guard: Idempotency check in Firestore `/fcm_notifications/{idempotencyKey}`
-  const db = await ensureServerFirestoreAuth();
-  const notifDocRef = doc(db, 'fcm_notifications', idempotencyKey);
   try {
-    const existingSnap = await getDoc(notifDocRef);
-    if (existingSnap.exists()) {
-      const existingData = existingSnap.data();
-      if (existingData && existingData.status === 'sent') {
+    const existingSnap = await serverGetDocumentById('fcm_notifications', idempotencyKey);
+    if (existingSnap.exists && existingSnap.data) {
+      const existingData = existingSnap.data;
+      if (existingData.status === 'sent') {
         return {
           sent: false,
           alreadySent: true,
@@ -476,12 +443,12 @@ export async function sendReleasePushNotification(
     let devicesTargeted = 0;
     let devicesSucceeded = 0;
     try {
-      const devicesSnap = await getDocs(collection(db, 'fcm_devices'));
-      devicesTargeted = devicesSnap.size;
+      const deviceDocs = await serverGetCollectionDocs('fcm_devices');
+      devicesTargeted = deviceDocs.length;
       const staleDeviceIds: string[] = [];
 
-      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
-        const devData = deviceDoc.data();
+      const tokenPromises = deviceDocs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data;
         const devToken = String(devData?.token || '').trim();
         if (!devToken) return;
 
@@ -509,7 +476,7 @@ export async function sendReleasePushNotification(
 
       if (staleDeviceIds.length > 0) {
         await Promise.allSettled(
-          staleDeviceIds.map((id) => deleteDoc(doc(db, 'fcm_devices', id)))
+          staleDeviceIds.map((id) => serverDeleteDocumentById('fcm_devices', id))
         );
       }
     } catch (devErr) {
@@ -537,7 +504,7 @@ export async function sendReleasePushNotification(
 
     // 7. Record idempotency lock in Firestore `/fcm_notifications/{idempotencyKey}`
     try {
-      await setDoc(notifDocRef, {
+      await serverSetDocumentById('fcm_notifications', idempotencyKey, {
         idempotencyKey,
         releaseId: release.id,
         versionName: release.versionName,
@@ -657,7 +624,8 @@ export async function sendManualPushNotification(params: {
   const validation = validateAndSanitizeManualNotification(params);
   const topic = getFcmTopic();
   const creds = getServiceAccountCredentials();
-  const projectId = creds?.projectId || firebaseConfig.projectId || '';
+  const projectId =
+    creds?.projectId || process.env.FIREBASE_PROJECT_ID || TARGET_FIREBASE_PROJECT_ID;
 
   if (!validation.valid) {
     return {
@@ -680,7 +648,7 @@ export async function sendManualPushNotification(params: {
     .digest('hex')
     .substring(0, 32);
   const idempotencyKey = requestId
-    ? `manual_req_${ crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 32) }`
+    ? `manual_req_${crypto.createHash('sha256').update(requestId).digest('hex').substring(0, 32)}`
     : `manual_msg_${contentHash}`;
   const contentDedupKey = `manual_msg_${contentHash}`;
 
@@ -736,14 +704,11 @@ export async function sendManualPushNotification(params: {
     };
   }
 
-  const db = await ensureServerFirestoreAuth();
-  const notifDocRef = doc(db, 'fcm_notifications', contentDedupKey);
-
   // 3. Check persistent Firestore deduplication record across serverless instances
   try {
-    const existingSnap = await getDoc(notifDocRef);
-    if (existingSnap.exists()) {
-      const existingData = existingSnap.data();
+    const existingSnap = await serverGetDocumentById('fcm_notifications', contentDedupKey);
+    if (existingSnap.exists && existingSnap.data) {
+      const existingData = existingSnap.data;
       const prevSentMs = existingData?.sentAt ? Date.parse(String(existingData.sentAt)) : 0;
       if (
         existingData?.status === 'sent' &&
@@ -813,12 +778,12 @@ export async function sendManualPushNotification(params: {
     let devicesTargeted = 0;
     let devicesSucceeded = 0;
     try {
-      const devicesSnap = await getDocs(collection(db, 'fcm_devices'));
-      devicesTargeted = devicesSnap.size;
+      const deviceDocs = await serverGetCollectionDocs('fcm_devices');
+      devicesTargeted = deviceDocs.length;
       const staleDeviceIds: string[] = [];
 
-      const tokenPromises = devicesSnap.docs.map(async (deviceDoc) => {
-        const devData = deviceDoc.data();
+      const tokenPromises = deviceDocs.map(async (deviceDoc) => {
+        const devData = deviceDoc.data;
         const devToken = String(devData?.token || '').trim();
         if (!devToken) return;
 
@@ -850,7 +815,7 @@ export async function sendManualPushNotification(params: {
 
       if (staleDeviceIds.length > 0) {
         await Promise.allSettled(
-          staleDeviceIds.map((id) => deleteDoc(doc(db, 'fcm_devices', id)))
+          staleDeviceIds.map((id) => serverDeleteDocumentById('fcm_devices', id))
         );
       }
     } catch {
@@ -894,7 +859,7 @@ export async function sendManualPushNotification(params: {
     });
 
     try {
-      await setDoc(notifDocRef, {
+      await serverSetDocumentById('fcm_notifications', contentDedupKey, {
         idempotencyKey,
         requestId: requestId || null,
         type: 'manual_notification',
@@ -947,4 +912,3 @@ export async function sendManualPushNotification(params: {
     inFlightManualKeys.delete(contentDedupKey);
   }
 }
-

@@ -1,42 +1,80 @@
-import crypto from 'crypto';
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, setLogLevel, Firestore } from 'firebase/firestore';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
 import {
-  getAuth,
-  Auth,
-  signInWithCustomToken,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-} from 'firebase/auth';
-import firebaseConfig from '../firebase-applet-config.json';
+  initializeApp as initializeAdminApp,
+  getApps as getAdminApps,
+  cert,
+  type App as AdminApp,
+} from 'firebase-admin/app';
+import {
+  getFirestore as getAdminFirestoreInstance,
+  type Firestore as AdminFirestore,
+} from 'firebase-admin/firestore';
 
-export const PINNED_SERVER_UID = 'ukJVtQYppkV4awTHZImYEPV7dH53';
+// Canonical Firebase project and "(default)" Cloud Firestore database in Delhi (asia-south2)
+export const TARGET_FIREBASE_PROJECT_ID = 'zoya-updates';
+export const TARGET_FIRESTORE_DATABASE_ID = '(default)';
+export const TARGET_FIRESTORE_REGION = 'asia-south2';
 
-let cachedApp: FirebaseApp | null = null;
-let cachedDb: Firestore | null = null;
-let cachedStorage: FirebaseStorage | null = null;
-let cachedAuth: Auth | null = null;
-let pendingAuthPromise: Promise<void> | null = null;
-
-export function getFirebaseApp(): FirebaseApp {
-  if (!cachedApp) {
-    cachedApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  }
-  return cachedApp;
-}
-
-export function getFirebaseAuth(): Auth {
-  if (!cachedAuth) {
-    cachedAuth = getAuth(getFirebaseApp());
-  }
-  return cachedAuth;
-}
-
-function getServiceAccountForFirestore(): {
+export interface ServerServiceAccountCredentials {
+  projectId: string;
   clientEmail: string;
   privateKey: string;
-} | null {
+}
+
+export interface ServerDocSnapshot {
+  exists: boolean;
+  id: string;
+  data: Record<string, any> | undefined;
+}
+
+export interface ServerFirestoreAdapter {
+  backendType: 'firebase-admin' | 'test-mock';
+  projectId: string;
+  databaseId: string;
+  getCollectionDocs(collectionName: string): Promise<Array<{ id: string; data: Record<string, any> }>>;
+  getDocumentById(collectionName: string, docId: string): Promise<ServerDocSnapshot>;
+  queryDocumentsEq(
+    collectionName: string,
+    field: string,
+    value: unknown,
+    maxResults?: number
+  ): Promise<Array<{ id: string; data: Record<string, any> }>>;
+  setDocumentById(
+    collectionName: string,
+    docId: string,
+    data: Record<string, any>,
+    options?: { merge?: boolean }
+  ): Promise<void>;
+  deleteDocumentById(collectionName: string, docId: string): Promise<void>;
+}
+
+let cachedAdminApp: AdminApp | null = null;
+let cachedAdminDb: AdminFirestore | null = null;
+let cachedAdminProjectId: string | null = null;
+let cachedAdminDatabaseId: string | null = null;
+let adminDbConfigured = false;
+
+let testAdapterOverride: ServerFirestoreAdapter | null = null;
+
+export function setServerFirestoreTestAdapter(adapter: ServerFirestoreAdapter | null): void {
+  testAdapterOverride = adapter;
+}
+
+export function resetAdminFirestoreCache(): void {
+  cachedAdminApp = null;
+  cachedAdminDb = null;
+  cachedAdminProjectId = null;
+  cachedAdminDatabaseId = null;
+  adminDbConfigured = false;
+}
+
+/**
+ * Parses FIREBASE_SERVICE_ACCOUNT_JSON (raw JSON or base64-encoded) or individual
+ * FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY environment variables.
+ * Defaults projectId to "zoya-updates". Never logs or exposes secret contents.
+ */
+export function getServerServiceAccountCredentials(
+  defaultProjectId: string = TARGET_FIREBASE_PROJECT_ID
+): ServerServiceAccountCredentials | null {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
   if (rawJson.length > 0) {
     try {
@@ -44,153 +82,264 @@ function getServiceAccountForFirestore(): {
         ? rawJson
         : Buffer.from(rawJson, 'base64').toString('utf-8');
       const parsed = JSON.parse(decoded.trim());
-      const projectMatches =
-        !parsed.project_id || String(parsed.project_id).trim() === firebaseConfig.projectId;
+      const projectId = String(
+        parsed.project_id || process.env.FIREBASE_PROJECT_ID || defaultProjectId
+      ).trim();
       const clientEmail = String(parsed.client_email || '').trim();
-      const privateKey = String(parsed.private_key || '').replace(/\\n/g, '\n').trim();
-      if (projectMatches && clientEmail && privateKey.includes('PRIVATE KEY')) {
+      const privateKey = String(parsed.private_key || '')
+        .replace(/\\n/g, '\n')
+        .trim();
+
+      if (projectId && clientEmail && privateKey.includes('PRIVATE KEY')) {
         return {
+          projectId,
           clientEmail,
           privateKey,
         };
       }
     } catch {
-      // Fall through to individual env vars
+      // Fall through to individual environment variables without printing secrets
     }
   }
 
-  const envProjectId = (process.env.FIREBASE_PROJECT_ID || '').trim();
-  if (envProjectId && envProjectId !== firebaseConfig.projectId) {
-    return null;
-  }
+  const projectId = String(process.env.FIREBASE_PROJECT_ID || defaultProjectId).trim();
+  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || '').trim();
+  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '')
+    .replace(/\\n/g, '\n')
+    .trim();
 
-  const clientEmail = (process.env.FIREBASE_CLIENT_EMAIL || '').trim();
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n').trim();
-  if (clientEmail && privateKey.includes('PRIVATE KEY')) {
-    return { clientEmail, privateKey };
+  if (projectId && clientEmail && privateKey.includes('PRIVATE KEY')) {
+    return {
+      projectId,
+      clientEmail,
+      privateKey,
+    };
   }
 
   return null;
 }
 
-function createServiceAccountCustomToken(clientEmail: string, privateKey: string): string {
-  const now = Math.floor(Date.now() / 1000);
-  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(
-    JSON.stringify({
-      iss: clientEmail,
-      sub: clientEmail,
-      aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
-      iat: now,
-      exp: now + 3600,
-      uid: PINNED_SERVER_UID,
-      claims: {
-        serverAdmin: true,
-      },
-    })
-  ).toString('base64url');
+/**
+ * Initializes and returns the privileged server-side Firebase Admin SDK Firestore instance
+ * connected to the canonical project ("zoya-updates") and "(default)" database in Delhi (asia-south2).
+ * Returns null if service account credentials are not configured in the environment.
+ */
+export function getAdminFirestore(): {
+  db: AdminFirestore;
+  projectId: string;
+  databaseId: string;
+} | null {
+  const creds = getServerServiceAccountCredentials(TARGET_FIREBASE_PROJECT_ID);
+  if (!creds) {
+    return null;
+  }
 
-  const signer = crypto.createSign('RSA-SHA256');
-  signer.update(`${header}.${payload}`);
-  signer.end();
-  const signature = signer.sign(privateKey, 'base64url');
-  return `${header}.${payload}.${signature}`;
-}
+  const targetDbId = (process.env.FIRESTORE_DATABASE_ID || TARGET_FIRESTORE_DATABASE_ID).trim();
+  const appName = `zoya-admin-${creds.projectId}`;
 
-function deriveServerAuthCredentials(): { email: string; password: string } {
-  const seed = (process.env.FIREBASE_SERVER_AUTH_SECRET || '8825316434').trim();
-  const derivedKey = crypto
-    .pbkdf2Sync(
-      seed,
-      `zoya-firestore-server-auth-v1:${firebaseConfig.firestoreDatabaseId}:${firebaseConfig.appId}`,
-      100_000,
-      32,
-      'sha256'
-    )
-    .toString('base64url');
+  if (!cachedAdminApp || cachedAdminProjectId !== creds.projectId) {
+    const existing = getAdminApps().find((a) => a.name === appName);
+    cachedAdminApp =
+      existing ||
+      initializeAdminApp(
+        {
+          credential: cert({
+            projectId: creds.projectId,
+            clientEmail: creds.clientEmail,
+            privateKey: creds.privateKey,
+          }),
+          projectId: creds.projectId,
+        },
+        appName
+      );
+    cachedAdminProjectId = creds.projectId;
+    cachedAdminDb = null;
+    adminDbConfigured = false;
+  }
 
-  const emailHash = crypto
-    .createHash('sha256')
-    .update(firebaseConfig.firestoreDatabaseId)
-    .digest('hex')
-    .slice(0, 12);
+  if (!cachedAdminDb || cachedAdminDatabaseId !== targetDbId) {
+    cachedAdminDb =
+      targetDbId && targetDbId !== '(default)'
+        ? getAdminFirestoreInstance(cachedAdminApp, targetDbId)
+        : getAdminFirestoreInstance(cachedAdminApp);
+    cachedAdminDatabaseId = targetDbId;
+    if (!adminDbConfigured) {
+      try {
+        cachedAdminDb.settings({ ignoreUndefinedProperties: true });
+      } catch {
+        // Ignore if settings were already frozen on this instance
+      }
+      adminDbConfigured = true;
+    }
+  }
 
   return {
-    email: `zoya-server-${emailHash}@zoya-internal.local`,
-    password: `Zy!${derivedKey}#9a`,
+    db: cachedAdminDb,
+    projectId: creds.projectId,
+    databaseId: targetDbId || TARGET_FIRESTORE_DATABASE_ID,
   };
 }
 
 /**
- * Ensures the backend Firestore client is authenticated with a privileged server-only identity
- * before any Firestore read/write operation is executed.
+ * Extracts a Node.js Buffer from a Firestore binary field regardless of whether
+ * it came from Firebase Admin SDK (Buffer / Uint8Array) or Web SDK (Bytes).
  */
-export async function ensureServerFirestoreAuth(): Promise<Firestore> {
-  const db = getDb();
-  const auth = getFirebaseAuth();
-
-  if (auth.currentUser && auth.currentUser.uid === PINNED_SERVER_UID) {
-    return db;
+export function extractBinaryBuffer(rawField: unknown): Buffer | null {
+  if (!rawField) return null;
+  if (Buffer.isBuffer(rawField)) {
+    return rawField;
   }
-
-  if (!pendingAuthPromise) {
-    pendingAuthPromise = (async () => {
-      try {
-        // 1. Prefer Service Account Custom Token when service account credentials are configured
-        const serviceAccount = getServiceAccountForFirestore();
-        if (serviceAccount) {
-          try {
-            const customToken = createServiceAccountCustomToken(
-              serviceAccount.clientEmail,
-              serviceAccount.privateKey
-            );
-            await signInWithCustomToken(auth, customToken);
-            return;
-          } catch {
-            // Fall back to pinned server identity if custom token exchange is unavailable
-          }
-        }
-
-        // 2. Authenticate as the pinned server-only Firebase Auth UID
-        const { email, password } = deriveServerAuthCredentials();
-        try {
-          await signInWithEmailAndPassword(auth, email, password);
-        } catch (err: any) {
-          if (err?.code === 'auth/user-not-found') {
-            await createUserWithEmailAndPassword(auth, email, password);
-          } else {
-            throw err;
-          }
-        }
-      } finally {
-        pendingAuthPromise = null;
-      }
-    })();
+  if (rawField instanceof Uint8Array) {
+    return Buffer.from(rawField.buffer, rawField.byteOffset, rawField.byteLength);
   }
-
-  await pendingAuthPromise;
-  return db;
+  if (typeof (rawField as any).toUint8Array === 'function') {
+    const uint8: Uint8Array = (rawField as any).toUint8Array();
+    return Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength);
+  }
+  if (typeof (rawField as any).toBuffer === 'function') {
+    return (rawField as any).toBuffer();
+  }
+  return null;
 }
 
-export function getDb(): Firestore {
-  if (!cachedDb) {
-    try {
-      setLogLevel('error');
-    } catch {
-      // Ignore
+/**
+ * Normalizes any Buffer/Uint8Array/Bytes properties in a document payload into
+ * a standard Node.js Buffer for Firebase Admin SDK storage.
+ */
+function normalizeDocumentPayloadForAdminSdk(
+  data: Record<string, any>
+): Record<string, any> {
+  const normalized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined) continue;
+    if (Buffer.isBuffer(value)) {
+      normalized[key] = value;
+    } else if (value instanceof Uint8Array) {
+      normalized[key] = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    } else if (value && typeof (value as any).toUint8Array === 'function') {
+      const uint8: Uint8Array = (value as any).toUint8Array();
+      normalized[key] = Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength);
+    } else {
+      normalized[key] = value;
     }
-    const app = getFirebaseApp();
-    cachedDb = getFirestore(app, firebaseConfig.firestoreDatabaseId);
   }
-  return cachedDb;
+  return normalized;
 }
 
-export function getStorageInstance(): FirebaseStorage {
-  if (!cachedStorage) {
-    const app = getFirebaseApp();
-    const bucketName = firebaseConfig.storageBucket || `${firebaseConfig.projectId}.appspot.com`;
-    cachedStorage = getStorage(app, `gs://${bucketName}`);
+/**
+ * Resolves the canonical server-side Firestore adapter for all Zoya Website backend operations:
+ * - Uses `zoya-updates/(default)` (asia-south2 Delhi) via Firebase Admin SDK (`FIREBASE_SERVICE_ACCOUNT_JSON`).
+ * - Never falls back to the old database if `zoya-updates/(default)` is unconfigured or unavailable.
+ * - Throws an explicit error when unavailable so callers return HTTP 503 STORAGE_UNAVAILABLE (never 404 UNKNOWN_KEY).
+ */
+export async function getActiveServerFirestoreAdapter(): Promise<ServerFirestoreAdapter> {
+  if (testAdapterOverride) {
+    return testAdapterOverride;
   }
-  return cachedStorage;
+
+  const adminInstance = getAdminFirestore();
+  if (!adminInstance) {
+    const err = new Error(
+      `Firebase Admin SDK for ${TARGET_FIREBASE_PROJECT_ID}/${TARGET_FIRESTORE_DATABASE_ID} is not configured: FIREBASE_SERVICE_ACCOUNT_JSON is required.`
+    );
+    (err as any).code = 'STORAGE_UNAVAILABLE';
+    throw err;
+  }
+
+  const { db, projectId, databaseId } = adminInstance;
+  return {
+    backendType: 'firebase-admin',
+    projectId,
+    databaseId,
+    async getCollectionDocs(collectionName: string) {
+      const snap = await db.collection(collectionName).get();
+      return snap.docs.map((d) => ({
+        id: d.id,
+        data: (d.data() || {}) as Record<string, any>,
+      }));
+    },
+    async getDocumentById(collectionName: string, docId: string) {
+      const snap = await db.collection(collectionName).doc(docId).get();
+      return {
+        exists: snap.exists,
+        id: snap.id,
+        data: snap.exists ? ((snap.data() || {}) as Record<string, any>) : undefined,
+      };
+    },
+    async queryDocumentsEq(
+      collectionName: string,
+      field: string,
+      value: unknown,
+      maxResults = 1
+    ) {
+      const snap = await db
+        .collection(collectionName)
+        .where(field, '==', value)
+        .limit(maxResults)
+        .get();
+      return snap.docs.map((d) => ({
+        id: d.id,
+        data: (d.data() || {}) as Record<string, any>,
+      }));
+    },
+    async setDocumentById(
+      collectionName: string,
+      docId: string,
+      data: Record<string, any>,
+      options?: { merge?: boolean }
+    ) {
+      const payload = normalizeDocumentPayloadForAdminSdk(data);
+      if (options?.merge) {
+        await db.collection(collectionName).doc(docId).set(payload, { merge: true });
+      } else {
+        await db.collection(collectionName).doc(docId).set(payload);
+      }
+    },
+    async deleteDocumentById(collectionName: string, docId: string) {
+      await db.collection(collectionName).doc(docId).delete();
+    },
+  };
 }
 
+export async function serverGetCollectionDocs(
+  collectionName: string
+): Promise<Array<{ id: string; data: Record<string, any> }>> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.getCollectionDocs(collectionName);
+}
+
+export async function serverGetDocumentById(
+  collectionName: string,
+  docId: string
+): Promise<ServerDocSnapshot> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.getDocumentById(collectionName, docId);
+}
+
+export async function serverQueryDocumentsEq(
+  collectionName: string,
+  field: string,
+  value: unknown,
+  maxResults = 1
+): Promise<Array<{ id: string; data: Record<string, any> }>> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.queryDocumentsEq(collectionName, field, value, maxResults);
+}
+
+export async function serverSetDocumentById(
+  collectionName: string,
+  docId: string,
+  data: Record<string, any>,
+  options?: { merge?: boolean }
+): Promise<void> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.setDocumentById(collectionName, docId, data, options);
+}
+
+export async function serverDeleteDocumentById(
+  collectionName: string,
+  docId: string
+): Promise<void> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.deleteDocumentById(collectionName, docId);
+}
