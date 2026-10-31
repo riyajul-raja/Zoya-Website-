@@ -30,6 +30,10 @@
       "destination": "/api/admin/licenses?__route=/api/admin/licenses"
     },
     {
+      "source": "/api/admin/licenses/:id/key",
+      "destination": "/api/admin/licenses?__route=/api/admin/licenses/:id/key&id=:id"
+    },
+    {
       "source": "/api/admin/licenses/:id",
       "destination": "/api/admin/licenses?__route=/api/admin/licenses/:id&id=:id"
     },

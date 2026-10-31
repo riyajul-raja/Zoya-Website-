@@ -322,14 +322,18 @@ export function decryptLicenseKey(encryptedPayload: string, licenseId: string): 
     throw new Error('Encrypted license key payload is missing required cryptographic components.');
   }
 
+  if (!/^[0-9a-fA-F]{24}$/.test(ivHex)) {
+    throw new Error('Invalid IV format for AES-256-GCM. Expected 12-byte (24-char) hex string.');
+  }
+  if (!/^[0-9a-fA-F]{32}$/.test(authTagHex)) {
+    throw new Error('Invalid authentication tag format for AES-256-GCM. Expected 16-byte (32-char) hex string.');
+  }
+  if (!/^[0-9a-fA-F]+$/.test(ciphertextHex) || ciphertextHex.length % 2 !== 0) {
+    throw new Error('Invalid ciphertext hex encoding for AES-256-GCM.');
+  }
+
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
-  if (iv.length !== 12) {
-    throw new Error(`Invalid IV length for AES-256-GCM. Expected 12 bytes, got ${iv.length}.`);
-  }
-  if (authTag.length !== 16) {
-    throw new Error(`Invalid authentication tag length for AES-256-GCM. Expected 16 bytes, got ${authTag.length}.`);
-  }
 
   const key = getLicenseKeyEncryptionBuffer();
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -339,7 +343,12 @@ export function decryptLicenseKey(encryptedPayload: string, licenseId: string): 
   let decrypted = decipher.update(ciphertextHex, 'hex', 'utf-8');
   decrypted += decipher.final('utf-8');
 
-  return decrypted;
+  const normalized = normalizeLicenseKey(decrypted);
+  if (!isValidLicenseKeyFormat(normalized)) {
+    throw new Error('Decrypted license key does not match valid ZOYA-XXXX-XXXX-XXXX format.');
+  }
+
+  return normalized;
 }
 
 function sanitizeText(raw: unknown, maxLen = 200): string {
@@ -909,6 +918,14 @@ export async function revealLicenseKeyByAdmin(
 
     try {
       const decryptedKey = decryptLicenseKey(license.encryptedKey, license.id);
+      if (license.keyHash && hashLicenseKey(decryptedKey) !== license.keyHash) {
+        return {
+          success: false,
+          status: 500,
+          code: 'DECRYPTION_FAILED',
+          error: 'License key decryption failed: decrypted key does not match stored license integrity hash.',
+        };
+      }
       return {
         success: true,
         status: 200,
@@ -920,15 +937,20 @@ export async function revealLicenseKeyByAdmin(
           success: false,
           status: 500,
           code: 'CONFIGURATION_ERROR',
-          error:
-            'License key decryption unavailable: LICENSE_KEY_ENCRYPTION_SECRET is not configured on the server. Server fails closed per security policy.',
+          error: decErr.message,
         };
       }
+      const rawReason = decErr instanceof Error ? decErr.message : '';
+      const isAuthMismatch =
+        rawReason.includes('unable to authenticate data') ||
+        rawReason.includes('Unsupported state');
       return {
         success: false,
         status: 500,
         code: 'DECRYPTION_FAILED',
-        error: 'Failed to decrypt license key. Ciphertext may be corrupted, tampered, or encrypted with a different secret.',
+        error: isAuthMismatch
+          ? 'License key decryption failed: AES-256-GCM authentication tag verification failed. Ensure LICENSE_KEY_ENCRYPTION_SECRET matches the secret used when this license was encrypted.'
+          : 'Failed to decrypt license key. Ciphertext may be corrupted, tampered, or encrypted with a different secret.',
       };
     }
   } catch (err) {

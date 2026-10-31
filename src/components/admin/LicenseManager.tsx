@@ -284,40 +284,44 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
   };
 
   /**
+   * Verifies that a candidate string is a complete unmasked license key (ZOYA-XXXX-XXXX-XXXX)
+   * and never the masked placeholder ("ZOYA-XXXX-XXXX-XXXX" or "ZOYA-••••-••••-XXXX").
+   */
+  const isValidCompleteLicenseKey = (val: unknown): val is string => {
+    if (typeof val !== 'string') return false;
+    const trimmed = val.trim().toUpperCase();
+    if (trimmed === 'ZOYA-XXXX-XXXX-XXXX' || trimmed.includes('•')) {
+      return false;
+    }
+    return /^ZOYA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(trimmed);
+  };
+
+  /**
    * Resolves the complete plaintext key for a license if already cached in memory.
    */
   const getFullKeyForLicense = (lic: LicenseRecord): string | null => {
-    if (decryptedKeys[lic.id]) {
-      return decryptedKeys[lic.id];
+    if (isValidCompleteLicenseKey(decryptedKeys[lic.id])) {
+      return decryptedKeys[lic.id].trim().toUpperCase();
     }
-    if ((lic as any).licenseKey && typeof (lic as any).licenseKey === 'string') {
-      return (lic as any).licenseKey;
+    if (isValidCompleteLicenseKey((lic as any).licenseKey)) {
+      return (lic as any).licenseKey.trim().toUpperCase();
     }
-    if ((lic as any).fullKey && typeof (lic as any).fullKey === 'string') {
-      return (lic as any).fullKey;
+    if (isValidCompleteLicenseKey((lic as any).fullKey)) {
+      return (lic as any).fullKey.trim().toUpperCase();
     }
-    if ((lic as any).key && typeof (lic as any).key === 'string' && (lic as any).key.startsWith('ZOYA-')) {
-      return (lic as any).key;
+    if (isValidCompleteLicenseKey(knownKeys[lic.id])) {
+      return knownKeys[lic.id].trim().toUpperCase();
     }
-    if (knownKeys[lic.id]) {
-      return knownKeys[lic.id];
-    }
-    if (lic.keyHash && knownKeys[lic.keyHash]) {
-      return knownKeys[lic.keyHash];
-    }
-    if (
-      newlyGeneratedKey &&
-      newlyGeneratedKey.key &&
-      (newlyGeneratedKey.customerEmail === lic.customerEmail || newlyGeneratedKey.customerName === lic.customerName)
-    ) {
-      return newlyGeneratedKey.key;
+    if (lic.keyHash && isValidCompleteLicenseKey(knownKeys[lic.keyHash])) {
+      return knownKeys[lic.keyHash].trim().toUpperCase();
     }
     return null;
   };
 
   /**
    * Fetches the complete decrypted key from the authenticated admin backend endpoint.
-   * Enables revealing and copying at any time across sessions and page reloads.
+   * Uses POST /api/admin/licenses/:id with { action: 'reveal' } for full compatibility
+   * with both Vercel rewrite routing and the server API handler.
    */
   const fetchDecryptedKey = async (lic: LicenseRecord): Promise<string | null> => {
     // 1. Return from in-memory cache if already available
@@ -328,37 +332,62 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
 
     setLoadingKeyIds((prev) => ({ ...prev, [lic.id]: true }));
     try {
-      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(lic.id)}/key`, {
+      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(lic.id)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ action: 'reveal' }),
       });
+
       if (res.status === 401) {
         onUnauthorized?.();
         return null;
       }
-      const data = await res.json();
-      if (res.ok && data.success && typeof data.licenseKey === 'string') {
-        const decrypted = data.licenseKey;
+
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch {
+        setActionFeedback({
+          type: 'error',
+          text: `Unable to decrypt license key: server returned an unexpected response (HTTP ${res.status}).`,
+        });
+        return null;
+      }
+
+      if (res.ok && data?.success && isValidCompleteLicenseKey(data.licenseKey)) {
+        const decrypted = data.licenseKey.trim().toUpperCase();
         setDecryptedKeys((prev) => ({ ...prev, [lic.id]: decrypted }));
         return decrypted;
       }
 
-      if (data.code === 'KEY_NOT_RECOVERABLE') {
+      if (data?.code === 'KEY_NOT_RECOVERABLE') {
         setActionFeedback({
           type: 'error',
           text: 'Legacy license: generated prior to reversible encryption. The original key cannot be recovered.',
         });
-      } else if (data.error) {
+      } else if (data?.error && typeof data.error === 'string') {
         setActionFeedback({
           type: 'error',
           text: data.error,
         });
+      } else {
+        setActionFeedback({
+          type: 'error',
+          text: `Failed to decrypt license key (HTTP ${res.status}).`,
+        });
       }
-    } catch {
+    } catch (err: unknown) {
       setActionFeedback({
         type: 'error',
-        text: 'Unable to decrypt license key. Please check network connection.',
+        text:
+          err instanceof Error && err.message
+            ? `Network error while requesting license key: ${err.message}`
+            : 'Unable to reach the server to decrypt license key. Please check your network connection.',
       });
     } finally {
       setLoadingKeyIds((prev) => ({ ...prev, [lic.id]: false }));
@@ -367,12 +396,43 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
   };
 
   /**
+   * Writes text to the system clipboard and returns true only if the write succeeded.
+   */
+  const writeTextToClipboard = async (text: string): Promise<boolean> => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fall through to textarea execCommand fallback
+    }
+
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return Boolean(copied);
+    } catch {
+      return false;
+    }
+  };
+
+  /**
    * Toggles the revealed/masked state for a specific license key row.
    * Decrypts on demand if not already loaded in memory.
-   * If the key is only a one-way SHA-256 hash in storage, it remains masked.
    */
   const handleToggleReveal = async (e: React.MouseEvent, lic: LicenseRecord) => {
     e.stopPropagation();
+    setSelectedLicenseId(lic.id);
+    setActionFeedback(null);
+
     const isCurrentlyRevealed = Boolean(revealedKeyIds[lic.id]);
     if (isCurrentlyRevealed) {
       setRevealedKeyIds((prev) => ({
@@ -387,7 +447,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
       fullKey = await fetchDecryptedKey(lic);
     }
 
-    if (fullKey) {
+    if (fullKey && isValidCompleteLicenseKey(fullKey)) {
       setRevealedKeyIds((prev) => ({
         ...prev,
         [lic.id]: true,
@@ -396,35 +456,35 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
   };
 
   /**
-   * Copies the complete license key to clipboard and shows a brief "Copied" confirmation.
-   * If the full key is not yet loaded in memory, decrypts it on demand.
+   * Copies the complete original license key to clipboard.
+   * - If the key has not yet been revealed, securely fetches it from the authenticated admin reveal endpoint.
+   * - Copies ONLY after the server returns the valid decrypted full key (never copies "ZOYA-XXXX-XXXX-XXXX").
+   * - Shows "Copied" confirmation ONLY after the clipboard contains the actual full key.
    */
   const handleCopyRowKey = async (e: React.MouseEvent, lic: LicenseRecord) => {
     e.stopPropagation();
+    setSelectedLicenseId(lic.id);
+    setActionFeedback(null);
+
     let fullKey = getFullKeyForLicense(lic);
     if (!fullKey) {
       fullKey = await fetchDecryptedKey(lic);
     }
-    const textToCopy = fullKey || 'ZOYA-XXXX-XXXX-XXXX';
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(textToCopy);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = textToCopy;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      }
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = textToCopy;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textarea);
+
+    if (!fullKey || !isValidCompleteLicenseKey(fullKey)) {
+      // Never copy the masked placeholder ("ZOYA-XXXX-XXXX-XXXX")
+      return;
     }
+
+    const copiedOk = await writeTextToClipboard(fullKey);
+    if (!copiedOk) {
+      setActionFeedback({
+        type: 'error',
+        text: 'Failed to copy license key to clipboard. Please reveal the key and copy it manually.',
+      });
+      return;
+    }
+
     setCopiedRowId(lic.id);
     setTimeout(() => {
       setCopiedRowId((prev) => (prev === lic.id ? null : prev));

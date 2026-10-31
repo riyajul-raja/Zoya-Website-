@@ -1051,21 +1051,102 @@ async function runTests() {
     assert.equal(revealActionRes.statusCode, 200);
     assert.equal(revealActionRes.json?.licenseKey, originalGeneratedKey);
 
-    // 11d. Simulating a fresh session / page reload: clear all in-memory caches
+    // 11d. Simulating a fresh admin login & page reload: clear all in-memory caches and obtain a fresh login token
     clearLicenseInMemoryCache();
+    const freshLoginRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/login',
+      body: { pin: '8825316434' },
+    });
+    assert.equal(freshLoginRes.statusCode, 200);
+    const freshAdminToken: string = freshLoginRes.json.token;
+
     const freshSessionReveal = await invokeHandler({
-      method: 'GET',
-      url: `/api/admin/licenses/${visibilityLicenseId}/key`,
-      headers: { Authorization: `Bearer ${adminToken}` },
+      method: 'POST',
+      url: `/api/admin/licenses/${visibilityLicenseId}`,
+      headers: { Authorization: `Bearer ${freshAdminToken}` },
+      body: { action: 'reveal' },
     });
     assert.equal(freshSessionReveal.statusCode, 200);
     assert.equal(
       freshSessionReveal.json?.licenseKey,
       originalGeneratedKey,
-      'Admin must be able to retrieve the original key across sessions and reloads'
+      'Admin must be able to retrieve the original key after a fresh admin login'
+    );
+    assert.notEqual(
+      freshSessionReveal.json?.licenseKey,
+      'ZOYA-XXXX-XXXX-XXXX',
+      'Revealed/copied key must never be the masked placeholder'
     );
 
-    // 11e. Unauthorized callers must be rejected
+    // Verify LicenseManager.tsx copy logic never falls back to copying ZOYA-XXXX-XXXX-XXXX
+    const licenseManagerSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/admin/LicenseManager.tsx'),
+      'utf-8'
+    );
+    assert.equal(
+      licenseManagerSource.includes("fullKey || 'ZOYA-XXXX-XXXX-XXXX'"),
+      false,
+      'handleCopyRowKey must NEVER fall back to copying the masked placeholder ZOYA-XXXX-XXXX-XXXX'
+    );
+    assert.equal(
+      licenseManagerSource.includes("if (trimmed === 'ZOYA-XXXX-XXXX-XXXX' || trimmed.includes('•'))"),
+      true,
+      'LicenseManager must explicitly reject masked placeholders before revealing or copying'
+    );
+
+    // 11e. Missing encryption secret during reveal fails closed without modifying records
+    const savedValidSecret = process.env.LICENSE_KEY_ENCRYPTION_SECRET;
+    delete process.env.LICENSE_KEY_ENCRYPTION_SECRET;
+    const missingSecretReveal = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${visibilityLicenseId}`,
+      headers: { Authorization: `Bearer ${freshAdminToken}` },
+      body: { action: 'reveal' },
+    });
+    assert.equal(missingSecretReveal.statusCode, 500, 'Missing secret during reveal must fail closed with 500');
+    assert.equal(missingSecretReveal.json?.code, 'CONFIGURATION_ERROR');
+
+    // 11f. Wrong encryption secret produces a clear controlled error without modifying records
+    process.env.LICENSE_KEY_ENCRYPTION_SECRET = 'WRONG_AES256_GCM_ENCRYPTION_SECRET_32_BYTES_MISMATCH_TEST';
+    const wrongSecretReveal = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${visibilityLicenseId}`,
+      headers: { Authorization: `Bearer ${freshAdminToken}` },
+      body: { action: 'reveal' },
+    });
+    assert.equal(wrongSecretReveal.statusCode, 500, 'Wrong encryption secret must return 500 DECRYPTION_FAILED');
+    assert.equal(wrongSecretReveal.json?.code, 'DECRYPTION_FAILED');
+    assert.ok(
+      typeof wrongSecretReveal.json?.error === 'string' &&
+        wrongSecretReveal.json.error.includes('authentication tag verification failed'),
+      'Wrong encryption secret must report controlled AES-256-GCM authentication tag failure'
+    );
+
+    // Verify record in Firestore was NOT modified, overwritten, or deleted by failed decryption
+    const docAfterWrongSecret = await zoyaUpdatesAdapter.getDocumentById('licenses', visibilityLicenseId);
+    assert.equal(
+      docAfterWrongSecret.data?.encryptedKey,
+      storedDoc.data.encryptedKey,
+      'Failed decryption must never modify or overwrite existing encryptedKey'
+    );
+
+    // 11g. Restoring valid encryption secret decrypts previously encrypted record cleanly
+    process.env.LICENSE_KEY_ENCRYPTION_SECRET = savedValidSecret;
+    const restoredSecretReveal = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${visibilityLicenseId}`,
+      headers: { Authorization: `Bearer ${freshAdminToken}` },
+      body: { action: 'reveal' },
+    });
+    assert.equal(restoredSecretReveal.statusCode, 200);
+    assert.equal(
+      restoredSecretReveal.json?.licenseKey,
+      originalGeneratedKey,
+      'Valid encryption secret must decrypt previously encrypted records'
+    );
+
+    // 11h. Unauthorized callers must be rejected
     const unauthReveal = await invokeHandler({
       method: 'GET',
       url: `/api/admin/licenses/${visibilityLicenseId}/key`,
@@ -1079,7 +1160,7 @@ async function runTests() {
     });
     assert.equal(invalidTokenReveal.statusCode, 401, 'Reveal endpoint must reject invalid tokens');
 
-    // 11f. Tamper detection: modifying auth tag or ciphertext must fail decryption
+    // 11i. Tamper detection: modifying auth tag or ciphertext must fail decryption
     const tamperedPayload = `${encParts[0]}:${encParts[1]}:${encParts[2].slice(0, -2)}ff`;
     const tamperedLicId = `lic_tamper_${Date.now()}`;
     createdLicenseIds.push(tamperedLicId);
@@ -1099,7 +1180,7 @@ async function runTests() {
     assert.equal(tamperedReveal.statusCode, 500);
     assert.equal(tamperedReveal.json?.code, 'DECRYPTION_FAILED');
 
-    // 11g. Legacy license (SHA-256 only, encryptedKey missing) must return 404 KEY_NOT_RECOVERABLE
+    // 11j. Legacy license (SHA-256 only, encryptedKey missing) must return 404 KEY_NOT_RECOVERABLE
     const legacyLicId = `lic_legacy_${Date.now()}`;
     createdLicenseIds.push(legacyLicId);
     const legacyRecord: LicenseRecord = {
@@ -1118,7 +1199,7 @@ async function runTests() {
     assert.equal(legacyReveal.statusCode, 404);
     assert.equal(legacyReveal.json?.code, 'KEY_NOT_RECOVERABLE');
 
-    // 11h. Validation on Android phone still succeeds with SHA-256
+    // 11k. Validation on Android phone still succeeds with SHA-256
     const androidVal = await invokeHandler({
       method: 'POST',
       url: '/api/licenses/validate',
