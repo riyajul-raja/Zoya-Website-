@@ -54,8 +54,7 @@ export const AdminLoginForm: React.FC<AdminLoginFormProps> = ({ onSuccess }) => 
         throw new Error('Server returned incomplete authentication payload.');
       }
 
-      // Store in sessionStorage for client API requests
-      sessionStorage.setItem('zoya_admin_token', data.token);
+      // Deliver verified token in-memory to parent portal session only (never browser storage)
       onSuccess(data.token, data.user);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');

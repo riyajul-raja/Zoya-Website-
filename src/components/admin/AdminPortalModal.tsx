@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, LogOut, Shield, Loader2, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, LogOut, Shield, ArrowLeft } from 'lucide-react';
 import { AdminLoginForm } from './AdminLoginForm';
 import { ReleaseManager } from './ReleaseManager';
 
@@ -20,53 +20,55 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     if (onReleaseChanged) onReleaseChanged();
     if (onReleasePublished) onReleasePublished();
   };
+
+  // STRICT SECURITY REQUIREMENT:
+  // Admin Portal requires PIN on EVERY open.
+  // Never load or persist session tokens in localStorage or sessionStorage.
+  // In-memory state starts as null every time the portal opens.
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<{ email: string; name: string } | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
 
+  // Invalidate session on server and reset in-memory state
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+    } catch {
+      // Ignore
+    }
+    setToken(null);
+    setUser(null);
+    try {
+      sessionStorage.removeItem('zoya_admin_token');
+      localStorage.removeItem('zoya_admin_token');
+      sessionStorage.removeItem('zoya_known_license_keys');
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleClose = useCallback(async () => {
+    await handleLogout();
+    onClose();
+  }, [handleLogout, onClose]);
+
+  // When modal opens or closes, ensure state starts clean and PIN is required
   useEffect(() => {
-    if (!isOpen) return;
-
-    const verifyExistingSession = async () => {
-      setCheckingSession(true);
-      const savedToken = sessionStorage.getItem('zoya_admin_token');
-
+    if (isOpen) {
+      // Reset authentication state so PIN entry screen is displayed first
+      setToken(null);
+      setUser(null);
       try {
-        const res = await fetch('/api/admin/session', {
-          headers: savedToken ? { Authorization: `Bearer ${savedToken}` } : {},
-        });
-        const rawText = await res.text();
-        let data: { authenticated?: boolean; token?: string; user?: { email: string; name: string } } = {};
-        try {
-          data = rawText ? JSON.parse(rawText) : {};
-        } catch {
-          // Non-JSON response
-        }
-
-        if (res.ok && data.authenticated && data.user) {
-          setUser(data.user);
-          const activeToken = data.token || savedToken;
-          if (activeToken && activeToken !== 'cookie-session') {
-            sessionStorage.setItem('zoya_admin_token', activeToken);
-            setToken(activeToken);
-          } else {
-            setToken('cookie-session');
-          }
-        } else {
-          sessionStorage.removeItem('zoya_admin_token');
-          setToken(null);
-          setUser(null);
-        }
+        sessionStorage.removeItem('zoya_admin_token');
+        localStorage.removeItem('zoya_admin_token');
+        sessionStorage.removeItem('zoya_known_license_keys');
       } catch {
-        setToken(null);
-        setUser(null);
-      } finally {
-        setCheckingSession(false);
+        // Ignore
       }
-    };
-
-    verifyExistingSession();
-  }, [isOpen]);
+    } else {
+      // When closed, trigger server session invalidation
+      handleLogout();
+    }
+  }, [isOpen, handleLogout]);
 
   // Close on Escape key and lock background body scroll while full-page portal is active
   useEffect(() => {
@@ -75,25 +77,16 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     document.body.style.overflow = 'hidden';
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        handleClose();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, onClose]);
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/admin/logout', { method: 'POST' });
-    } catch {
-      // Ignore
-    }
-    sessionStorage.removeItem('zoya_admin_token');
-    setToken(null);
-    setUser(null);
-  };
+  }, [isOpen, handleClose]);
 
   if (!isOpen) return null;
 
@@ -143,7 +136,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition-colors cursor-pointer"
               aria-label="Close Admin Portal and return to website"
             >
@@ -158,13 +151,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       {/* Full-Viewport Scrollable Workspace */}
       <main className="flex-1 w-full overflow-y-auto overscroll-contain">
         <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          {checkingSession ? (
-            <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-slate-400 text-sm">
-              <Loader2 className="w-6 h-6 animate-spin text-teal-400" aria-hidden="true" />
-              <span>Verifying administrator session...</span>
-            </div>
-          ) : token && user ? (
-            <ReleaseManager token={token} onReleasePublished={handleReleaseUpdate} />
+          {token && user ? (
+            <ReleaseManager
+              token={token}
+              onReleasePublished={handleReleaseUpdate}
+              onUnauthorized={handleLogout}
+            />
           ) : (
             <div className="min-h-[65vh] flex items-center justify-center py-6">
               <div className="w-full max-w-md">

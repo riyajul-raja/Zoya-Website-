@@ -18,9 +18,10 @@ import {
   ChevronRight,
   Loader2,
   Eye,
+  EyeOff,
   Lock,
-  Sparkles,
   X,
+  SmartphoneNfc,
 } from 'lucide-react';
 import type {
   LicenseRecord,
@@ -30,28 +31,18 @@ import type {
 
 interface LicenseManagerProps {
   token: string;
+  onUnauthorized?: () => void;
 }
 
-export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
+export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnauthorized }) => {
   const [licenses, setLicenses] = useState<LicenseRecord[]>([]);
-  const [stats, setStats] = useState<LicenseSummaryStats>({
-    total: 0,
-    active: 0,
-    pendingPayment: 0,
-    revoked: 0,
-    complimentary: 0,
-  });
+  const [stats, setStats] = useState<LicenseSummaryStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Generate License Form State
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  const [paymentReference, setPaymentReference] = useState('');
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('INR');
-  const [isComplimentary, setIsComplimentary] = useState(false);
-  const [complimentaryReason, setComplimentaryReason] = useState('');
   const [generating, setGenerating] = useState(false);
   const [formFeedback, setFormFeedback] = useState<{
     type: 'success' | 'error';
@@ -64,9 +55,21 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
     customerName: string;
     customerEmail: string;
     status: LicenseStatus;
-    isComplimentary: boolean;
   } | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+
+  // Known in-memory keys for newly generated items in this active session (never written to browser storage)
+  const [knownKeys, setKnownKeys] = useState<Record<string, string>>({});
+
+  // Decrypted plaintext keys retrieved on-demand from authenticated admin endpoint
+  const [decryptedKeys, setDecryptedKeys] = useState<Record<string, string>>({});
+  const [loadingKeyIds, setLoadingKeyIds] = useState<Record<string, boolean>>({});
+
+  // Revealed state per license ID (toggled by Eye icon)
+  const [revealedKeyIds, setRevealedKeyIds] = useState<Record<string, boolean>>({});
+
+  // Copied confirmation feedback state per license ID
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
 
   // Filter & Search State
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,8 +78,17 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
   // Selected License for Details + Actions
   const [selectedLicenseId, setSelectedLicenseId] = useState<string | null>(null);
 
-  // Verify Payment Action State
-  const [submittingVerify, setSubmittingVerify] = useState(false);
+  // Admin Manual Activation State
+  const [activatingLicenseId, setActivatingLicenseId] = useState<string | null>(null);
+  const [activateDeviceModel, setActivateDeviceModel] = useState('');
+  const [activateDeviceId, setActivateDeviceId] = useState('');
+  const [activateAndroidVersion, setActivateAndroidVersion] = useState('Android 14');
+  const [submittingActivate, setSubmittingActivate] = useState(false);
+
+  // Rebind Device Action State
+  const [rebindLicenseId, setRebindLicenseId] = useState<string | null>(null);
+  const [rebindReason, setRebindReason] = useState('');
+  const [submittingRebind, setSubmittingRebind] = useState(false);
 
   // Revoke Action State
   const [revokingLicenseId, setRevokingLicenseId] = useState<string | null>(null);
@@ -94,10 +106,16 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
     setFetchError(null);
     try {
       const res = await fetch('/api/admin/licenses', {
+        credentials: 'same-origin',
+        cache: 'no-store',
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       const rawText = await res.text();
       let data: any = {};
       try {
@@ -141,16 +159,20 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
         return false;
       }
       if (!q) return true;
+      const fullKey = getFullKeyForLicense(lic);
       return (
         lic.customerName.toLowerCase().includes(q) ||
         lic.customerEmail.toLowerCase().includes(q) ||
+        'zoya-xxxx-xxxx-xxxx'.includes(q) ||
+        (fullKey && fullKey.toLowerCase().includes(q)) ||
         lic.maskedKey.toLowerCase().includes(q) ||
         lic.keyLastFour.toLowerCase().includes(q) ||
-        (lic.paymentReference && lic.paymentReference.toLowerCase().includes(q)) ||
-        lic.id.toLowerCase().includes(q)
+        lic.id.toLowerCase().includes(q) ||
+        (lic.linkedDevice?.deviceModel && lic.linkedDevice.deviceModel.toLowerCase().includes(q)) ||
+        (lic.linkedDevice?.deviceId && lic.linkedDevice.deviceId.toLowerCase().includes(q))
       );
     });
-  }, [licenses, searchQuery, statusFilter]);
+  }, [licenses, searchQuery, statusFilter, knownKeys, newlyGeneratedKey]);
 
   const handleGenerateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -161,9 +183,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
     const trimmedName = customerName.trim();
     const trimmedEmail = customerEmail.trim();
-    const trimmedRef = paymentReference.trim();
-    const trimmedAmount = amount.trim();
-    const trimmedReason = complimentaryReason.trim();
 
     if (trimmedName.length < 2) {
       setFormFeedback({
@@ -181,14 +200,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
       return;
     }
 
-    if (isComplimentary && trimmedReason.length < 3) {
-      setFormFeedback({
-        type: 'error',
-        text: 'Please provide a reason for issuing a complimentary license.',
-      });
-      return;
-    }
-
     setGenerating(true);
 
     try {
@@ -202,15 +213,15 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
           customerName: trimmedName,
           customerEmail: trimmedEmail,
           licenseType: 'Lifetime',
-          paymentReference: isComplimentary ? undefined : trimmedRef || undefined,
-          amount: isComplimentary ? undefined : trimmedAmount || undefined,
-          currency: isComplimentary ? undefined : currency || undefined,
-          isComplimentary,
-          complimentaryReason: isComplimentary ? trimmedReason : undefined,
         }),
       });
 
       const rawText = await res.text();
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+
       let data: any = {};
       try {
         data = rawText ? JSON.parse(rawText) : {};
@@ -230,23 +241,24 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
         customerName: createdLicense.customerName,
         customerEmail: createdLicense.customerEmail,
         status: createdLicense.status,
-        isComplimentary: createdLicense.isComplimentary,
       });
       setCopiedKey(false);
+
+      if (generatedKey) {
+        setKnownKeys((prev) => ({
+          ...prev,
+          [createdLicense.id]: generatedKey,
+          [createdLicense.keyHash]: generatedKey,
+        }));
+      }
 
       // Reset form inputs
       setCustomerName('');
       setCustomerEmail('');
-      setPaymentReference('');
-      setAmount('');
-      setIsComplimentary(false);
-      setComplimentaryReason('');
 
       setFormFeedback({
         type: 'success',
-        text:
-          data.message ||
-          `Lifetime license generated for ${createdLicense.customerName}.`,
+        text: data.message || `Lifetime license generated for ${createdLicense.customerName} (Unactivated).`,
       });
 
       await fetchLicenses();
@@ -268,7 +280,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
       setCopiedKey(true);
       setTimeout(() => setCopiedKey(false), 3000);
     } catch {
-      // Fallback copy
       const textarea = document.createElement('textarea');
       textarea.value = newlyGeneratedKey.key;
       document.body.appendChild(textarea);
@@ -280,29 +291,213 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
     }
   };
 
-  const handleVerifyAndActivate = async (lic: LicenseRecord) => {
-    if (!lic || lic.status !== 'pending_payment' || submittingVerify) return;
+  /**
+   * Resolves the complete plaintext key for a license if already cached in memory.
+   */
+  const getFullKeyForLicense = (lic: LicenseRecord): string | null => {
+    if (decryptedKeys[lic.id]) {
+      return decryptedKeys[lic.id];
+    }
+    if ((lic as any).licenseKey && typeof (lic as any).licenseKey === 'string') {
+      return (lic as any).licenseKey;
+    }
+    if ((lic as any).fullKey && typeof (lic as any).fullKey === 'string') {
+      return (lic as any).fullKey;
+    }
+    if ((lic as any).key && typeof (lic as any).key === 'string' && (lic as any).key.startsWith('ZOYA-')) {
+      return (lic as any).key;
+    }
+    if (knownKeys[lic.id]) {
+      return knownKeys[lic.id];
+    }
+    if (lic.keyHash && knownKeys[lic.keyHash]) {
+      return knownKeys[lic.keyHash];
+    }
+    if (
+      newlyGeneratedKey &&
+      newlyGeneratedKey.key &&
+      (newlyGeneratedKey.customerEmail === lic.customerEmail || newlyGeneratedKey.customerName === lic.customerName)
+    ) {
+      return newlyGeneratedKey.key;
+    }
+    return null;
+  };
 
+  /**
+   * Fetches the complete decrypted key from the authenticated admin backend endpoint.
+   * Enables revealing and copying at any time across sessions and page reloads.
+   */
+  const fetchDecryptedKey = async (lic: LicenseRecord): Promise<string | null> => {
+    // 1. Return from in-memory cache if already available
+    const existing = getFullKeyForLicense(lic);
+    if (existing) {
+      return existing;
+    }
+
+    setLoadingKeyIds((prev) => ({ ...prev, [lic.id]: true }));
+    try {
+      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(lic.id)}/key`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return null;
+      }
+      const data = await res.json();
+      if (res.ok && data.success && typeof data.licenseKey === 'string') {
+        const decrypted = data.licenseKey;
+        setDecryptedKeys((prev) => ({ ...prev, [lic.id]: decrypted }));
+        return decrypted;
+      }
+
+      if (data.code === 'KEY_NOT_RECOVERABLE') {
+        setActionFeedback({
+          type: 'error',
+          text: 'Legacy license: generated prior to reversible encryption. The original key cannot be recovered.',
+        });
+      } else if (data.error) {
+        setActionFeedback({
+          type: 'error',
+          text: data.error,
+        });
+      }
+    } catch {
+      setActionFeedback({
+        type: 'error',
+        text: 'Unable to decrypt license key. Please check network connection.',
+      });
+    } finally {
+      setLoadingKeyIds((prev) => ({ ...prev, [lic.id]: false }));
+    }
+    return null;
+  };
+
+  /**
+   * Toggles the revealed/masked state for a specific license key row.
+   * Decrypts on demand if not already loaded in memory.
+   * If the key is only a one-way SHA-256 hash in storage, it remains masked.
+   */
+  const handleToggleReveal = async (e: React.MouseEvent, lic: LicenseRecord) => {
+    e.stopPropagation();
+    const isCurrentlyRevealed = Boolean(revealedKeyIds[lic.id]);
+    if (isCurrentlyRevealed) {
+      setRevealedKeyIds((prev) => ({
+        ...prev,
+        [lic.id]: false,
+      }));
+      return;
+    }
+
+    let fullKey = getFullKeyForLicense(lic);
+    if (!fullKey) {
+      fullKey = await fetchDecryptedKey(lic);
+    }
+
+    if (fullKey) {
+      setRevealedKeyIds((prev) => ({
+        ...prev,
+        [lic.id]: true,
+      }));
+    }
+  };
+
+  /**
+   * Copies the complete license key to clipboard and shows a brief "Copied" confirmation.
+   * If the full key is not yet loaded in memory, decrypts it on demand.
+   */
+  const handleCopyRowKey = async (e: React.MouseEvent, lic: LicenseRecord) => {
+    e.stopPropagation();
+    let fullKey = getFullKeyForLicense(lic);
+    if (!fullKey) {
+      fullKey = await fetchDecryptedKey(lic);
+    }
+    const textToCopy = fullKey || 'ZOYA-XXXX-XXXX-XXXX';
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = textToCopy;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = textToCopy;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    setCopiedRowId(lic.id);
+    setTimeout(() => {
+      setCopiedRowId((prev) => (prev === lic.id ? null : prev));
+    }, 2500);
+  };
+
+  // Open activation panel
+  const openActivatePanel = (lic: LicenseRecord) => {
     setActionFeedback(null);
     setRevokingLicenseId(null);
-    setSubmittingVerify(true);
+    setRebindLicenseId(null);
+    setActivatingLicenseId(lic.id);
+    setActivateDeviceModel('');
+    setActivateDeviceId('');
+    setActivateAndroidVersion('Android 14');
+  };
+
+  // Admin Manual Activation Submission
+  const handleConfirmActivate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activatingLicenseId || submittingActivate) return;
+
+    const trimmedModel = activateDeviceModel.trim();
+    const trimmedDeviceId = activateDeviceId.trim();
+
+    if (trimmedModel.length < 2) {
+      setActionFeedback({
+        type: 'error',
+        text: 'Phone / Device Model is required (e.g., Pixel 8 Pro, Samsung S24).',
+      });
+      return;
+    }
+
+    if (trimmedDeviceId.length < 8) {
+      setActionFeedback({
+        type: 'error',
+        text: 'Device ID is required and must be at least 8 characters.',
+      });
+      return;
+    }
+
+    setSubmittingActivate(true);
+    setActionFeedback(null);
 
     try {
-      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(lic.id)}`, {
+      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(activatingLicenseId)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          action: 'verify_payment',
-          paymentReference: lic.paymentReference || undefined,
-          amount: lic.amount || undefined,
-          currency: lic.currency || undefined,
+          action: 'activate',
+          deviceModel: trimmedModel,
+          deviceId: trimmedDeviceId,
+          androidVersion: activateAndroidVersion.trim() || 'Android',
+          appVersion: '2.5.0',
         }),
       });
 
       const rawText = await res.text();
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       let data: any = {};
       try {
         data = rawText ? JSON.parse(rawText) : {};
@@ -311,30 +506,106 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
       }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to verify payment (${res.status}).`);
+        throw new Error(data.error || `Failed to activate license (${res.status}).`);
       }
 
+      setActivatingLicenseId(null);
       setActionFeedback({
         type: 'success',
-        text: data.message || 'Payment verified and license activated.',
+        text: data.message || 'Lifetime license activated and bound to phone.',
       });
       await fetchLicenses();
     } catch (err: unknown) {
       setActionFeedback({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to verify payment.',
+        text: err instanceof Error ? err.message : 'Failed to activate license.',
       });
     } finally {
-      setSubmittingVerify(false);
+      setSubmittingActivate(false);
     }
   };
 
+  // Open rebind panel
+  const openRebindPanel = (lic: LicenseRecord) => {
+    setActionFeedback(null);
+    setRevokingLicenseId(null);
+    setActivatingLicenseId(null);
+    setRebindLicenseId(lic.id);
+    setRebindReason('');
+  };
+
+  // Admin Rebind Device Submission
+  const handleConfirmRebind = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rebindLicenseId || submittingRebind) return;
+
+    const trimmedReason = rebindReason.trim();
+    if (trimmedReason.length < 5) {
+      setActionFeedback({
+        type: 'error',
+        text: 'Please provide a clear reason for rebinding (at least 5 characters).',
+      });
+      return;
+    }
+
+    setSubmittingRebind(true);
+    setActionFeedback(null);
+
+    try {
+      const res = await fetch(`/api/admin/licenses/${encodeURIComponent(rebindLicenseId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'rebind',
+          reason: trimmedReason,
+        }),
+      });
+
+      const rawText = await res.text();
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+      let data: any = {};
+      try {
+        data = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        throw new Error(`Unexpected response from server (HTTP ${res.status}).`);
+      }
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Failed to rebind device (${res.status}).`);
+      }
+
+      setRebindLicenseId(null);
+      setActionFeedback({
+        type: 'success',
+        text: data.message || 'Device binding cleared. License is now unactivated and ready for a new phone.',
+      });
+      await fetchLicenses();
+    } catch (err: unknown) {
+      setActionFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to rebind device.',
+      });
+    } finally {
+      setSubmittingRebind(false);
+    }
+  };
+
+  // Open revoke panel
   const openRevokePanel = (lic: LicenseRecord) => {
     setActionFeedback(null);
+    setActivatingLicenseId(null);
+    setRebindLicenseId(null);
     setRevokingLicenseId(lic.id);
     setRevokeReason('');
   };
 
+  // Confirm Revocation
   const handleConfirmRevoke = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!revokingLicenseId || submittingRevoke) return;
@@ -365,6 +636,10 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
       });
 
       const rawText = await res.text();
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       let data: any = {};
       try {
         data = rawText ? JSON.parse(rawText) : {};
@@ -401,11 +676,11 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
         </span>
       );
     }
-    if (status === 'pending_payment') {
+    if (status === 'unactivated') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/40 text-amber-300 text-[11px] font-semibold">
           <Clock className="w-3 h-3" />
-          <span>Pending Payment</span>
+          <span>Unactivated</span>
         </span>
       );
     }
@@ -436,7 +711,27 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
   return (
     <div className="space-y-6 text-left">
-      {/* A. LICENSE OVERVIEW METRICS */}
+      {/* ERROR BANNER: FIRESTORE OUTAGE / UNAVAILABLE */}
+      {fetchError && (
+        <div
+          role="alert"
+          className="p-4 sm:p-5 rounded-2xl bg-red-950/60 border-2 border-red-500/50 text-red-200 space-y-2"
+        >
+          <div className="flex items-center gap-2 font-bold text-sm sm:text-base text-red-300">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+            <span>Persistent License Storage (Cloud Firestore) Notice</span>
+          </div>
+          <p className="text-xs leading-relaxed text-red-200">
+            {fetchError}
+          </p>
+          <p className="text-[11px] text-red-300/80">
+            Note: License records and activation stats are maintained exclusively in Cloud Firestore (zoya-updates, Delhi).
+            When storage is unavailable, operations fail safely without fabricating empty records.
+          </p>
+        </div>
+      )}
+
+      {/* A. LICENSE OVERVIEW METRICS (Shown only when stats are available) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="p-4 rounded-xl bg-[#071319] border border-slate-800">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
@@ -444,7 +739,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
             <Key className="w-4 h-4 text-teal-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-white font-mono tabular-nums">
-            {stats.total}
+            {stats ? stats.total : '—'}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
             Lifetime keys issued
@@ -453,40 +748,40 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
         <div className="p-4 rounded-xl bg-[#071319] border border-emerald-500/30">
           <div className="flex items-center justify-between text-xs text-emerald-300 mb-1">
-            <span>Active Licenses</span>
+            <span>Activated</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-emerald-300 font-mono tabular-nums">
-            {stats.active}
+            {stats ? stats.activated : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">
-            Authorized for Android activation
+            Bound to customer phones
           </div>
         </div>
 
         <div className="p-4 rounded-xl bg-[#071319] border border-amber-500/30">
           <div className="flex items-center justify-between text-xs text-amber-300 mb-1">
-            <span>Pending Payment</span>
+            <span>Unactivated</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-amber-300 font-mono tabular-nums">
-            {stats.pendingPayment}
+            {stats ? stats.unactivated : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">
-            Awaiting manual admin verification
+            Ready for phone activation
           </div>
         </div>
 
         <div className="p-4 rounded-xl bg-[#071319] border border-red-500/30">
           <div className="flex items-center justify-between text-xs text-red-300 mb-1">
-            <span>Revoked Licenses</span>
+            <span>Revoked</span>
             <Ban className="w-4 h-4 text-red-400" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-red-300 font-mono tabular-nums">
-            {stats.revoked}
+            {stats ? stats.revoked : '—'}
           </div>
           <div className="text-[11px] text-slate-400 mt-1">
-            Permanently blocked from validation
+            Permanently deactivated
           </div>
         </div>
       </div>
@@ -505,13 +800,10 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
               </div>
               <div>
                 <h4 className="text-sm sm:text-base font-bold text-white">
-                  One-Time License Key Display — Copy &amp; Save Now
+                  One-Time License Key Display — Copy &amp; Share With Customer
                 </h4>
                 <p className="text-xs text-teal-200/90">
-                  Issued for <strong>{newlyGeneratedKey.customerName}</strong> ({newlyGeneratedKey.customerEmail}) ·{' '}
-                  {newlyGeneratedKey.isComplimentary
-                    ? 'Active (Complimentary)'
-                    : 'Pending Payment Verification'}
+                  Issued for <strong>{newlyGeneratedKey.customerName}</strong> ({newlyGeneratedKey.customerEmail}) · Initial Status: <strong>Unactivated</strong>
                 </p>
               </div>
             </div>
@@ -554,13 +846,9 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
           <div className="flex items-start gap-2 text-[11px] text-amber-200/90 bg-amber-950/40 border border-amber-500/30 rounded-xl p-3">
             <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <span>
-              <strong>Security Notice:</strong> Plaintext license keys are never stored in the database. Only a SHA-256 cryptographic hash and masked identifier are persisted. Once you close this banner, the full key cannot be retrieved again.
-              {!newlyGeneratedKey.isComplimentary && (
-                <>
-                  {' '}
-                  This paid license is currently in <strong>Pending Payment</strong> status and will not activate in the Zoya Android app until you independently verify the payment transaction below.
-                </>
-              )}
+              <strong>One-Phone Lifetime Activation:</strong> This key is currently <strong>Unactivated</strong>.
+              Upon first entry in the Zoya Android app, it will permanently bind to that customer&apos;s phone.
+              Subsequent validation from any other phone will be rejected automatically.
             </span>
           </div>
         </div>
@@ -581,14 +869,14 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                 Generate Lifetime License Key
               </h4>
               <p className="text-[11px] text-slate-400">
-                Cryptographically generates a unique <code className="text-teal-300 font-mono">ZOYA-XXXX-XXXX-XXXX</code> key stored via SHA-256 hash
+                Creates a unique <code className="text-teal-300 font-mono">ZOYA-XXXX-XXXX-XXXX</code> lifetime key ready for phone activation
               </p>
             </div>
           </div>
 
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-mono text-teal-300">
             <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-            <span>License Type: Lifetime</span>
+            <span>Tier: Lifetime (1 Phone)</span>
           </span>
         </div>
 
@@ -658,99 +946,9 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
             </div>
           </div>
 
-          {/* Paid vs Complimentary Mode Toggle */}
-          <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2.5 text-xs font-semibold text-slate-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isComplimentary}
-                  onChange={(e) => setIsComplimentary(e.target.checked)}
-                  className="w-4 h-4 rounded accent-teal-400 cursor-pointer"
-                />
-                <Sparkles className="w-3.5 h-3.5 text-teal-400" />
-                <span>Issue as Admin-Authorized Complimentary License (No Payment Required)</span>
-              </label>
-              <span className="text-[11px] font-mono text-slate-400">
-                {isComplimentary ? 'Initial status: Active' : 'Initial status: Pending Payment'}
-              </span>
-            </div>
-
-            {isComplimentary ? (
-              <div>
-                <label htmlFor="lic-comp-reason" className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Complimentary Issuance Reason <span className="text-teal-400">*</span>
-                </label>
-                <input
-                  id="lic-comp-reason"
-                  type="text"
-                  required={isComplimentary}
-                  maxLength={300}
-                  value={complimentaryReason}
-                  onChange={(e) => setComplimentaryReason(e.target.value)}
-                  placeholder="e.g., Core beta tester / Press review unit / Internal team device"
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-teal-500/40 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 focus-visible:outline-teal-400"
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                <div className="sm:col-span-2">
-                  <label htmlFor="lic-payment-ref" className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Payment Reference / Transaction ID (Optional at creation)
-                  </label>
-                  <input
-                    id="lic-payment-ref"
-                    type="text"
-                    maxLength={120}
-                    value={paymentReference}
-                    onChange={(e) => setPaymentReference(e.target.value)}
-                    placeholder="e.g., UPI/UTR 412983749182 or Bank Ref"
-                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-mono text-white placeholder-slate-500 focus-visible:outline-teal-400"
-                  />
-                </div>
-
-                <div className="grid grid-cols-5 gap-2">
-                  <div className="col-span-3">
-                    <label htmlFor="lic-amount" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Amount
-                    </label>
-                    <input
-                      id="lic-amount"
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      placeholder="999"
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-mono text-white placeholder-slate-500 focus-visible:outline-teal-400"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label htmlFor="lic-currency" className="block text-xs font-medium text-slate-300 mb-1.5">
-                      Currency
-                    </label>
-                    <select
-                      id="lic-currency"
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="w-full px-2.5 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs sm:text-sm font-mono text-white focus-visible:outline-teal-400"
-                    >
-                      <option value="INR">INR</option>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                      <option value="GBP">GBP</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-400">
-              {isComplimentary
-                ? 'Complimentary licenses become Active immediately with your admin audit signature.'
-                : 'Paid licenses start in Pending Payment status until you verify the transaction.'}
+              Keys are generated unactivated. Device binding happens automatically upon first activation.
             </p>
             <button
               type="submit"
@@ -785,7 +983,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by customer name, email, last 4 key chars, or payment ref..."
+                  placeholder="Search by customer name, email, key, or device..."
                   className="w-full pl-9 pr-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus-visible:outline-teal-400"
                 />
               </div>
@@ -803,10 +1001,10 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
             <div className="flex flex-wrap items-center gap-1.5">
               {(
                 [
-                  { id: 'all', label: `All (${stats.total})` },
-                  { id: 'active', label: `Active (${stats.active})` },
-                  { id: 'pending_payment', label: `Pending Payment (${stats.pendingPayment})` },
-                  { id: 'revoked', label: `Revoked (${stats.revoked})` },
+                  { id: 'all', label: `All (${stats ? stats.total : licenses.length})` },
+                  { id: 'active', label: `Active (${stats ? stats.activated : licenses.filter(l => l.status === 'active').length})` },
+                  { id: 'unactivated', label: `Unactivated (${stats ? stats.unactivated : licenses.filter(l => l.status === 'unactivated').length})` },
+                  { id: 'revoked', label: `Revoked (${stats ? stats.revoked : licenses.filter(l => l.status === 'revoked').length})` },
                 ] as const
               ).map((tab) => (
                 <button
@@ -824,13 +1022,6 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
               ))}
             </div>
           </div>
-
-          {fetchError && (
-            <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-200 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{fetchError}</span>
-            </div>
-          )}
 
           {loading ? (
             <div className="p-8 rounded-2xl bg-[#071319] border border-slate-800 flex items-center justify-center gap-2.5 text-xs text-slate-400">
@@ -859,6 +1050,8 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                     onClick={() => {
                       setSelectedLicenseId(lic.id);
                       setActionFeedback(null);
+                      setActivatingLicenseId(null);
+                      setRebindLicenseId(null);
                       setRevokingLicenseId(null);
                     }}
                     className={`p-4 rounded-xl border transition-all cursor-pointer ${
@@ -869,17 +1062,75 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <code className="font-mono text-xs sm:text-sm font-bold text-teal-300">
-                            {lic.maskedKey}
-                          </code>
-                          {renderStatusBadge(lic.status)}
-                          {lic.isComplimentary && (
-                            <span className="px-2 py-0.5 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-[10px] font-semibold">
-                              Complimentary
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const fullKey = getFullKeyForLicense(lic);
+                          const isRevealed = Boolean(revealedKeyIds[lic.id]);
+                          const displayedKey = isRevealed && fullKey ? fullKey : 'ZOYA-XXXX-XXXX-XXXX';
+                          return (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <code className="font-mono text-xs sm:text-sm font-bold text-teal-300 tracking-wider">
+                                  {displayedKey}
+                                </code>
+
+                                {/* Eye Icon: reveals complete existing license key or hides it */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleReveal(e, lic)}
+                                  disabled={Boolean(loadingKeyIds[lic.id])}
+                                  aria-label={isRevealed ? 'Hide license key' : 'Reveal license key'}
+                                  title={
+                                    loadingKeyIds[lic.id]
+                                      ? 'Decrypting license key...'
+                                      : isRevealed
+                                        ? 'Hide license key'
+                                        : 'Reveal complete license key'
+                                  }
+                                  className={`p-1 rounded-md transition-colors cursor-pointer shrink-0 disabled:opacity-60 ${
+                                    isRevealed
+                                      ? 'text-teal-300 bg-teal-500/20 hover:bg-teal-500/30'
+                                      : 'text-slate-400 hover:text-teal-300 hover:bg-slate-800/60'
+                                  }`}
+                                >
+                                  {loadingKeyIds[lic.id] ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-300" />
+                                  ) : isRevealed ? (
+                                    <EyeOff className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Eye className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+
+                                {/* Copy Icon: copies complete existing license key with Copied confirmation */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleCopyRowKey(e, lic)}
+                                  disabled={Boolean(loadingKeyIds[lic.id])}
+                                  aria-label="Copy license key"
+                                  title={
+                                    loadingKeyIds[lic.id]
+                                      ? 'Decrypting and copying...'
+                                      : 'Copy license key to clipboard'
+                                  }
+                                  className="p-1 rounded-md text-slate-400 hover:text-teal-300 hover:bg-slate-800/60 transition-colors cursor-pointer shrink-0 disabled:opacity-60"
+                                >
+                                  {copiedRowId === lic.id ? (
+                                    <Check className="w-3.5 h-3.5 text-teal-400" />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+
+                                {copiedRowId === lic.id && (
+                                  <span className="text-[10px] font-semibold text-teal-300 animate-fade-in shrink-0">
+                                    Copied
+                                  </span>
+                                )}
+                              </div>
+                              {renderStatusBadge(lic.status)}
+                            </div>
+                          );
+                        })()}
                         <div className="text-xs font-semibold text-white truncate">
                           {lic.customerName}{' '}
                           <span className="font-normal text-slate-400">&lt;{lic.customerEmail}&gt;</span>
@@ -894,17 +1145,18 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
                     <div className="mt-2.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span>Type: {lic.licenseType}</span>
+                        <span>Tier: {lic.licenseType}</span>
                         <span>·</span>
                         <span>
-                          Payment:{' '}
-                          {lic.isComplimentary
-                            ? 'Complimentary'
-                            : lic.paymentVerified
-                            ? `Verified (${lic.paymentReference || 'Ref recorded'})`
-                            : lic.paymentReference
-                            ? `Unverified Ref: ${lic.paymentReference}`
-                            : 'No reference yet'}
+                          {lic.linkedDevice ? (
+                            <span className="text-emerald-300/90 font-mono">
+                              Bound: {lic.linkedDevice.deviceModel}
+                            </span>
+                          ) : (
+                            <span className="text-amber-300/80">
+                              Not yet activated
+                            </span>
+                          )}
                         </span>
                       </div>
                       <span className="text-teal-400/90 inline-flex items-center gap-1 font-medium">
@@ -919,18 +1171,81 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
           )}
         </div>
 
-        {/* Right Column: Selected License Details, Payment Verification, Revocation & Audit Log */}
+        {/* Right Column: Selected License Details, Device Binding, Activation & Revocation */}
         <div className="lg:col-span-5">
           {selectedLicense ? (
             <div className="p-4 sm:p-5 rounded-2xl bg-[#071319] border border-teal-500/30 space-y-4 sticky top-4">
               <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block mb-1">
                     License Record Details
                   </span>
-                  <code className="font-mono text-base font-bold text-teal-300">
-                    {selectedLicense.maskedKey}
-                  </code>
+                  {(() => {
+                    const fullKey = getFullKeyForLicense(selectedLicense);
+                    const isRevealed = Boolean(revealedKeyIds[selectedLicense.id]);
+                    const displayedKey = isRevealed && fullKey ? fullKey : 'ZOYA-XXXX-XXXX-XXXX';
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <code className="font-mono text-base font-bold text-teal-300 tracking-wider">
+                          {displayedKey}
+                        </code>
+
+                        {/* Eye Icon */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleReveal(e, selectedLicense)}
+                          disabled={Boolean(loadingKeyIds[selectedLicense.id])}
+                          aria-label={isRevealed ? 'Hide license key' : 'Reveal license key'}
+                          title={
+                            loadingKeyIds[selectedLicense.id]
+                              ? 'Decrypting license key...'
+                              : isRevealed
+                                ? 'Hide license key'
+                                : 'Reveal complete license key'
+                          }
+                          className={`p-1 rounded-md transition-colors cursor-pointer shrink-0 disabled:opacity-60 ${
+                            isRevealed
+                              ? 'text-teal-300 bg-teal-500/20 hover:bg-teal-500/30'
+                              : 'text-slate-400 hover:text-teal-300 hover:bg-slate-800/60'
+                          }`}
+                        >
+                          {loadingKeyIds[selectedLicense.id] ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-teal-300" />
+                          ) : isRevealed ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        {/* Copy Icon */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleCopyRowKey(e, selectedLicense)}
+                          disabled={Boolean(loadingKeyIds[selectedLicense.id])}
+                          aria-label="Copy license key"
+                          title={
+                            loadingKeyIds[selectedLicense.id]
+                              ? 'Decrypting and copying...'
+                              : 'Copy license key to clipboard'
+                          }
+                          className="p-1 rounded-md text-slate-400 hover:text-teal-300 hover:bg-slate-800/60 transition-colors cursor-pointer shrink-0 disabled:opacity-60"
+                        >
+                          {copiedRowId === selectedLicense.id ? (
+                            <Check className="w-4 h-4 text-teal-400" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+
+                        {copiedRowId === selectedLicense.id && (
+                          <span className="text-[11px] font-semibold text-teal-300 animate-fade-in shrink-0">
+                            Copied
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {renderStatusBadge(selectedLicense.status)}
               </div>
@@ -973,7 +1288,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
                 <div className="p-2.5 rounded-xl bg-[#050d12] border border-slate-800/90">
                   <span className="block text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
-                    License Type
+                    License Tier
                   </span>
                   <strong className="text-teal-300 font-mono">{selectedLicense.licenseType}</strong>
                 </div>
@@ -998,7 +1313,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
 
                 <div className="p-2.5 rounded-xl bg-[#050d12] border border-slate-800/90">
                   <span className="block text-[10px] uppercase tracking-wider text-slate-400 mb-0.5">
-                    Last-Seen Telemetry
+                    Last Seen Active
                   </span>
                   <strong className="text-slate-200 font-mono text-[11px] tabular-nums">
                     {formatTimestamp(selectedLicense.lastSeenAt, 'Not available')}
@@ -1006,54 +1321,51 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                 </div>
               </div>
 
-              {/* Payment & Verification Status Card */}
+              {/* Bound Android Phone Status Card */}
               <div className="p-3.5 rounded-xl bg-[#050d12] border border-slate-800 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300">
-                    Payment &amp; Authorization
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
+                    <Smartphone className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Bound Android Phone (1-Phone Lifetime)</span>
                   </span>
-                  {selectedLicense.isComplimentary ? (
-                    <span className="text-[11px] font-semibold text-cyan-300">
-                      Complimentary License
-                    </span>
-                  ) : selectedLicense.paymentVerified ? (
-                    <span className="text-[11px] font-semibold text-emerald-300">
-                      Verified by Admin
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-amber-300">
-                      Unverified Payment
-                    </span>
-                  )}
+                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">
+                    Validations: {selectedLicense.validationCount || 0}
+                  </span>
                 </div>
 
-                {selectedLicense.isComplimentary ? (
-                  <p className="text-slate-300 text-xs">
-                    Reason: <strong className="text-white">{selectedLicense.complimentaryReason}</strong>
-                  </p>
-                ) : (
-                  <div className="space-y-1 text-slate-300">
-                    <div>
-                      Payment Reference:{' '}
-                      <strong className="font-mono text-white">
-                        {selectedLicense.paymentReference || 'None recorded'}
-                      </strong>
+                {selectedLicense.linkedDevice ? (
+                  <div className="space-y-1.5 text-slate-300 text-[11px] font-mono">
+                    <div className="flex justify-between border-b border-slate-800/60 pb-1">
+                      <span className="text-slate-400">Phone Model:</span>
+                      <strong className="text-white">{selectedLicense.linkedDevice.deviceModel}</strong>
                     </div>
-                    {selectedLicense.amount && (
-                      <div>
-                        Amount:{' '}
-                        <strong className="font-mono text-white tabular-nums">
-                          {selectedLicense.currency || 'INR'} {selectedLicense.amount}
-                        </strong>
+                    <div className="flex justify-between border-b border-slate-800/60 pb-1">
+                      <span className="text-slate-400">Device ID:</span>
+                      <span className="text-teal-300 truncate max-w-[200px]" title={selectedLicense.linkedDevice.deviceId}>
+                        {selectedLicense.linkedDevice.deviceId}
+                      </span>
+                    </div>
+                    {selectedLicense.linkedDevice.androidVersion && (
+                      <div className="flex justify-between border-b border-slate-800/60 pb-1">
+                        <span className="text-slate-400">Android:</span>
+                        <span className="text-slate-200">{selectedLicense.linkedDevice.androidVersion}</span>
                       </div>
                     )}
-                    {selectedLicense.paymentVerified && selectedLicense.verifiedBy && (
-                      <div className="text-[11px] text-emerald-300/90 pt-1">
-                        Verified by <strong>{selectedLicense.verifiedBy.name}</strong> (
-                        {selectedLicense.verifiedBy.email}) on{' '}
-                        <span className="font-mono">{formatTimestamp(selectedLicense.verifiedAt)}</span>
+                    {selectedLicense.linkedDevice.appVersion && (
+                      <div className="flex justify-between border-b border-slate-800/60 pb-1">
+                        <span className="text-slate-400">App Version:</span>
+                        <span className="text-slate-200">{selectedLicense.linkedDevice.appVersion}</span>
                       </div>
                     )}
+                    <div className="flex justify-between text-slate-400 text-[10px] pt-0.5">
+                      <span>Bound At:</span>
+                      <span>{formatTimestamp(selectedLicense.linkedDevice.linkedAt)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg bg-amber-950/20 border border-amber-500/20 text-amber-200/90 text-xs">
+                    <strong>No Phone Bound:</strong> This license key has not been activated on any phone yet.
+                    It will bind automatically to the first phone that activates it.
                   </div>
                 )}
 
@@ -1065,77 +1377,156 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                 )}
               </div>
 
-              {/* Linked Phone / Device Status Card (Honest Telemetry) */}
-              <div className="p-3.5 rounded-xl bg-[#050d12] border border-slate-800 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-300">
-                    <Smartphone className="w-3.5 h-3.5 text-teal-400" />
-                    <span>Linked Android Phone</span>
-                  </span>
-                  <span className="font-mono text-[11px] text-slate-400 tabular-nums">
-                    Validations: {selectedLicense.validationCount || 0}
-                  </span>
-                </div>
-
-                {selectedLicense.linkedDevice ? (
-                  <div className="space-y-1 text-slate-300 text-[11px] font-mono">
-                    {selectedLicense.linkedDevice.deviceModel && (
-                      <div>Model: {selectedLicense.linkedDevice.deviceModel}</div>
-                    )}
-                    {selectedLicense.linkedDevice.androidVersion && (
-                      <div>Android: {selectedLicense.linkedDevice.androidVersion}</div>
-                    )}
-                    {selectedLicense.linkedDevice.appVersion && (
-                      <div>Zoya App: {selectedLicense.linkedDevice.appVersion}</div>
-                    )}
-                    {selectedLicense.linkedDevice.deviceId && (
-                      <div className="truncate">Device ID: {selectedLicense.linkedDevice.deviceId}</div>
-                    )}
-                    <div className="text-slate-400">
-                      Linked: {formatTimestamp(selectedLicense.linkedDevice.linkedAt)}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-slate-400 text-xs">
-                    Status: <strong className="text-slate-300">Not linked</strong> (No Android device has activated this license yet)
-                  </p>
-                )}
-              </div>
-
               {/* Administrative Action Controls */}
-              <div className="space-y-3 pt-1">
-                {selectedLicense.status === 'pending_payment' && (
+              <div className="space-y-2.5 pt-1">
+                {/* 1. ACTIVATE ACTION (Only if unactivated) */}
+                {selectedLicense.status === 'unactivated' && activatingLicenseId !== selectedLicense.id && (
                   <button
                     type="button"
-                    disabled={submittingVerify}
-                    onClick={() => handleVerifyAndActivate(selectedLicense)}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all cursor-pointer disabled:opacity-50"
+                    onClick={() => openActivatePanel(selectedLicense)}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[42px] rounded-xl font-bold text-xs text-slate-950 bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 transition-all cursor-pointer"
                   >
-                    {submittingVerify ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Activating License...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Verify Payment &amp; Activate License</span>
-                      </>
-                    )}
+                    <SmartphoneNfc className="w-4 h-4" />
+                    <span>Activate Lifetime License</span>
                   </button>
                 )}
 
-                {selectedLicense.status !== 'revoked' &&
-                  revokingLicenseId !== selectedLicense.id && (
-                    <button
-                      type="button"
-                      onClick={() => openRevokePanel(selectedLicense)}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[38px] rounded-xl font-semibold text-xs text-red-300 bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 transition-colors cursor-pointer"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      <span>Revoke License</span>
-                    </button>
-                  )}
+                {/* Inline Activate Confirmation Form */}
+                {activatingLicenseId === selectedLicense.id && (
+                  <form
+                    onSubmit={handleConfirmActivate}
+                    className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 space-y-3 text-xs"
+                  >
+                    <div className="font-bold text-emerald-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                      <span>Activate &amp; Bind Phone</span>
+                      <button
+                        type="button"
+                        onClick={() => setActivatingLicenseId(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Phone Model <span className="text-emerald-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={activateDeviceModel}
+                        onChange={(e) => setActivateDeviceModel(e.target.value)}
+                        placeholder="e.g., Google Pixel 8 Pro / Samsung S24"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Device Identifier <span className="text-emerald-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={activateDeviceId}
+                        onChange={(e) => setActivateDeviceId(e.target.value)}
+                        placeholder="e.g., ANDROID_ID / Hardware UUID (min 8 chars)"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs font-mono text-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={submittingActivate}
+                        className="flex-1 py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {submittingActivate ? 'Activating...' : 'Confirm Activation'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActivatingLicenseId(null)}
+                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* 2. REBIND ACTION (Only if active and has bound phone) */}
+                {selectedLicense.status === 'active' && selectedLicense.linkedDevice && rebindLicenseId !== selectedLicense.id && (
+                  <button
+                    type="button"
+                    onClick={() => openRebindPanel(selectedLicense)}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[38px] rounded-xl font-semibold text-xs text-amber-300 bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 transition-colors cursor-pointer"
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Rebind Device (Admin Authorized)</span>
+                  </button>
+                )}
+
+                {/* Inline Rebind Confirmation Form */}
+                {rebindLicenseId === selectedLicense.id && (
+                  <form
+                    onSubmit={handleConfirmRebind}
+                    className="p-3.5 rounded-xl bg-slate-900 border border-amber-500/40 space-y-3 text-xs"
+                  >
+                    <div className="font-bold text-amber-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                      <span>Authorize Device Rebind</span>
+                      <button
+                        type="button"
+                        onClick={() => setRebindLicenseId(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-amber-200/80 leading-relaxed">
+                      This clears the current phone binding ({selectedLicense.linkedDevice?.deviceModel}).
+                      The license returns to <strong>Unactivated</strong> status so the customer can activate their replacement phone.
+                    </p>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 mb-1">
+                        Reason for Rebinding <span className="text-amber-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={rebindReason}
+                        onChange={(e) => setRebindReason(e.target.value)}
+                        placeholder="e.g., Customer replaced phone / Factory reset device"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="submit"
+                        disabled={submittingRebind}
+                        className="flex-1 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        {submittingRebind ? 'Rebinding...' : 'Confirm Rebind'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRebindLicenseId(null)}
+                        className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* 3. REVOKE ACTION (If not revoked) */}
+                {selectedLicense.status !== 'revoked' && revokingLicenseId !== selectedLicense.id && (
+                  <button
+                    type="button"
+                    onClick={() => openRevokePanel(selectedLicense)}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[38px] rounded-xl font-semibold text-xs text-red-300 bg-red-950/40 hover:bg-red-900/50 border border-red-500/30 transition-colors cursor-pointer"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Revoke License</span>
+                  </button>
+                )}
 
                 {/* Inline Revoke Confirmation Form */}
                 {revokingLicenseId === selectedLicense.id && (
@@ -1143,8 +1534,15 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                     onSubmit={handleConfirmRevoke}
                     className="p-3.5 rounded-xl bg-slate-900 border border-red-500/40 space-y-3 text-xs"
                   >
-                    <div className="font-bold text-red-300 uppercase tracking-wider text-[11px]">
-                      Confirm License Revocation
+                    <div className="font-bold text-red-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
+                      <span>Confirm License Revocation</span>
+                      <button
+                        type="button"
+                        onClick={() => setRevokingLicenseId(null)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                     <div>
                       <label className="block text-[11px] text-slate-300 mb-1">
@@ -1156,11 +1554,11 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
                         maxLength={300}
                         value={revokeReason}
                         onChange={(e) => setRevokeReason(e.target.value)}
-                        placeholder="e.g., Chargeback / Refunded / Key compromised"
+                        placeholder="e.g., Customer requested cancellation / Compromised key"
                         className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 pt-1">
                       <button
                         type="submit"
                         disabled={submittingRevoke}
@@ -1210,7 +1608,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
             </div>
           ) : (
             <div className="p-6 rounded-2xl bg-[#071319] border border-slate-800 text-center text-xs text-slate-400">
-              Select a license from the list to inspect its verification status, linked device info, and audit log.
+              Select a license from the list to inspect its bound phone, activation status, and audit history.
             </div>
           )}
         </div>
@@ -1220,12 +1618,12 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token }) => {
       <div className="p-4 sm:p-5 rounded-2xl bg-[#071319] border border-slate-800 space-y-2 text-xs text-slate-300">
         <div className="flex items-center gap-2 font-bold text-white">
           <FileText className="w-4 h-4 text-teal-400" />
-          <span>Zoya Android App Integration — License Validation Endpoint</span>
+          <span>Zoya Android App Integration — One-Phone Lifetime License API</span>
         </div>
         <p className="text-slate-400 leading-relaxed">
-          The Zoya Android client validates lifetime keys via <code className="text-teal-300 font-mono">POST /api/licenses/validate</code> with JSON payload{' '}
+          The Zoya Android client activates and validates lifetime keys via <code className="text-teal-300 font-mono">POST /api/licenses/validate</code> or <code className="text-teal-300 font-mono">POST /api/licenses/activate</code> with JSON payload{' '}
           <code className="text-slate-200 font-mono">{`{ "licenseKey": "ZOYA-XXXX-XXXX-XXXX", "deviceInfo": { "deviceId", "deviceModel", "androidVersion", "appVersion" } }`}</code>.
-          Only <strong className="text-emerald-300">Active</strong> licenses (with verified payment or admin complimentary authorization) pass validation; unknown, malformed, pending-payment, and revoked keys are rejected.
+          On first activation, the key binds permanently to the phone&apos;s device ID. Any other phone receives <code className="text-red-300 font-mono">403 DEVICE_MISMATCH</code>. The authenticated phone receives a cryptographically signed entitlement token containing its bound device ID with 30-day offline grace during cloud outages.
         </p>
       </div>
     </div>

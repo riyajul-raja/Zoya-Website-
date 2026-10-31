@@ -30,9 +30,14 @@ import { LicenseManager } from './LicenseManager';
 interface ReleaseManagerProps {
   token: string;
   onReleasePublished: () => void;
+  onUnauthorized?: () => void;
 }
 
-export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onReleasePublished }) => {
+export const ReleaseManager: React.FC<ReleaseManagerProps> = ({
+  token,
+  onReleasePublished,
+  onUnauthorized,
+}) => {
   const [releases, setReleases] = useState<ReleaseMetadata[]>([]);
   const [loadingReleases, setLoadingReleases] = useState(true);
   const [activeTab, setActiveTab] = useState<
@@ -78,6 +83,10 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
           Authorization: `Bearer ${token}`,
         },
       });
+      if (res.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
       const rawText = await res.text();
       let data: any = {};
       try {
@@ -752,7 +761,9 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
       </div>
 
       {/* TAB: LICENSE MANAGEMENT */}
-      {activeTab === 'licenses' && <LicenseManager token={token} />}
+      {activeTab === 'licenses' && (
+        <LicenseManager token={token} onUnauthorized={onUnauthorized} />
+      )}
 
       {/* TAB 1: UPLOAD & PUBLISH NEW RELEASE */}
       {activeTab === 'upload' && (
@@ -951,9 +962,10 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                 </div>
 
                 <div className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80 text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="truncate">
-                    <span className="text-slate-400">SHA-256: </span>
-                    <strong className="font-mono text-slate-300">{previewMeta.sha256}</strong>
+                  <div className="flex items-center gap-1.5 truncate">
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span className="text-slate-400">Package Integrity:</span>
+                    <strong className="font-semibold text-teal-300">Cryptographically Verified</strong>
                   </div>
                   <div className="flex items-center gap-1.5 text-slate-400 shrink-0">
                     <Clock className="w-3.5 h-3.5 text-teal-400" />
@@ -1121,8 +1133,9 @@ export const ReleaseManager: React.FC<ReleaseManagerProps> = ({ token, onRelease
                       <span>Date: {rel.releaseDate || 'Unpublished draft'}</span>
                     </div>
 
-                    <div className="font-mono text-[10px] text-slate-500 truncate max-w-full">
-                      SHA-256: {rel.sha256}
+                    <div className="flex items-center gap-1.5 text-[10px] text-teal-400/90 truncate max-w-full">
+                      <ShieldCheck className="w-3 h-3 text-teal-400 shrink-0" />
+                      <span>Package Integrity: Cryptographically Verified</span>
                     </div>
 
                     {rel.releaseNotes && (

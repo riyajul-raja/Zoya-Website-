@@ -41,8 +41,10 @@ import {
   getLicenseById,
   computeLicenseStats,
   createLifetimeLicense,
-  verifyLicensePayment,
+  activateLifetimeLicenseByAdmin,
+  rebindLicenseDeviceByAdmin,
   revokeLicense,
+  revealLicenseKeyByAdmin,
   validateLicenseForAndroid,
   LicenseStorageError,
 } from './licenses';
@@ -57,6 +59,7 @@ export function sendJson(res: ServerResponse, status: number, data: unknown) {
   }
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.end(JSON.stringify(data));
 }
 
@@ -421,8 +424,8 @@ export async function handleApiRequest(
       return true;
     }
 
-    // 5. POST /api/licenses/validate (Public rate-limited Android license validation endpoint)
-    if (pathname === '/api/licenses/validate') {
+    // 5. POST /api/licenses/validate and /api/licenses/activate (Public rate-limited Android license validation & activation)
+    if (pathname === '/api/licenses/validate' || pathname === '/api/licenses/activate') {
       if (method !== 'POST') {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
         return true;
@@ -534,7 +537,7 @@ export async function handleApiRequest(
       const token = createToken(user);
       res.setHeader(
         'Set-Cookie',
-        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`
+        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=7200`
       );
 
       sendJson(res, 200, {
@@ -570,7 +573,7 @@ export async function handleApiRequest(
 
     // POST /api/admin/logout
     if (pathname === '/api/admin/logout' && method === 'POST') {
-      res.setHeader('Set-Cookie', 'zoya_admin_token=; Path=/; HttpOnly; Max-Age=0');
+      res.setHeader('Set-Cookie', 'zoya_admin_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
       sendJson(res, 200, { success: true, message: 'Logged out successfully.' });
       return true;
     }
@@ -1082,26 +1085,40 @@ export async function handleApiRequest(
 
         sendJson(res, 201, {
           success: true,
-          message: created.license.isComplimentary
-            ? `Complimentary Lifetime license generated and activated for ${created.license.customerName}.`
-            : `Lifetime license generated for ${created.license.customerName} (Pending Payment verification).`,
+          message: `Lifetime license generated for ${created.license.customerName} (Unactivated).`,
           generatedKey: created.generatedKey,
           license: created.license,
         });
         return true;
       }
 
-      // GET / POST / PATCH /api/admin/licenses/:id
+      // GET / POST / PATCH /api/admin/licenses/:id or /api/admin/licenses/:id/key
       if (pathname.startsWith('/api/admin/licenses/')) {
         const anyReq = req as any;
         const queryId = anyReq.query?.id || parsedUrl.searchParams.get('id');
         const rawSubPath = pathname.substring('/api/admin/licenses/'.length).trim();
+        const isKeyRequest = rawSubPath.endsWith('/key');
+        const cleanSubPath = isKeyRequest ? rawSubPath.slice(0, -'/key'.length).trim() : rawSubPath;
         const licenseId = (
-          rawSubPath && rawSubPath !== ':id' && rawSubPath !== '[id]' ? rawSubPath : queryId || ''
+          cleanSubPath && cleanSubPath !== ':id' && cleanSubPath !== '[id]' ? cleanSubPath : queryId || ''
         ).trim();
 
         if (!licenseId) {
           sendError(res, 400, 'License ID is required.');
+          return true;
+        }
+
+        // Authenticated admin key decryption endpoint: GET or POST /api/admin/licenses/:id/key
+        if (isKeyRequest) {
+          const revealed = await revealLicenseKeyByAdmin(licenseId, user);
+          if (!revealed.success) {
+            sendError(res, revealed.status, revealed.error || 'Failed to retrieve license key.', revealed.code);
+            return true;
+          }
+          sendJson(res, 200, {
+            success: true,
+            licenseKey: revealed.licenseKey,
+          });
           return true;
         }
 
@@ -1119,14 +1136,14 @@ export async function handleApiRequest(
           return true;
         }
 
-        // POST or PATCH /api/admin/licenses/:id (Verify payment or Revoke license)
+        // POST or PATCH /api/admin/licenses/:id (Reveal, Activate, Rebind, or Revoke license)
         if (method === 'POST' || method === 'PATCH') {
           let body: {
             action?: unknown;
-            paymentReference?: unknown;
-            amount?: unknown;
-            currency?: unknown;
-            verificationNote?: unknown;
+            deviceModel?: unknown;
+            deviceId?: unknown;
+            androidVersion?: unknown;
+            appVersion?: unknown;
             reason?: unknown;
           } = {};
           try {
@@ -1138,16 +1155,43 @@ export async function handleApiRequest(
 
           const action = typeof body.action === 'string' ? body.action.trim() : '';
 
-          if (action === 'verify_payment') {
-            const verified = await verifyLicensePayment(licenseId, body, user);
-            if (!verified.success) {
-              sendError(res, verified.status, verified.error);
+          if (action === 'reveal' || action === 'get_key') {
+            const revealed = await revealLicenseKeyByAdmin(licenseId, user);
+            if (!revealed.success) {
+              sendError(res, revealed.status, revealed.error || 'Failed to retrieve license key.', revealed.code);
               return true;
             }
             sendJson(res, 200, {
               success: true,
-              message: `Payment verified by ${user.name}. License is now Active.`,
-              license: verified.license,
+              licenseKey: revealed.licenseKey,
+            });
+            return true;
+          }
+
+          if (action === 'activate') {
+            const activated = await activateLifetimeLicenseByAdmin(licenseId, body, user);
+            if (!activated.success) {
+              sendError(res, activated.status, activated.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `Lifetime license activated and bound to phone (${activated.license.linkedDevice?.deviceModel || 'Phone'}).`,
+              license: activated.license,
+            });
+            return true;
+          }
+
+          if (action === 'rebind') {
+            const rebound = await rebindLicenseDeviceByAdmin(licenseId, body, user);
+            if (!rebound.success) {
+              sendError(res, rebound.status, rebound.error);
+              return true;
+            }
+            sendJson(res, 200, {
+              success: true,
+              message: `License device binding cleared by administrator (${user.name}). Key is now ready for activation on a new phone.`,
+              license: rebound.license,
             });
             return true;
           }
@@ -1169,7 +1213,7 @@ export async function handleApiRequest(
           sendError(
             res,
             400,
-            'Invalid license action. Supported actions: "verify_payment", "revoke".'
+            'Invalid license action. Supported actions: "reveal", "activate", "rebind", "revoke".'
           );
           return true;
         }

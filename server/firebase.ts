@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import {
   initializeApp as initializeAdminApp,
   getApps as getAdminApps,
@@ -26,6 +27,16 @@ export interface ServerDocSnapshot {
   data: Record<string, any> | undefined;
 }
 
+export interface ServerFirestoreTransaction {
+  get(collectionName: string, docId: string): Promise<ServerDocSnapshot>;
+  set(
+    collectionName: string,
+    docId: string,
+    data: Record<string, any>,
+    options?: { merge?: boolean }
+  ): void;
+}
+
 export interface ServerFirestoreAdapter {
   backendType: 'firebase-admin' | 'test-mock';
   projectId: string;
@@ -45,6 +56,9 @@ export interface ServerFirestoreAdapter {
     options?: { merge?: boolean }
   ): Promise<void>;
   deleteDocumentById(collectionName: string, docId: string): Promise<void>;
+  runTransaction<T>(
+    updateFunction: (transaction: ServerFirestoreTransaction) => Promise<T>
+  ): Promise<T>;
 }
 
 let cachedAdminApp: AdminApp | null = null;
@@ -67,6 +81,73 @@ export function resetAdminFirestoreCache(): void {
   adminDbConfigured = false;
 }
 
+function stripSurroundingQuotes(val: string): string {
+  const trimmed = val.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+function resolveCanonicalProjectId(candidate: string | undefined, defaultProjectId: string): string {
+  const cleaned = stripSurroundingQuotes(String(candidate || ''));
+  if (!cleaned || cleaned === 'distinguished-arena-4wr9b') {
+    return defaultProjectId;
+  }
+  return cleaned;
+}
+
+function resolveCanonicalDatabaseId(candidate: string | undefined): string {
+  const cleaned = stripSurroundingQuotes(String(candidate || ''));
+  if (
+    !cleaned ||
+    cleaned === '(default)' ||
+    cleaned.startsWith('ai-studio-') ||
+    cleaned.includes('distinguished-arena')
+  ) {
+    return TARGET_FIRESTORE_DATABASE_ID;
+  }
+  return cleaned;
+}
+
+function parseServiceAccountJsonString(rawInput: string): Record<string, any> | null {
+  const unquoted = stripSurroundingQuotes(rawInput);
+  if (!unquoted) return null;
+
+  const candidates: string[] = [];
+  if (unquoted.startsWith('{')) {
+    candidates.push(unquoted);
+  } else {
+    try {
+      const decoded = Buffer.from(unquoted, 'base64').toString('utf-8').trim();
+      if (decoded.startsWith('{')) {
+        candidates.push(decoded);
+      }
+    } catch {
+      // Ignore base64 decode errors
+    }
+    candidates.push(unquoted);
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      try {
+        // Handle multi-line env vars where newlines inside private_key were not escaped
+        const escapedNewlines = candidate.replace(/\r?\n/g, '\\n');
+        return JSON.parse(escapedNewlines);
+      } catch {
+        // Continue to next candidate
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Parses FIREBASE_SERVICE_ACCOUNT_JSON (raw JSON or base64-encoded) or individual
  * FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY environment variables.
@@ -77,16 +158,14 @@ export function getServerServiceAccountCredentials(
 ): ServerServiceAccountCredentials | null {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
   if (rawJson.length > 0) {
-    try {
-      const decoded = rawJson.startsWith('{')
-        ? rawJson
-        : Buffer.from(rawJson, 'base64').toString('utf-8');
-      const parsed = JSON.parse(decoded.trim());
-      const projectId = String(
-        parsed.project_id || process.env.FIREBASE_PROJECT_ID || defaultProjectId
-      ).trim();
-      const clientEmail = String(parsed.client_email || '').trim();
-      const privateKey = String(parsed.private_key || '')
+    const parsed = parseServiceAccountJsonString(rawJson);
+    if (parsed && typeof parsed === 'object') {
+      const projectId = resolveCanonicalProjectId(
+        parsed.project_id || process.env.FIREBASE_PROJECT_ID,
+        defaultProjectId
+      );
+      const clientEmail = stripSurroundingQuotes(String(parsed.client_email || ''));
+      const privateKey = stripSurroundingQuotes(String(parsed.private_key || ''))
         .replace(/\\n/g, '\n')
         .trim();
 
@@ -97,14 +176,12 @@ export function getServerServiceAccountCredentials(
           privateKey,
         };
       }
-    } catch {
-      // Fall through to individual environment variables without printing secrets
     }
   }
 
-  const projectId = String(process.env.FIREBASE_PROJECT_ID || defaultProjectId).trim();
-  const clientEmail = String(process.env.FIREBASE_CLIENT_EMAIL || '').trim();
-  const privateKey = String(process.env.FIREBASE_PRIVATE_KEY || '')
+  const projectId = resolveCanonicalProjectId(process.env.FIREBASE_PROJECT_ID, defaultProjectId);
+  const clientEmail = stripSurroundingQuotes(String(process.env.FIREBASE_CLIENT_EMAIL || ''));
+  const privateKey = stripSurroundingQuotes(String(process.env.FIREBASE_PRIVATE_KEY || ''))
     .replace(/\\n/g, '\n')
     .trim();
 
@@ -134,7 +211,7 @@ export function getAdminFirestore(): {
     return null;
   }
 
-  const targetDbId = (process.env.FIRESTORE_DATABASE_ID || TARGET_FIRESTORE_DATABASE_ID).trim();
+  const targetDbId = resolveCanonicalDatabaseId(process.env.FIRESTORE_DATABASE_ID);
   const appName = `zoya-admin-${creds.projectId}`;
 
   if (!cachedAdminApp || cachedAdminProjectId !== creds.projectId) {
@@ -165,7 +242,10 @@ export function getAdminFirestore(): {
     cachedAdminDatabaseId = targetDbId;
     if (!adminDbConfigured) {
       try {
-        cachedAdminDb.settings({ ignoreUndefinedProperties: true });
+        cachedAdminDb.settings({
+          ignoreUndefinedProperties: true,
+          preferRest: true,
+        });
       } catch {
         // Ignore if settings were already frozen on this instance
       }
@@ -226,6 +306,22 @@ function normalizeDocumentPayloadForAdminSdk(
   return normalized;
 }
 
+async function withFirestoreRetry<T>(
+  initialDb: AdminFirestore,
+  operation: (activeDb: AdminFirestore) => Promise<T>
+): Promise<T> {
+  try {
+    return await operation(initialDb);
+  } catch (firstErr) {
+    resetAdminFirestoreCache();
+    const freshInstance = getAdminFirestore();
+    if (!freshInstance) {
+      throw firstErr;
+    }
+    return await operation(freshInstance.db);
+  }
+}
+
 /**
  * Resolves the canonical server-side Firestore adapter for all Zoya Website backend operations:
  * - Uses `zoya-updates/(default)` (asia-south2 Delhi) via Firebase Admin SDK (`FIREBASE_SERVICE_ACCOUNT_JSON`).
@@ -252,19 +348,23 @@ export async function getActiveServerFirestoreAdapter(): Promise<ServerFirestore
     projectId,
     databaseId,
     async getCollectionDocs(collectionName: string) {
-      const snap = await db.collection(collectionName).get();
-      return snap.docs.map((d) => ({
-        id: d.id,
-        data: (d.data() || {}) as Record<string, any>,
-      }));
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb.collection(collectionName).get();
+        return snap.docs.map((d) => ({
+          id: d.id,
+          data: (d.data() || {}) as Record<string, any>,
+        }));
+      });
     },
     async getDocumentById(collectionName: string, docId: string) {
-      const snap = await db.collection(collectionName).doc(docId).get();
-      return {
-        exists: snap.exists,
-        id: snap.id,
-        data: snap.exists ? ((snap.data() || {}) as Record<string, any>) : undefined,
-      };
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb.collection(collectionName).doc(docId).get();
+        return {
+          exists: snap.exists,
+          id: snap.id,
+          data: snap.exists ? ((snap.data() || {}) as Record<string, any>) : undefined,
+        };
+      });
     },
     async queryDocumentsEq(
       collectionName: string,
@@ -272,15 +372,17 @@ export async function getActiveServerFirestoreAdapter(): Promise<ServerFirestore
       value: unknown,
       maxResults = 1
     ) {
-      const snap = await db
-        .collection(collectionName)
-        .where(field, '==', value)
-        .limit(maxResults)
-        .get();
-      return snap.docs.map((d) => ({
-        id: d.id,
-        data: (d.data() || {}) as Record<string, any>,
-      }));
+      return withFirestoreRetry(db, async (activeDb) => {
+        const snap = await activeDb
+          .collection(collectionName)
+          .where(field, '==', value)
+          .limit(maxResults)
+          .get();
+        return snap.docs.map((d) => ({
+          id: d.id,
+          data: (d.data() || {}) as Record<string, any>,
+        }));
+      });
     },
     async setDocumentById(
       collectionName: string,
@@ -289,16 +391,61 @@ export async function getActiveServerFirestoreAdapter(): Promise<ServerFirestore
       options?: { merge?: boolean }
     ) {
       const payload = normalizeDocumentPayloadForAdminSdk(data);
-      if (options?.merge) {
-        await db.collection(collectionName).doc(docId).set(payload, { merge: true });
-      } else {
-        await db.collection(collectionName).doc(docId).set(payload);
-      }
+      return withFirestoreRetry(db, async (activeDb) => {
+        if (options?.merge) {
+          await activeDb.collection(collectionName).doc(docId).set(payload, { merge: true });
+        } else {
+          await activeDb.collection(collectionName).doc(docId).set(payload);
+        }
+      });
     },
     async deleteDocumentById(collectionName: string, docId: string) {
-      await db.collection(collectionName).doc(docId).delete();
+      return withFirestoreRetry(db, async (activeDb) => {
+        await activeDb.collection(collectionName).doc(docId).delete();
+      });
+    },
+    async runTransaction<T>(
+      updateFunction: (transaction: ServerFirestoreTransaction) => Promise<T>
+    ): Promise<T> {
+      return withFirestoreRetry(db, async (activeDb) => {
+        return activeDb.runTransaction(async (t) => {
+          const txWrapper: ServerFirestoreTransaction = {
+            async get(collectionName: string, docId: string) {
+              const docRef = activeDb.collection(collectionName).doc(docId);
+              const snap = await t.get(docRef);
+              return {
+                exists: snap.exists,
+                id: snap.id,
+                data: snap.exists ? ((snap.data() || {}) as Record<string, any>) : undefined,
+              };
+            },
+            set(
+              collectionName: string,
+              docId: string,
+              data: Record<string, any>,
+              options?: { merge?: boolean }
+            ) {
+              const docRef = activeDb.collection(collectionName).doc(docId);
+              const payload = normalizeDocumentPayloadForAdminSdk(data);
+              if (options?.merge) {
+                t.set(docRef, payload, { merge: true });
+              } else {
+                t.set(docRef, payload);
+              }
+            },
+          };
+          return updateFunction(txWrapper);
+        });
+      });
     },
   };
+}
+
+export async function serverRunTransaction<T>(
+  updateFunction: (transaction: ServerFirestoreTransaction) => Promise<T>
+): Promise<T> {
+  const adapter = await getActiveServerFirestoreAdapter();
+  return adapter.runTransaction(updateFunction);
 }
 
 export async function serverGetCollectionDocs(

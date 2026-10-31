@@ -10,7 +10,7 @@ import {
 import { ReleaseMetadata, hasApkBinary } from './storage';
 
 export const DEFAULT_FCM_TOPIC = 'zoya_releases';
-export const DEFAULT_PRODUCTION_SITE_URL = 'https://zoya-website-opal.vercel.app';
+export const DEFAULT_PRODUCTION_SITE_URL = 'https://zoya-website-eta.vercel.app';
 
 interface ServiceAccountCredentials {
   projectId: string;

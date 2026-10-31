@@ -68,7 +68,7 @@ export function createToken(user: AdminUser): string {
       role: user.role,
       name: user.name,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+      exp: Math.floor(Date.now() / 1000) + 60 * 60 * 2, // 2-hour session expiration
     })
   ).toString('base64url');
 
@@ -172,18 +172,26 @@ export function authenticateAdmin(email: string, password: string): AdminUser | 
 }
 
 /**
- * Extracts Bearer token from Authorization header or cookie
+ * Extracts Bearer token from Authorization header or cookie.
+ * If both a Bearer header and a zoya_admin_token cookie are present, and the Bearer
+ * header is expired/invalid while the cookie token is valid, falls back to the valid cookie token.
  */
 export function extractAuthToken(reqHeaders: Record<string, string | string[] | undefined>): string | null {
   if (!reqHeaders) return null;
+
+  let bearerCandidate: string | null = null;
   const authHeader = reqHeaders['authorization'] || reqHeaders['Authorization'];
   if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
     const bearer = authHeader.substring(7).trim();
     if (bearer && bearer !== 'cookie-session') {
-      return bearer;
+      bearerCandidate = bearer;
+      if (verifyToken(bearerCandidate)) {
+        return bearerCandidate;
+      }
     }
   }
 
+  let cookieCandidate: string | null = null;
   const rawCookie = reqHeaders['cookie'] || reqHeaders['Cookie'];
   const cookieHeaders = Array.isArray(rawCookie) ? rawCookie : typeof rawCookie === 'string' ? [rawCookie] : [];
 
@@ -193,11 +201,14 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
       if (c.startsWith('zoya_admin_token=')) {
         const val = c.substring('zoya_admin_token='.length).trim();
         if (val && val !== 'cookie-session') {
-          return val;
+          cookieCandidate = val;
+          if (verifyToken(cookieCandidate)) {
+            return cookieCandidate;
+          }
         }
       }
     }
   }
 
-  return null;
+  return bearerCandidate || cookieCandidate || null;
 }

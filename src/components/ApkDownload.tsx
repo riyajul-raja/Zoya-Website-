@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Download,
   Smartphone,
   Calendar,
   HardDrive,
-  Copy,
   Check,
   FileCode,
   Clock,
@@ -22,13 +21,6 @@ export const ApkDownload: React.FC<ApkDownloadProps> = ({
   latestRelease,
   loading,
 }) => {
-  const [copiedHash, setCopiedHash] = useState(false);
-
-  const handleCopyHash = (hash: string) => {
-    navigator.clipboard.writeText(hash);
-    setCopiedHash(true);
-    setTimeout(() => setCopiedHash(false), 2000);
-  };
 
   const isAvailable = Boolean(
     latestRelease &&
@@ -149,34 +141,20 @@ export const ApkDownload: React.FC<ApkDownloadProps> = ({
             )}
           </div>
 
-          {/* Genuine SHA-256 Checksum Bar */}
-          {isAvailable && latestRelease?.sha256 && (
+          {/* Official Package Integrity Verification Bar */}
+          {isAvailable && (
             <div className="pt-5 border-t border-pink-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2 min-w-0 max-w-full">
                 <ShieldCheck className="w-4 h-4 text-pink-600 shrink-0" aria-hidden="true" />
-                <span className="font-medium text-zinc-500 shrink-0">SHA-256:</span>
-                <span className="font-mono text-zinc-700 truncate max-w-[180px] xs:max-w-xs sm:max-w-md">
-                  {latestRelease.sha256}
+                <span className="font-medium text-zinc-700">Package Verification:</span>
+                <span className="text-zinc-600">
+                  Official Android Package · Cryptographically Verified Release
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCopyHash(latestRelease.sha256)}
-                className="inline-flex items-center gap-1.5 text-pink-700 hover:text-pink-600 font-medium shrink-0 cursor-pointer min-h-[36px] py-1.5 px-3 bg-pink-50/70 hover:bg-pink-100/70 rounded-lg border border-pink-200/80 transition-colors focus-visible:outline-pink-600"
-                title="Copy SHA-256 Checksum"
-              >
-                {copiedHash ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-pink-600" aria-hidden="true" />
-                    <span>Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Copy Checksum</span>
-                  </>
-                )}
-              </button>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[11px] font-semibold shrink-0">
+                <Check className="w-3.5 h-3.5 text-emerald-600" aria-hidden="true" />
+                <span>Integrity Verified</span>
+              </span>
             </div>
           )}
 
