@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { ApkDownload } from './components/ApkDownload';
@@ -82,6 +83,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-pink-ambient text-zinc-900 flex flex-col font-sans selection:bg-pink-500/15 selection:text-pink-700 relative">
+      <Analytics />
       {/* Top Navigation */}
       <Navbar onOpenAdmin={() => setAdminOpen(true)} />
 
