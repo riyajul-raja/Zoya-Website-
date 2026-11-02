@@ -4,7 +4,7 @@ import path from 'path';
 import { defineConfig, Plugin } from 'vite';
 
 const PRODUCTION_API_ORIGIN = (
-  process.env.PUBLIC_SITE_URL || 'https://zoya-website-eta.vercel.app'
+  process.env.PUBLIC_SITE_URL || 'https://zoyalive.vercel.app'
 ).replace(/\/+$/, '');
 
 function hasLocalFirebaseAdminCredentials(): boolean {

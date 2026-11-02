@@ -53,6 +53,9 @@ import {
   type ReleaseMetadata,
 } from '../server/storage';
 import {
+  DEFAULT_PRODUCTION_SITE_URL,
+  getPublicSiteOrigin,
+  buildReleaseNotificationContent,
   registerFcmDeviceToken,
   getFcmStatus,
   sendReleasePushNotification,
@@ -969,6 +972,29 @@ async function runTests() {
     const fetchedRel = await getReleaseById(testReleaseId);
     assert.ok(fetchedRel);
     assert.equal(fetchedRel?.versionName, '2.5.0');
+
+    // Verify canonical production domain https://zoyalive.vercel.app and generated release links
+    assert.equal(
+      DEFAULT_PRODUCTION_SITE_URL,
+      'https://zoyalive.vercel.app',
+      'DEFAULT_PRODUCTION_SITE_URL must be https://zoyalive.vercel.app'
+    );
+    assert.equal(
+      getPublicSiteOrigin(),
+      'https://zoyalive.vercel.app',
+      'getPublicSiteOrigin() must return https://zoyalive.vercel.app'
+    );
+    const notifContent = buildReleaseNotificationContent(testRelease);
+    assert.equal(
+      notifContent.data.downloadUrl,
+      `https://zoyalive.vercel.app/api/releases/download?id=${testReleaseId}`,
+      'Generated FCM downloadUrl must use https://zoyalive.vercel.app without duplicate slashes'
+    );
+    assert.equal(
+      notifContent.data.manifestUrl,
+      'https://zoyalive.vercel.app/api/releases/manifest',
+      'Generated FCM manifestUrl must use https://zoyalive.vercel.app'
+    );
 
     await deleteRelease(testReleaseId);
 
