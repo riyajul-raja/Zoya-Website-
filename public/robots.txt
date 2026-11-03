@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Disallow private administrative and API endpoints
+Disallow: /api/
+
+Sitemap: https://zoyalive.vercel.app/sitemap.xml
