@@ -1,5 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+  type Variants,
+} from 'motion/react';
 import { ApkReleaseConfig } from '../config/apkConfig';
 
 interface FaqProps {
@@ -12,8 +20,21 @@ interface FaqItem {
   answer: string;
 }
 
+const CUBIC_EASE = [0.16, 1, 0.3, 1] as const;
+const headingWords = ['Common', 'questions', 'about', 'Zoya'];
+
 export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
+  const sectionRef = useRef<HTMLElement>(null);
+  const shouldReduceMotion = useReducedMotion();
   const [openId, setOpenId] = useState<string | null>('what-is-zoya');
+
+  const { scrollYProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start end', 'end start'],
+  });
+  const storyY = useTransform(scrollYProgress, [0, 0.5, 1], [22, 0, -18]);
+  const storyScale = useTransform(scrollYProgress, [0, 0.2, 0.85, 1], [0.98, 1, 1, 0.985]);
+  const storyOpacity = useTransform(scrollYProgress, [0, 0.14, 0.9, 1], [0.76, 1, 1, 0.85]);
 
   const faqs: FaqItem[] = [
     {
@@ -57,38 +78,116 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
     setOpenId((prev) => (prev === id ? null : id));
   };
 
+  const headingContainerVariants: Variants = {
+    hidden: {},
+    visible: {
+      transition: {
+        staggerChildren: shouldReduceMotion ? 0 : 0.045,
+        delayChildren: shouldReduceMotion ? 0 : 0.06,
+      },
+    },
+  };
+
+  const headingWordVariants: Variants = {
+    hidden: shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: shouldReduceMotion ? 0 : 0.45,
+        ease: CUBIC_EASE,
+      },
+    },
+  };
+
   return (
     <section
+      ref={sectionRef}
       id="faq"
       aria-label="Frequently Asked Questions"
-      className="py-14 sm:py-20"
+      className="relative py-14 sm:py-20"
     >
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Dynamic Section Atmospheric Blending */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 section-ambient-halo"
+      />
+
+      <motion.div
+        className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8"
+        style={
+          shouldReduceMotion
+            ? undefined
+            : { y: storyY, scale: storyScale, opacity: storyOpacity }
+        }
+      >
         <div className="text-center mb-10 sm:mb-12">
-          <div className="text-xs font-semibold text-pink-600 mb-2">
+          <motion.div
+            className="text-xs font-semibold text-pink-600 mb-2"
+            initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: false, amount: 0.2 }}
+            transition={{
+              duration: shouldReduceMotion ? 0 : 0.4,
+              ease: CUBIC_EASE,
+            }}
+          >
             FAQ
-          </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-900 tracking-tight text-balance">
-            Common questions about Zoya
-          </h2>
-          <p className="mt-3 text-sm sm:text-base text-zinc-600 leading-relaxed">
+          </motion.div>
+          <motion.h2
+            className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-900 tracking-tight text-balance"
+            variants={headingContainerVariants}
+            initial={shouldReduceMotion ? false : 'hidden'}
+            whileInView="visible"
+            viewport={{ once: false, amount: 0.2 }}
+          >
+            {headingWords.map((word, index) => (
+              <React.Fragment key={index}>
+                <motion.span className="inline-block" variants={headingWordVariants}>
+                  {word}
+                </motion.span>
+                {index < headingWords.length - 1 ? ' ' : ''}
+              </React.Fragment>
+            ))}
+          </motion.h2>
+          <motion.p
+            className="mt-3 text-sm sm:text-base text-zinc-600 leading-relaxed"
+            initial={shouldReduceMotion ? false : { opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: false, amount: 0.2 }}
+            transition={{
+              duration: shouldReduceMotion ? 0 : 0.5,
+              delay: shouldReduceMotion ? 0 : 0.28,
+              ease: CUBIC_EASE,
+            }}
+          >
             Clear answers about downloading, installing, and running Zoya AI Assistant on Android.
-          </p>
+          </motion.p>
         </div>
 
         {/* Accordion List */}
         <div className="space-y-3">
-          {faqs.map((faq) => {
+          {faqs.map((faq, index) => {
             const isOpen = openId === faq.id;
             const answerId = `faq-answer-${faq.id}`;
             const headerId = `faq-header-${faq.id}`;
 
             return (
-              <div
+              <motion.div
                 key={faq.id}
-                className={`rounded-2xl transition-colors duration-150 overflow-hidden glass-card ${
-                  isOpen ? 'border-pink-300/90' : 'hover:border-pink-300/70'
+                className={`rounded-2xl transition-colors duration-200 overflow-hidden glass-card ${
+                  isOpen
+                    ? 'border-pink-300/90 shadow-[0_12px_30px_-10px_rgba(219,39,119,0.1)]'
+                    : 'hover:border-pink-300/70'
                 }`}
+                initial={shouldReduceMotion ? false : { opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: false, amount: 0.15 }}
+                transition={{
+                  duration: shouldReduceMotion ? 0 : 0.45,
+                  delay: shouldReduceMotion ? 0 : index * 0.05,
+                  ease: CUBIC_EASE,
+                }}
               >
                 <h3>
                   <button
@@ -97,13 +196,13 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
                     aria-expanded={isOpen}
                     aria-controls={answerId}
                     onClick={() => toggleFaq(faq.id)}
-                    className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-pink-600 min-h-[52px]"
+                    className="w-full py-4 px-5 sm:px-6 text-left flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-pink-600 min-h-[52px] transition-colors duration-150 hover:bg-pink-50/35"
                   >
                     <span className="text-sm sm:text-base font-semibold text-zinc-900 tracking-tight">
                       {faq.question}
                     </span>
                     <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-transform duration-150 ${
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200 ${
                         isOpen
                           ? 'rotate-180 bg-pink-100 text-pink-600'
                           : 'bg-pink-50/80 text-zinc-500'
@@ -114,21 +213,38 @@ export const Faq: React.FC<FaqProps> = ({ apkConfig }) => {
                   </button>
                 </h3>
 
-                {isOpen && (
-                  <div
-                    id={answerId}
-                    role="region"
-                    aria-labelledby={headerId}
-                    className="px-5 sm:px-6 pb-5 pt-2 text-xs sm:text-sm text-zinc-600 leading-relaxed border-t border-pink-100"
-                  >
-                    <p>{faq.answer}</p>
-                  </div>
-                )}
-              </div>
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      id={answerId}
+                      role="region"
+                      aria-labelledby={headerId}
+                      initial={shouldReduceMotion ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={shouldReduceMotion ? { height: 0, opacity: 0 } : { height: 0, opacity: 0 }}
+                      transition={{
+                        height: {
+                          duration: shouldReduceMotion ? 0 : 0.28,
+                          ease: CUBIC_EASE,
+                        },
+                        opacity: {
+                          duration: shouldReduceMotion ? 0 : 0.22,
+                          ease: CUBIC_EASE,
+                        },
+                      }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-5 sm:px-6 pb-5 pt-2.5 text-xs sm:text-sm text-zinc-600 leading-relaxed border-t border-pink-100/90">
+                        <p>{faq.answer}</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             );
           })}
         </div>
-      </div>
+      </motion.div>
     </section>
   );
 };

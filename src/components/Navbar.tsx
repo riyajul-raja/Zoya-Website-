@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, useScroll, useSpring, useReducedMotion } from 'motion/react';
 import { ZoyaBrandLink } from './ZoyaBrandLink';
+import { MagneticWrapper } from './LivingBackground';
 import { Menu, X, ChevronRight } from 'lucide-react';
 
 interface NavbarProps {
@@ -9,20 +11,65 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>('#hero');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = useReducedMotion();
+
+  const { scrollYProgress } = useScroll();
+  const smoothProgress = useSpring(scrollYProgress, {
+    stiffness: 180,
+    damping: 30,
+    restDelta: 0.001,
+  });
+
+  const navLinks = [
+    { label: 'Installation', href: '#installation' },
+    { label: 'Download', href: '#download' },
+    { label: 'FAQ', href: '#faq' },
+  ];
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 12);
+    let rafId: number | null = null;
+
+    const updateScrollState = () => {
+      const scrollY = window.scrollY;
+      setIsScrolled(scrollY > 12);
+
+      const viewportOffset = scrollY + 160;
+      const sections = ['#hero', '#installation', '#download', '#faq'];
+      let current = '#hero';
+
+      for (const selector of sections) {
+        const el = document.querySelector(selector) as HTMLElement | null;
+        if (el && viewportOffset >= el.offsetTop) {
+          current = selector;
+        }
+      }
+
+      setActiveSection((prev) => (prev === current ? prev : current));
+      rafId = null;
     };
+
+    const handleScroll = () => {
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(updateScrollState);
+      }
+    };
+
+    updateScrollState();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -45,13 +92,8 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
     };
   }, [mobileMenuOpen]);
 
-  const navLinks = [
-    { label: 'Installation', href: '#installation' },
-    { label: 'Download', href: '#download' },
-    { label: 'FAQ', href: '#faq' },
-  ];
-
   const handleLinkClick = (href: string) => {
+    setActiveSection(href);
     setMobileMenuOpen(false);
     setTimeout(() => {
       const element = document.querySelector(href);
@@ -63,12 +105,25 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-200 ${
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled
-          ? 'bg-white/80 backdrop-blur-md border-b border-pink-200/70 shadow-[0_4px_20px_rgba(219,39,119,0.04)]'
-          : 'bg-white/60 backdrop-blur-sm border-b border-pink-100/80'
+          ? 'bg-white/78 backdrop-blur-xl border-b border-pink-200/75 shadow-[0_8px_30px_rgba(219,39,119,0.06)]'
+          : 'bg-white/55 backdrop-blur-md border-b border-pink-100/80'
       }`}
     >
+      {/* Subtle Top Scroll Progress Indicator */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 left-0 right-0 h-[2.5px] bg-pink-100/40 overflow-hidden"
+      >
+        <motion.div
+          className="h-full w-full origin-left bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600"
+          style={{
+            scaleX: shouldReduceMotion ? scrollYProgress : smoothProgress,
+          }}
+        />
+      </div>
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-6 h-16">
           {/* Brand Wordmark with hidden 2-second press-and-hold admin entry point */}
@@ -81,22 +136,42 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
 
           {/* Desktop Navigation links */}
           <nav
-            className="hidden md:flex items-center gap-7 text-sm font-medium text-zinc-600"
+            className="hidden md:flex items-center gap-2 text-sm font-medium text-zinc-600"
             aria-label="Main Navigation"
           >
-            {navLinks.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleLinkClick(link.href);
-                }}
-                className="hover:text-pink-600 transition-colors duration-150 whitespace-nowrap shrink-0 py-1.5 focus-visible:outline-pink-600 rounded-sm"
-              >
-                {link.label}
-              </a>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = activeSection === link.href;
+              return (
+                <MagneticWrapper key={link.label} strength={0.18}>
+                  <a
+                    href={link.href}
+                    aria-current={isActive ? 'location' : undefined}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleLinkClick(link.href);
+                    }}
+                    className={`relative inline-flex items-center px-3.5 py-2 rounded-xl transition-colors duration-200 whitespace-nowrap shrink-0 focus-visible:outline-pink-600 ${
+                      isActive
+                        ? 'text-pink-600 font-semibold bg-pink-50/70'
+                        : 'text-zinc-600 hover:text-pink-600 hover:bg-pink-50/40'
+                    }`}
+                  >
+                    <span>{link.label}</span>
+                    {isActive && (
+                      <motion.span
+                        layoutId={shouldReduceMotion ? undefined : 'navbar-active-indicator'}
+                        className="pointer-events-none absolute bottom-1 left-3.5 right-3.5 h-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500"
+                        transition={{
+                          type: 'spring',
+                          stiffness: 380,
+                          damping: 32,
+                        }}
+                      />
+                    )}
+                  </a>
+                </MagneticWrapper>
+              );
+            })}
           </nav>
 
           {/* Mobile Hamburger Menu Button (no duplicate Download button on the left) */}
@@ -168,29 +243,42 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
               <nav className="flex-1 px-4 py-5 space-y-1 overflow-y-auto">
                 <a
                   href="#hero"
+                  aria-current={activeSection === '#hero' ? 'location' : undefined}
                   onClick={(e) => {
                     e.preventDefault();
                     handleLinkClick('#hero');
                   }}
-                  className="flex items-center justify-between px-4 py-3.5 min-h-[48px] rounded-xl text-base font-medium text-zinc-800 hover:bg-pink-50/90 hover:text-pink-600 transition-colors"
+                  className={`flex items-center justify-between px-4 py-3.5 min-h-[48px] rounded-xl text-base font-medium transition-colors ${
+                    activeSection === '#hero'
+                      ? 'bg-pink-50/90 text-pink-600 font-semibold'
+                      : 'text-zinc-800 hover:bg-pink-50/90 hover:text-pink-600'
+                  }`}
                 >
                   <span>Home</span>
                   <ChevronRight className="w-4 h-4 text-pink-400" aria-hidden="true" />
                 </a>
-                {navLinks.map((link) => (
-                  <a
-                    key={link.label}
-                    href={link.href}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleLinkClick(link.href);
-                    }}
-                    className="flex items-center justify-between px-4 py-3.5 min-h-[48px] rounded-xl text-base font-medium text-zinc-800 hover:bg-pink-50/90 hover:text-pink-600 transition-colors"
-                  >
-                    <span>{link.label}</span>
-                    <ChevronRight className="w-4 h-4 text-pink-400" aria-hidden="true" />
-                  </a>
-                ))}
+                {navLinks.map((link) => {
+                  const isActive = activeSection === link.href;
+                  return (
+                    <a
+                      key={link.label}
+                      href={link.href}
+                      aria-current={isActive ? 'location' : undefined}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleLinkClick(link.href);
+                      }}
+                      className={`flex items-center justify-between px-4 py-3.5 min-h-[48px] rounded-xl text-base font-medium transition-colors ${
+                        isActive
+                          ? 'bg-pink-50/90 text-pink-600 font-semibold'
+                          : 'text-zinc-800 hover:bg-pink-50/90 hover:text-pink-600'
+                      }`}
+                    >
+                      <span>{link.label}</span>
+                      <ChevronRight className="w-4 h-4 text-pink-400" aria-hidden="true" />
+                    </a>
+                  );
+                })}
               </nav>
 
               {/* Quiet Drawer Footer */}

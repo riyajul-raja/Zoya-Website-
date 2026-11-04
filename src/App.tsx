@@ -11,6 +11,7 @@ import { FeatureGrid } from './components/FeatureGrid';
 import { InstallationGuide } from './components/InstallationGuide';
 import { Faq } from './components/Faq';
 import { Footer } from './components/Footer';
+import { LivingBackground } from './components/LivingBackground';
 import { PrivacyModal } from './components/PrivacyModal';
 import { ContactModal } from './components/ContactModal';
 import { AdminPortalModal } from './components/admin/AdminPortalModal';
@@ -82,11 +83,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-pink-ambient text-zinc-900 flex flex-col font-sans selection:bg-pink-500/15 selection:text-pink-700 relative">
+      {/* Lightweight Living Particle & Flowing-Light Background */}
+      <LivingBackground />
+
       {/* Top Navigation */}
       <Navbar onOpenAdmin={() => setAdminOpen(true)} />
 
       {/* Main Content Sections */}
-      <main className="flex-1">
+      <main className="relative z-10 flex-1">
         {/* Hero Section */}
         <Hero
           latestRelease={latestRelease}
@@ -113,12 +117,14 @@ export default function App() {
       </main>
 
       {/* Footer with Creator Credit and Admin Link */}
-      <Footer
-        latestRelease={latestRelease}
-        onOpenPrivacy={() => setPrivacyOpen(true)}
-        onOpenContact={() => setContactOpen(true)}
-        onOpenAdmin={() => setAdminOpen(true)}
-      />
+      <div className="relative z-10">
+        <Footer
+          latestRelease={latestRelease}
+          onOpenPrivacy={() => setPrivacyOpen(true)}
+          onOpenContact={() => setContactOpen(true)}
+          onOpenAdmin={() => setAdminOpen(true)}
+        />
+      </div>
 
       {/* Modals for Privacy Policy & Direct Creator Contact */}
       <PrivacyModal isOpen={privacyOpen} onClose={() => setPrivacyOpen(false)} />

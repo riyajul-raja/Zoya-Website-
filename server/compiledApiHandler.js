@@ -1149,7 +1149,7 @@ function extractAuthToken(reqHeaders) {
 // server/fcm.ts
 import crypto3 from "crypto";
 var DEFAULT_FCM_TOPIC = "zoya_releases";
-var DEFAULT_PRODUCTION_SITE_URL = "https://zoya-website-eta.vercel.app";
+var DEFAULT_PRODUCTION_SITE_URL = "https://zoyalive.vercel.app";
 var cachedAccessToken = null;
 function getPublicSiteOrigin() {
   const envUrl = (process.env.PUBLIC_SITE_URL || DEFAULT_PRODUCTION_SITE_URL).trim();

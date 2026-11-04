@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, LogOut, Shield, ArrowLeft } from 'lucide-react';
+import { X, LogOut, ArrowLeft } from 'lucide-react';
 import { AdminLoginForm } from './AdminLoginForm';
 import { ReleaseManager } from './ReleaseManager';
+import { ZoyaLogo } from '../ZoyaLogo';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
@@ -101,9 +102,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       <header className="w-full border-b border-slate-800/90 bg-[#071319]/95 backdrop-blur-md shrink-0">
         <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-teal-950 border border-teal-500/40 flex items-center justify-center text-teal-300 shrink-0">
-              <Shield className="w-5 h-5" aria-hidden="true" />
-            </div>
+            <ZoyaLogo size="sm" showText={false} />
             <div className="min-w-0">
               <h2
                 id="admin-portal-title"

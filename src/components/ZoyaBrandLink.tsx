@@ -1,10 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { ZoyaLogo } from './ZoyaLogo';
+import { ZoyaLogo, type ZoyaLogoSize } from './ZoyaLogo';
 
 interface ZoyaBrandLinkProps {
   onAdminTrigger: () => void;
   onNormalClick?: () => void;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: ZoyaLogoSize;
   showText?: boolean;
   className?: string;
   href?: string;

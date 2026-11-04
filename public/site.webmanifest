@@ -1,0 +1,17 @@
+{
+  "name": "Zoya AI Assistant",
+  "short_name": "Zoya AI",
+  "description": "Official website for Zoya AI Assistant — a smart voice and conversational AI assistant for Android.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdf8fa",
+  "theme_color": "#fdf8fa",
+  "icons": [
+    {
+      "src": "/assets/aistudio/file_00000000ad90820abfc4c8efc87b76f1_d848dfc1.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

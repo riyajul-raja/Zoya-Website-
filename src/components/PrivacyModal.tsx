@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { X, ShieldCheck, Lock, EyeOff, Server } from 'lucide-react';
+import { X, Lock, EyeOff, Server } from 'lucide-react';
+import { ZoyaLogo } from './ZoyaLogo';
 
 interface PrivacyModalProps {
   isOpen: boolean;
@@ -44,9 +45,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-pink-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-pink-600 shrink-0">
-              <ShieldCheck className="w-5 h-5" aria-hidden="true" />
-            </div>
+            <ZoyaLogo size="sm" showText={false} />
             <div>
               <h3 id="privacy-modal-title" className="text-base sm:text-lg font-bold text-zinc-900">
                 Zoya Privacy Policy
