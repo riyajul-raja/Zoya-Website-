@@ -101,17 +101,22 @@ async function build() {
     logLevel: 'info',
   });
 
-  // 2. Clean stale API output to guarantee function count stays at <= 12 (8 functions)
-  fs.rmSync('api', { recursive: true, force: true });
+  // 2. Ensure API directories exist without deleting tracked serverless entrypoints (8 functions <= 12 limit)
   fs.mkdirSync('api/admin', { recursive: true });
   fs.mkdirSync('api/devices', { recursive: true });
 
-  // 3. Emit the lightweight serverless function entry wrappers
+  // 3. Ensure all lightweight serverless function entry wrappers exist and stay up to date
   for (const wrapper of wrappers) {
-    fs.writeFileSync(wrapper.outPath, createWrapperCode(wrapper), 'utf-8');
+    const expectedCode = createWrapperCode(wrapper);
+    const existingCode = fs.existsSync(wrapper.outPath)
+      ? fs.readFileSync(wrapper.outPath, 'utf-8')
+      : null;
+    if (existingCode !== expectedCode) {
+      fs.writeFileSync(wrapper.outPath, expectedCode, 'utf-8');
+    }
   }
 
-  console.log(`Successfully built server/compiledApiHandler.js and ${wrappers.length} API functions in api/.`);
+  console.log(`Successfully built server/compiledApiHandler.js and verified ${wrappers.length} API functions in api/.`);
 }
 
 build().catch((err) => {
