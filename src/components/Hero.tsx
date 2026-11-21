@@ -196,7 +196,9 @@ export const Hero: React.FC<HeroProps> = ({
               <ZoyaLogo size="lg" showText={false} />
             </motion.div>
             <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-semibold tracking-wide text-zinc-500 tabular-nums">
-              <span className="text-pink-600">Zoya AI Assistant</span>
+              <span className="text-pink-600">Zoyalive</span>
+              <span aria-hidden="true" className="text-pink-300">·</span>
+              <span className="text-zinc-700">Zoya AI Assistant</span>
               <span aria-hidden="true" className="text-pink-300">·</span>
               <span className="text-zinc-600">Android Edition</span>
             </div>

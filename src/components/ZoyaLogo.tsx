@@ -58,7 +58,7 @@ export const ZoyaLogo: React.FC<ZoyaLogoProps> = ({
       >
         <img
           src={OFFICIAL_ZOYA_LOGO_SRC}
-          alt="Zoya AI Assistant Logo"
+          alt="Zoyalive – Zoya AI Logo"
           width={current.dimension}
           height={current.dimension}
           decoding="async"
@@ -68,8 +68,13 @@ export const ZoyaLogo: React.FC<ZoyaLogoProps> = ({
       </div>
 
       {showText && (
-        <span className={`tracking-tight text-zinc-900 whitespace-nowrap ${current.textClass}`}>
-          Zoya <span className="text-pink-600 font-semibold">AI</span>
+        <span className="inline-flex flex-col leading-tight text-left">
+          <span className={`tracking-tight text-zinc-900 whitespace-nowrap ${current.textClass}`}>
+            Zoyalive
+          </span>
+          <span className="text-[10px] sm:text-[11px] font-semibold text-pink-600 tracking-wide whitespace-nowrap">
+            Zoya AI
+          </span>
         </span>
       )}
     </div>

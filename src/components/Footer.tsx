@@ -45,7 +45,7 @@ export const Footer: React.FC<FooterProps> = ({
               onNormalClick={() => handleScrollTo('#hero')}
             />
             <p className="mt-4 text-xs sm:text-sm text-zinc-600 max-w-md leading-relaxed">
-              Zoya is an independent conversational AI voice assistant engineered for Android smartphones and tablets, focused on direct voice interaction and user privacy.
+              Zoyalive is the official home of Zoya AI, an independent conversational AI voice assistant engineered for Android smartphones and tablets, focused on direct voice interaction and user privacy.
             </p>
             <div className="mt-4 inline-flex flex-wrap items-center gap-2 text-xs text-pink-700 font-mono tabular-nums bg-pink-50/70 border border-pink-200/70 px-3 py-1.5 rounded-xl">
               <span className="w-1.5 h-1.5 rounded-full bg-pink-500 shrink-0" aria-hidden="true" />
@@ -151,7 +151,7 @@ export const Footer: React.FC<FooterProps> = ({
         {/* Bottom Credits & Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-500">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5 text-center sm:text-left">
-            <span className="font-medium text-zinc-600">Official Zoya AI Assistant Website</span>
+            <span className="font-medium text-zinc-600">Zoyalive — Official Zoya AI Assistant Website</span>
             <span aria-hidden="true" className="text-pink-300">·</span>
             <span>
               Created by <strong className="text-zinc-800 font-semibold">Riyajul</strong>
@@ -159,7 +159,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           <div className="flex items-center gap-1 text-zinc-500 text-center tabular-nums">
-            <span>&copy; {new Date().getFullYear()} Zoya AI Assistant. All rights reserved.</span>
+            <span>&copy; {new Date().getFullYear()} Zoyalive · Zoya AI. All rights reserved.</span>
           </div>
         </div>
       </div>

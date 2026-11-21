@@ -79,6 +79,7 @@ export interface LicenseRecord {
   encryptedKey?: string | null;
   customerName: string;
   customerEmail: string;
+  userSub?: string | null;
   licenseType: 'Lifetime';
   status: LicenseStatus;
   createdBy: { email: string; name: string };
@@ -442,6 +443,7 @@ function normalizeRecordOnRead(raw: Record<string, any>): LicenseRecord {
     encryptedKey: raw.encryptedKey && typeof raw.encryptedKey === 'string' ? raw.encryptedKey.trim() : null,
     customerName: String(raw.customerName || ''),
     customerEmail: String(raw.customerEmail || ''),
+    userSub: raw.userSub && typeof raw.userSub === 'string' ? raw.userSub.trim() : null,
     licenseType: 'Lifetime',
     status,
     createdBy: raw.createdBy && typeof raw.createdBy === 'object'
@@ -1509,4 +1511,284 @@ export async function validateLicenseForAndroid(
       throw err;
     }
   });
+}
+
+export interface UserAccountLicenseView {
+  id: string;
+  maskedKey: string;
+  licenseType: 'Lifetime';
+  status: LicenseStatus;
+  createdAt: string;
+  activatedAt: string | null;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+  canRevealKey: boolean;
+  matchMethod: 'user_sub' | 'verified_email';
+  linkedDevice: {
+    deviceModel: string;
+    androidVersion: string | null;
+    appVersion: string | null;
+    linkedAt: string;
+  } | null;
+}
+
+export interface UserAccountLicenseSummary {
+  status: 'active' | 'unactivated' | 'revoked' | 'not_purchased';
+  hasLicense: boolean;
+  license: UserAccountLicenseView | null;
+  licenseCount: number;
+  linkageMode: 'user_sub_or_verified_email';
+}
+
+function isLicenseOwnedByAuthenticatedUser(
+  record: LicenseRecord,
+  user: { googleSub: string; email: string; emailVerified: boolean }
+): 'user_sub' | 'verified_email' | null {
+  if (record.userSub && user.googleSub && record.userSub === user.googleSub) {
+    return 'user_sub';
+  }
+  const normalizedUserEmail = (user.email || '').trim().toLowerCase();
+  const normalizedLicenseEmail = (record.customerEmail || '').trim().toLowerCase();
+  if (
+    user.emailVerified &&
+    normalizedUserEmail &&
+    normalizedLicenseEmail &&
+    normalizedLicenseEmail === normalizedUserEmail
+  ) {
+    return 'verified_email';
+  }
+  return null;
+}
+
+function selectPrimaryUserLicense(
+  matches: Array<{ record: LicenseRecord; matchMethod: 'user_sub' | 'verified_email' }>
+): { record: LicenseRecord; matchMethod: 'user_sub' | 'verified_email' } | null {
+  if (matches.length === 0) return null;
+  const priority: Record<LicenseStatus, number> = {
+    active: 3,
+    unactivated: 2,
+    revoked: 1,
+  };
+  const sorted = [...matches].sort((a, b) => {
+    const pDiff = priority[b.record.status] - priority[a.record.status];
+    if (pDiff !== 0) return pDiff;
+    return Date.parse(b.record.createdAt || '') - Date.parse(a.record.createdAt || '');
+  });
+  return sorted[0];
+}
+
+/**
+ * Authoritative server-side license lookup strictly scoped to the authenticated user.
+ * Matches by immutable `userSub` first, then by verified Google email (`emailVerified === true`).
+ * Never exposes another user's license, raw hashes, ciphertext, or admin audit internals.
+ */
+export async function getUserOwnedLicenseSummary(user: {
+  googleSub: string;
+  email: string;
+  emailVerified: boolean;
+}): Promise<UserAccountLicenseSummary> {
+  assertStorageAvailable();
+
+  const normalizedEmail = (user.email || '').trim().toLowerCase();
+  const matchedMap = new Map<
+    string,
+    { record: LicenseRecord; matchMethod: 'user_sub' | 'verified_email' }
+  >();
+
+  try {
+    if (useInMemoryStoreForTesting) {
+      for (const record of inMemoryTestStore.values()) {
+        const matchMethod = isLicenseOwnedByAuthenticatedUser(record, user);
+        if (matchMethod) {
+          matchedMap.set(record.id, { record, matchMethod });
+        }
+      }
+    } else {
+      if (user.googleSub) {
+        const subDocs = await serverQueryDocumentsEq('licenses', 'userSub', user.googleSub, 10);
+        for (const docSnap of subDocs) {
+          if (docSnap.data && docSnap.data.id && docSnap.data.keyHash) {
+            const normalized = normalizeRecordOnRead(docSnap.data);
+            matchedMap.set(normalized.id, { record: normalized, matchMethod: 'user_sub' });
+          }
+        }
+      }
+
+      if (user.emailVerified && normalizedEmail) {
+        const emailDocs = await serverQueryDocumentsEq(
+          'licenses',
+          'customerEmail',
+          normalizedEmail,
+          10
+        );
+        for (const docSnap of emailDocs) {
+          if (docSnap.data && docSnap.data.id && docSnap.data.keyHash) {
+            const normalized = normalizeRecordOnRead(docSnap.data);
+            if (!matchedMap.has(normalized.id)) {
+              matchedMap.set(normalized.id, {
+                record: normalized,
+                matchMethod: 'verified_email',
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      'Persistent license storage (Cloud Firestore) is unavailable. Could not verify license status.',
+      err
+    );
+  }
+
+  const allMatches = Array.from(matchedMap.values());
+  const primary = selectPrimaryUserLicense(allMatches);
+
+  if (!primary) {
+    return {
+      status: 'not_purchased',
+      hasLicense: false,
+      license: null,
+      licenseCount: 0,
+      linkageMode: 'user_sub_or_verified_email',
+    };
+  }
+
+  const rec = primary.record;
+  let encryptionConfigured = false;
+  try {
+    getLicenseEncryptionSecret();
+    encryptionConfigured = true;
+  } catch {
+    encryptionConfigured = false;
+  }
+
+  return {
+    status: rec.status,
+    hasLicense: rec.status === 'active' || rec.status === 'unactivated',
+    licenseCount: allMatches.length,
+    linkageMode: 'user_sub_or_verified_email',
+    license: {
+      id: rec.id,
+      maskedKey: rec.maskedKey,
+      licenseType: rec.licenseType,
+      status: rec.status,
+      createdAt: rec.createdAt,
+      activatedAt: rec.activatedAt,
+      lastSeenAt: rec.lastSeenAt,
+      revokedAt: rec.revokedAt,
+      canRevealKey: Boolean(rec.encryptedKey && encryptionConfigured && rec.status !== 'revoked'),
+      matchMethod: primary.matchMethod,
+      linkedDevice: rec.linkedDevice
+        ? {
+            deviceModel: rec.linkedDevice.deviceModel,
+            androidVersion: rec.linkedDevice.androidVersion ?? null,
+            appVersion: rec.linkedDevice.appVersion ?? null,
+            linkedAt: rec.linkedDevice.linkedAt,
+          }
+        : null,
+    },
+  };
+}
+
+/**
+ * Allows an authenticated account owner to reveal their own non-revoked license key
+ * strictly after verifying server-side ownership.
+ */
+export async function revealLicenseKeyForUser(
+  licenseId: string,
+  user: { googleSub: string; email: string; emailVerified: boolean }
+): Promise<RevealLicenseKeyResult> {
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return {
+      success: false,
+      status: 400,
+      error: 'License ID is required.',
+    };
+  }
+
+  try {
+    const license = await getLicenseById(cleanId);
+    if (!license) {
+      return {
+        success: false,
+        status: 404,
+        code: 'LICENSE_NOT_FOUND',
+        error: 'License record not found.',
+      };
+    }
+
+    const ownership = isLicenseOwnedByAuthenticatedUser(license, user);
+    if (!ownership) {
+      return {
+        success: false,
+        status: 403,
+        code: 'UNAUTHORIZED',
+        error: 'You are not authorized to access this license.',
+      };
+    }
+
+    if (license.status === 'revoked') {
+      return {
+        success: false,
+        status: 403,
+        code: 'UNAUTHORIZED',
+        error: 'Revoked license keys cannot be revealed.',
+      };
+    }
+
+    if (!license.encryptedKey) {
+      return {
+        success: false,
+        status: 404,
+        code: 'KEY_NOT_RECOVERABLE',
+        error: 'This license key cannot be recovered in plaintext.',
+      };
+    }
+
+    try {
+      const decryptedKey = decryptLicenseKey(license.encryptedKey, license.id);
+      if (license.keyHash && hashLicenseKey(decryptedKey) !== license.keyHash) {
+        return {
+          success: false,
+          status: 500,
+          code: 'DECRYPTION_FAILED',
+          error: 'License key integrity check failed.',
+        };
+      }
+      return {
+        success: true,
+        status: 200,
+        licenseKey: decryptedKey,
+      };
+    } catch (decErr) {
+      if (decErr instanceof LicenseEncryptionConfigurationError) {
+        return {
+          success: false,
+          status: 500,
+          code: 'CONFIGURATION_ERROR',
+          error: 'License key decryption is currently unavailable on the server.',
+        };
+      }
+      return {
+        success: false,
+        status: 500,
+        code: 'DECRYPTION_FAILED',
+        error: 'Failed to decrypt license key.',
+      };
+    }
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      return {
+        success: false,
+        status: 503,
+        error: err.message,
+      };
+    }
+    throw err;
+  }
 }

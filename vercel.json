@@ -52,6 +52,34 @@
     {
       "source": "/api/licenses/validate",
       "destination": "/api/devices/register?__route=/api/licenses/validate"
+    },
+    {
+      "source": "/api/auth/google/start",
+      "destination": "/api/auth?__route=/api/auth/google/start"
+    },
+    {
+      "source": "/api/auth/google/callback",
+      "destination": "/api/auth?__route=/api/auth/google/callback"
+    },
+    {
+      "source": "/api/auth/session",
+      "destination": "/api/auth?__route=/api/auth/session"
+    },
+    {
+      "source": "/api/auth/logout",
+      "destination": "/api/auth?__route=/api/auth/logout"
+    },
+    {
+      "source": "/api/account/dashboard",
+      "destination": "/api/auth?__route=/api/account/dashboard"
+    },
+    {
+      "source": "/api/account/license/reveal",
+      "destination": "/api/auth?__route=/api/account/license/reveal"
+    },
+    {
+      "source": "/account",
+      "destination": "/index.html"
     }
   ]
 }

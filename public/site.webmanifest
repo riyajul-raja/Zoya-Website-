@@ -1,7 +1,7 @@
 {
-  "name": "Zoya AI Assistant",
-  "short_name": "Zoya AI",
-  "description": "Official website for Zoya AI Assistant — a smart voice and conversational AI assistant for Android.",
+  "name": "Zoyalive – Zoya AI Voice Assistant",
+  "short_name": "Zoyalive",
+  "description": "Zoyalive is the official website for Zoya AI, a hands-free conversational AI voice assistant for Android.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fdf8fa",

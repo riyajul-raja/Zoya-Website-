@@ -189,8 +189,8 @@ export const ZoyaBrandLink: React.FC<ZoyaBrandLinkProps> = ({
         WebkitUserSelect: 'none',
         userSelect: 'none',
       }}
-      aria-label="Zoya AI Assistant Home"
-      title="Zoya AI Assistant"
+      aria-label="Zoyalive – Zoya AI Home"
+      title="Zoyalive – Zoya AI"
     >
       <ZoyaLogo size={size} showText={showText} />
 

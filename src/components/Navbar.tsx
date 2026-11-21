@@ -3,17 +3,30 @@ import { createPortal } from 'react-dom';
 import { motion, useScroll, useSpring, useReducedMotion } from 'motion/react';
 import { ZoyaBrandLink } from './ZoyaBrandLink';
 import { MagneticWrapper } from './LivingBackground';
+import { GoogleIcon } from './GoogleIcon';
 import { Menu, X, ChevronRight } from 'lucide-react';
+import type { AuthenticatedUser } from '../types/account';
 
 interface NavbarProps {
   onOpenAdmin: () => void;
+  onOpenLogin: () => void;
+  onOpenAccount: () => void;
+  authUser: AuthenticatedUser | null;
+  authLoading?: boolean;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  onOpenAdmin,
+  onOpenLogin,
+  onOpenAccount,
+  authUser,
+  authLoading = false,
+}) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('#hero');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
 
@@ -33,6 +46,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [authUser?.picture]);
 
   useEffect(() => {
     let rafId: number | null = null;
@@ -103,6 +120,22 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
     }, 60);
   };
 
+  const handleAuthAction = () => {
+    setMobileMenuOpen(false);
+    if (authUser) {
+      onOpenAccount();
+    } else {
+      onOpenLogin();
+    }
+  };
+
+  const userFirstName = authUser
+    ? authUser.name.trim().split(/\s+/)[0] || 'Account'
+    : '';
+  const userInitial = authUser
+    ? (authUser.name || authUser.email || 'Z').charAt(0).toUpperCase()
+    : 'Z';
+
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
@@ -134,47 +167,87 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
             onNormalClick={() => handleLinkClick('#hero')}
           />
 
-          {/* Desktop Navigation links */}
-          <nav
-            className="hidden md:flex items-center gap-2 text-sm font-medium text-zinc-600"
-            aria-label="Main Navigation"
-          >
-            {navLinks.map((link) => {
-              const isActive = activeSection === link.href;
-              return (
-                <MagneticWrapper key={link.label} strength={0.18}>
-                  <a
-                    href={link.href}
-                    aria-current={isActive ? 'location' : undefined}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleLinkClick(link.href);
-                    }}
-                    className={`relative inline-flex items-center px-3.5 py-2 rounded-xl transition-colors duration-200 whitespace-nowrap shrink-0 focus-visible:outline-pink-600 ${
-                      isActive
-                        ? 'text-pink-600 font-semibold bg-pink-50/70'
-                        : 'text-zinc-600 hover:text-pink-600 hover:bg-pink-50/40'
-                    }`}
-                  >
-                    <span>{link.label}</span>
-                    {isActive && (
-                      <motion.span
-                        layoutId={shouldReduceMotion ? undefined : 'navbar-active-indicator'}
-                        className="pointer-events-none absolute bottom-1 left-3.5 right-3.5 h-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500"
-                        transition={{
-                          type: 'spring',
-                          stiffness: 380,
-                          damping: 32,
-                        }}
-                      />
-                    )}
-                  </a>
-                </MagneticWrapper>
-              );
-            })}
-          </nav>
+          {/* Desktop Navigation links + Google Login / Account */}
+          <div className="hidden md:flex items-center gap-3">
+            <nav
+              className="flex items-center gap-2 text-sm font-medium text-zinc-600"
+              aria-label="Main Navigation"
+            >
+              {navLinks.map((link) => {
+                const isActive = activeSection === link.href;
+                return (
+                  <MagneticWrapper key={link.label} strength={0.18}>
+                    <a
+                      href={link.href}
+                      aria-current={isActive ? 'location' : undefined}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleLinkClick(link.href);
+                      }}
+                      className={`relative inline-flex items-center px-3.5 py-2 rounded-xl transition-colors duration-200 whitespace-nowrap shrink-0 focus-visible:outline-pink-600 ${
+                        isActive
+                          ? 'text-pink-600 font-semibold bg-pink-50/70'
+                          : 'text-zinc-600 hover:text-pink-600 hover:bg-pink-50/40'
+                      }`}
+                    >
+                      <span>{link.label}</span>
+                      {isActive && (
+                        <motion.span
+                          layoutId={shouldReduceMotion ? undefined : 'navbar-active-indicator'}
+                          className="pointer-events-none absolute bottom-1 left-3.5 right-3.5 h-0.5 rounded-full bg-gradient-to-r from-pink-500 to-rose-500"
+                          transition={{
+                            type: 'spring',
+                            stiffness: 380,
+                            damping: 32,
+                          }}
+                        />
+                      )}
+                    </a>
+                  </MagneticWrapper>
+                );
+              })}
+            </nav>
 
-          {/* Mobile Hamburger Menu Button (no duplicate Download button on the left) */}
+            <span aria-hidden="true" className="h-5 w-px bg-pink-200/80" />
+
+            <MagneticWrapper strength={0.16}>
+              {authUser ? (
+                <button
+                  type="button"
+                  onClick={handleAuthAction}
+                  className="inline-flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 min-h-[40px] rounded-xl bg-white/90 hover:bg-pink-50/90 border border-pink-200/85 hover:border-pink-300 shadow-xs text-sm font-semibold text-zinc-800 hover:text-pink-700 transition-all duration-200 whitespace-nowrap cursor-pointer focus-visible:outline-pink-600"
+                  aria-label="Open Zoyalive Account Dashboard"
+                >
+                  <span className="w-7 h-7 rounded-lg overflow-hidden bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                    {authUser.picture && !avatarFailed ? (
+                      <img
+                        src={authUser.picture}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarFailed(true)}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      userInitial
+                    )}
+                  </span>
+                  <span className="max-w-[110px] truncate">{userFirstName}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAuthAction}
+                  disabled={authLoading}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 min-h-[40px] rounded-xl bg-white/90 hover:bg-white border border-pink-200/85 hover:border-pink-300/90 shadow-xs hover:shadow-[0_6px_18px_-6px_rgba(219,39,119,0.2)] text-sm font-semibold text-zinc-800 hover:text-pink-700 transition-all duration-200 whitespace-nowrap cursor-pointer disabled:opacity-60 focus-visible:outline-pink-600"
+                >
+                  <GoogleIcon className="w-4 h-4 shrink-0" />
+                  <span>Login</span>
+                </button>
+              )}
+            </MagneticWrapper>
+          </div>
+
+          {/* Mobile Hamburger Menu Button */}
           <div className="flex md:hidden items-center shrink-0">
             <button
               type="button"
@@ -281,11 +354,50 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAdmin }) => {
                 })}
               </nav>
 
-              {/* Quiet Drawer Footer */}
-              <div className="p-5 border-t border-pink-100 bg-pink-50/40">
-                <p className="text-xs text-zinc-500 text-center">
-                  Zoya AI Assistant · Official Android Portal
-                </p>
+              {/* Mobile Drawer Footer — Clickable Google Login / Account Control */}
+              <div className="p-4 border-t border-pink-100 bg-pink-50/40">
+                {authUser ? (
+                  <button
+                    type="button"
+                    onClick={handleAuthAction}
+                    className="w-full flex items-center justify-between gap-3 px-3.5 py-2.5 min-h-[50px] rounded-xl bg-white hover:bg-pink-50/80 border border-pink-200/85 shadow-xs transition-colors cursor-pointer text-left focus-visible:outline-pink-600"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-8 h-8 rounded-lg overflow-hidden bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                        {authUser.picture && !avatarFailed ? (
+                          <img
+                            src={authUser.picture}
+                            alt=""
+                            referrerPolicy="no-referrer"
+                            onError={() => setAvatarFailed(true)}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          userInitial
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-zinc-900 truncate">
+                          {authUser.name}
+                        </p>
+                        <p className="text-[11px] text-pink-600 font-medium">
+                          Account Dashboard
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-pink-400 shrink-0" aria-hidden="true" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleAuthAction}
+                    disabled={authLoading}
+                    className="w-full flex items-center justify-center gap-2.5 px-4 py-3 min-h-[48px] rounded-xl bg-white hover:bg-pink-50/80 border border-pink-200/90 shadow-xs text-sm font-semibold text-zinc-800 hover:text-pink-700 transition-all duration-150 cursor-pointer disabled:opacity-60 focus-visible:outline-pink-600"
+                  >
+                    <GoogleIcon className="w-4 h-4 shrink-0" />
+                    <span>Login</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>,

@@ -32,7 +32,7 @@ export const PrivacyModal: React.FC<PrivacyModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-zinc-900/35 backdrop-blur-xs animate-overlay-fade"
+      className="fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-4 bg-zinc-900/35 backdrop-blur-xs animate-overlay-fade"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

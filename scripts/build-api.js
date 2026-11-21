@@ -44,6 +44,12 @@ const wrappers = [
     routeLabel: '/api/devices/register',
     disableBodyParser: false,
   },
+  {
+    outPath: 'api/auth.js',
+    importPath: '../server/compiledApiHandler.js',
+    routeLabel: '/api/auth',
+    disableBodyParser: false,
+  },
 ];
 
 function createWrapperCode({ importPath, routeLabel, disableBodyParser }) {
@@ -79,7 +85,7 @@ export default async function handler(req, res) {
 }
 
 async function build() {
-  console.log('Building serverless API dispatcher and 7 route wrappers...');
+  console.log(`Building serverless API dispatcher and ${wrappers.length} route wrappers...`);
 
   // 1. Compile local TypeScript server code into a single clean ESM module
   //    while keeping node_modules (firebase, @grpc/grpc-js, etc.) external.
@@ -95,12 +101,12 @@ async function build() {
     logLevel: 'info',
   });
 
-  // 2. Clean stale API output to guarantee function count stays at <= 12 (7 functions)
+  // 2. Clean stale API output to guarantee function count stays at <= 12 (8 functions)
   fs.rmSync('api', { recursive: true, force: true });
   fs.mkdirSync('api/admin', { recursive: true });
   fs.mkdirSync('api/devices', { recursive: true });
 
-  // 3. Emit the 7 lightweight serverless function entry wrappers
+  // 3. Emit the lightweight serverless function entry wrappers
   for (const wrapper of wrappers) {
     fs.writeFileSync(wrapper.outPath, createWrapperCode(wrapper), 'utf-8');
   }

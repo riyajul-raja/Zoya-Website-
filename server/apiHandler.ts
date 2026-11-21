@@ -45,12 +45,38 @@ import {
   revokeLicense,
   revealLicenseKeyByAdmin,
   validateLicenseForAndroid,
+  getUserOwnedLicenseSummary,
+  revealLicenseKeyForUser,
   LicenseStorageError,
 } from './licenses';
 import {
   checkRateLimit,
   applyRateLimitHeaders,
 } from './rateLimit';
+import {
+  OAUTH_TX_COOKIE_NAME,
+  UserAuthConfigError,
+  UserAuthStorageError,
+  applyAuthSecurityHeaders,
+  buildPopupCallbackHtml,
+  clearOAuthTxCookie,
+  clearUserSessionCookie,
+  createGoogleAuthorizationStart,
+  createUserSession,
+  exchangeGoogleAuthorizationCode,
+  getAuthenticatedUserFromRequest,
+  getGoogleOAuthConfig,
+  getGoogleOAuthConfigStatus,
+  invalidateUserSessionFromRequest,
+  parseCookies,
+  setOAuthTxCookie,
+  setUserSessionCookie,
+  timingSafeStringEqual,
+  unsealOAuthTransaction,
+  upsertGoogleUser,
+  verifyGoogleIdToken,
+  verifySameOriginRequest,
+} from './userAuth';
 
 export function sendJson(res: ServerResponse, status: number, data: unknown) {
   if (res.writableEnded || res.headersSent) {
@@ -258,18 +284,353 @@ export async function handleApiRequest(
   pathname = pathname.replace(/\/+$/, '') || '/';
   const method = req.method?.toUpperCase() || 'GET';
 
-  // CORS headers for API safety
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename, Accept, X-Requested-With');
+  const isUserAuthOrAccountRoute =
+    pathname.startsWith('/api/auth/') || pathname.startsWith('/api/account/');
 
-  if (method === 'OPTIONS') {
-    res.statusCode = 204;
-    res.end();
-    return true;
+  if (isUserAuthOrAccountRoute) {
+    // Strict no-store + same-origin credentials security headers (never wildcard CORS)
+    applyAuthSecurityHeaders(req, res);
+
+    if (method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
+  } else {
+    // CORS headers for public Android / Admin API endpoints
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename, Accept, X-Requested-With');
+
+    if (method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
   }
 
   try {
+    // ----------------------------------------------------
+    // USER GOOGLE OAUTH 2.0 / OIDC & ACCOUNT DASHBOARD ENDPOINTS
+    // ----------------------------------------------------
+
+    if (isUserAuthOrAccountRoute) {
+      // 1. GET /api/auth/google/start
+      if (pathname === '/api/auth/google/start') {
+        if (method !== 'GET') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+
+        const startLimit = checkRateLimit(req, {
+          namespace: 'google_oauth_start',
+          maxRequests: 30,
+          windowMs: 60_000,
+        });
+        applyRateLimitHeaders(res, startLimit);
+        if (!startLimit.allowed) {
+          sendError(res, 429, `Too many sign-in attempts. Please wait ${startLimit.retryAfterSeconds}s.`, 'RATE_LIMITED');
+          return true;
+        }
+
+        const rawMode = (parsedUrl.searchParams.get('mode') || 'redirect').trim().toLowerCase();
+        const mode: 'redirect' | 'popup' = rawMode === 'popup' ? 'popup' : 'redirect';
+        const formatJson = parsedUrl.searchParams.get('format') === 'json';
+
+        try {
+          const { authorizationUrl, sealedTxCookie } = createGoogleAuthorizationStart(req, mode);
+          setOAuthTxCookie(req, res, sealedTxCookie, mode);
+
+          if (formatJson) {
+            sendJson(res, 200, {
+              success: true,
+              mode,
+              authorizationUrl,
+            });
+            return true;
+          }
+
+          res.statusCode = 302;
+          res.setHeader('Location', authorizationUrl);
+          res.end();
+          return true;
+        } catch (err) {
+          if (err instanceof UserAuthConfigError) {
+            if (formatJson) {
+              sendError(res, 503, err.message, err.code);
+              return true;
+            }
+            res.statusCode = 302;
+            res.setHeader('Location', '/?auth_error=oauth_not_configured');
+            res.end();
+            return true;
+          }
+          throw err;
+        }
+      }
+
+      // 2. GET /api/auth/google/callback
+      if (pathname === '/api/auth/google/callback') {
+        if (method !== 'GET') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+
+        const callbackLimit = checkRateLimit(req, {
+          namespace: 'google_oauth_callback',
+          maxRequests: 30,
+          windowMs: 60_000,
+        });
+        applyRateLimitHeaders(res, callbackLimit);
+        if (!callbackLimit.allowed) {
+          sendError(res, 429, 'Too many authentication callbacks. Please try again shortly.', 'RATE_LIMITED');
+          return true;
+        }
+
+        // Always clear one-time OAuth transaction cookie immediately
+        clearOAuthTxCookie(req, res);
+
+        const respondCallbackResult = (
+          mode: 'redirect' | 'popup',
+          success: boolean,
+          errorCode?: string
+        ) => {
+          if (mode === 'popup') {
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.end(buildPopupCallbackHtml({ success, errorCode }));
+            return;
+          }
+          res.statusCode = 302;
+          res.setHeader(
+            'Location',
+            success ? '/account' : `/?auth_error=${encodeURIComponent(errorCode || 'auth_failed')}`
+          );
+          res.end();
+        };
+
+        let config;
+        try {
+          config = getGoogleOAuthConfig();
+        } catch {
+          respondCallbackResult('redirect', false, 'oauth_not_configured');
+          return true;
+        }
+
+        const cookies = parseCookies(req.headers);
+        const tx = unsealOAuthTransaction(cookies[OAUTH_TX_COOKIE_NAME], config.sessionSecret);
+        const mode: 'redirect' | 'popup' = tx?.mode === 'popup' ? 'popup' : 'redirect';
+
+        const oauthError = (parsedUrl.searchParams.get('error') || '').trim();
+        if (oauthError) {
+          const safeCode = oauthError === 'access_denied' ? 'access_denied' : 'google_error';
+          respondCallbackResult(mode, false, safeCode);
+          return true;
+        }
+
+        const code = (parsedUrl.searchParams.get('code') || '').trim();
+        const returnedState = (parsedUrl.searchParams.get('state') || '').trim();
+
+        if (!tx || !code || !returnedState || !timingSafeStringEqual(tx.state, returnedState)) {
+          respondCallbackResult(mode, false, 'invalid_state');
+          return true;
+        }
+
+        try {
+          const { idToken } = await exchangeGoogleAuthorizationCode({
+            code,
+            codeVerifier: tx.codeVerifier,
+            redirectUri: tx.redirectUri,
+            clientId: config.clientId,
+            clientSecret: config.clientSecret,
+          });
+
+          const verifiedIdentity = await verifyGoogleIdToken(
+            idToken,
+            config.clientId,
+            tx.nonce
+          );
+
+          const savedUser = await upsertGoogleUser(verifiedIdentity);
+          const { signedCookie } = await createUserSession(savedUser, req, config.sessionSecret);
+          setUserSessionCookie(req, res, signedCookie);
+
+          respondCallbackResult(mode, true);
+          return true;
+        } catch (err) {
+          console.error('Google OAuth callback failed:', err instanceof Error ? err.message : err);
+          const errCode = err instanceof UserAuthStorageError ? 'storage_unavailable' : 'verification_failed';
+          respondCallbackResult(mode, false, errCode);
+          return true;
+        }
+      }
+
+      // 3. GET /api/auth/session
+      if (pathname === '/api/auth/session') {
+        if (method !== 'GET') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+
+        const oauthStatus = getGoogleOAuthConfigStatus();
+        const authResult = await getAuthenticatedUserFromRequest(req);
+
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendJson(res, 200, {
+            authenticated: false,
+            user: null,
+            oauthConfigured: oauthStatus.configured,
+          });
+          return true;
+        }
+
+        sendJson(res, 200, {
+          authenticated: true,
+          oauthConfigured: oauthStatus.configured,
+          user: {
+            id: authResult.user.id,
+            email: authResult.user.email,
+            emailVerified: authResult.user.emailVerified,
+            name: authResult.user.name,
+            picture: authResult.user.picture,
+            provider: authResult.user.provider,
+            createdAt: authResult.user.createdAt,
+            lastLoginAt: authResult.user.lastLoginAt,
+          },
+        });
+        return true;
+      }
+
+      // 4. POST /api/auth/logout
+      if (pathname === '/api/auth/logout') {
+        if (method !== 'POST') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+
+        if (!verifySameOriginRequest(req)) {
+          sendError(res, 403, 'Cross-origin logout requests are not permitted.', 'CSRF_ORIGIN_MISMATCH');
+          return true;
+        }
+
+        await invalidateUserSessionFromRequest(req, res);
+        sendJson(res, 200, {
+          success: true,
+          message: 'Signed out successfully.',
+        });
+        return true;
+      }
+
+      // 5. GET /api/account/dashboard (Protected user endpoint)
+      if (pathname === '/api/account/dashboard') {
+        if (method !== 'GET') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendError(res, 401, 'Authentication required to access your Zoyalive account.', 'UNAUTHENTICATED');
+          return true;
+        }
+
+        const licenseSummary = await getUserOwnedLicenseSummary({
+          googleSub: authResult.user.googleSub,
+          email: authResult.user.email,
+          emailVerified: authResult.user.emailVerified,
+        });
+
+        sendJson(res, 200, {
+          success: true,
+          user: {
+            id: authResult.user.id,
+            email: authResult.user.email,
+            emailVerified: authResult.user.emailVerified,
+            name: authResult.user.name,
+            picture: authResult.user.picture,
+            provider: authResult.user.provider,
+            createdAt: authResult.user.createdAt,
+            lastLoginAt: authResult.user.lastLoginAt,
+          },
+          licenseSummary,
+        });
+        return true;
+      }
+
+      // 6. POST /api/account/license/reveal (Protected owner-only key reveal)
+      if (pathname === '/api/account/license/reveal') {
+        if (method !== 'POST') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+
+        if (!verifySameOriginRequest(req)) {
+          sendError(res, 403, 'Cross-origin requests are not permitted.', 'CSRF_ORIGIN_MISMATCH');
+          return true;
+        }
+
+        const revealLimit = checkRateLimit(req, {
+          namespace: 'account_license_reveal',
+          maxRequests: 15,
+          windowMs: 60_000,
+        });
+        applyRateLimitHeaders(res, revealLimit);
+        if (!revealLimit.allowed) {
+          sendError(res, 429, `Too many requests. Please wait ${revealLimit.retryAfterSeconds}s.`, 'RATE_LIMITED');
+          return true;
+        }
+
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendError(res, 401, 'Authentication required.', 'UNAUTHENTICATED');
+          return true;
+        }
+
+        let body: { licenseId?: unknown } = {};
+        try {
+          body = await parseJsonBody<{ licenseId?: unknown }>(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+          return true;
+        }
+
+        const licenseId = typeof body.licenseId === 'string' ? body.licenseId.trim() : '';
+        if (!licenseId) {
+          sendError(res, 400, 'License ID is required.');
+          return true;
+        }
+
+        const revealed = await revealLicenseKeyForUser(licenseId, {
+          googleSub: authResult.user.googleSub,
+          email: authResult.user.email,
+          emailVerified: authResult.user.emailVerified,
+        });
+
+        if (!revealed.success) {
+          sendError(res, revealed.status, revealed.error || 'Unable to reveal license key.', revealed.code);
+          return true;
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          licenseKey: revealed.licenseKey,
+        });
+        return true;
+      }
+
+      sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
+      return true;
+    }
+
     // ----------------------------------------------------
     // PUBLIC ENDPOINTS
     // ----------------------------------------------------
