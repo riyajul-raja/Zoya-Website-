@@ -1,5 +1,5 @@
 // server/apiHandler.ts
-import crypto5 from "crypto";
+import crypto6 from "crypto";
 import path2 from "path";
 
 // server/storage.ts
@@ -2056,6 +2056,7 @@ function normalizeRecordOnRead(raw) {
     encryptedKey: raw.encryptedKey && typeof raw.encryptedKey === "string" ? raw.encryptedKey.trim() : null,
     customerName: String(raw.customerName || ""),
     customerEmail: String(raw.customerEmail || ""),
+    userSub: raw.userSub && typeof raw.userSub === "string" ? raw.userSub.trim() : null,
     licenseType: "Lifetime",
     status,
     createdBy: raw.createdBy && typeof raw.createdBy === "object" ? { email: String(raw.createdBy.email || ""), name: String(raw.createdBy.name || "") } : { email: "admin@zoya.ai", name: "Administrator" },
@@ -2806,6 +2807,212 @@ async function validateLicenseForAndroid(payload) {
     }
   });
 }
+function isLicenseOwnedByAuthenticatedUser(record, user) {
+  if (record.userSub && user.googleSub && record.userSub === user.googleSub) {
+    return "user_sub";
+  }
+  const normalizedUserEmail = (user.email || "").trim().toLowerCase();
+  const normalizedLicenseEmail = (record.customerEmail || "").trim().toLowerCase();
+  if (user.emailVerified && normalizedUserEmail && normalizedLicenseEmail && normalizedLicenseEmail === normalizedUserEmail) {
+    return "verified_email";
+  }
+  return null;
+}
+function selectPrimaryUserLicense(matches) {
+  if (matches.length === 0) return null;
+  const priority = {
+    active: 3,
+    unactivated: 2,
+    revoked: 1
+  };
+  const sorted = [...matches].sort((a, b) => {
+    const pDiff = priority[b.record.status] - priority[a.record.status];
+    if (pDiff !== 0) return pDiff;
+    return Date.parse(b.record.createdAt || "") - Date.parse(a.record.createdAt || "");
+  });
+  return sorted[0];
+}
+async function getUserOwnedLicenseSummary(user) {
+  assertStorageAvailable();
+  const normalizedEmail = (user.email || "").trim().toLowerCase();
+  const matchedMap = /* @__PURE__ */ new Map();
+  try {
+    if (useInMemoryStoreForTesting) {
+      for (const record of inMemoryTestStore.values()) {
+        const matchMethod = isLicenseOwnedByAuthenticatedUser(record, user);
+        if (matchMethod) {
+          matchedMap.set(record.id, { record, matchMethod });
+        }
+      }
+    } else {
+      if (user.googleSub) {
+        const subDocs = await serverQueryDocumentsEq("licenses", "userSub", user.googleSub, 10);
+        for (const docSnap of subDocs) {
+          if (docSnap.data && docSnap.data.id && docSnap.data.keyHash) {
+            const normalized = normalizeRecordOnRead(docSnap.data);
+            matchedMap.set(normalized.id, { record: normalized, matchMethod: "user_sub" });
+          }
+        }
+      }
+      if (user.emailVerified && normalizedEmail) {
+        const emailDocs = await serverQueryDocumentsEq(
+          "licenses",
+          "customerEmail",
+          normalizedEmail,
+          10
+        );
+        for (const docSnap of emailDocs) {
+          if (docSnap.data && docSnap.data.id && docSnap.data.keyHash) {
+            const normalized = normalizeRecordOnRead(docSnap.data);
+            if (!matchedMap.has(normalized.id)) {
+              matchedMap.set(normalized.id, {
+                record: normalized,
+                matchMethod: "verified_email"
+              });
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      throw err;
+    }
+    throw new LicenseStorageError(
+      "Persistent license storage (Cloud Firestore) is unavailable. Could not verify license status.",
+      err
+    );
+  }
+  const allMatches = Array.from(matchedMap.values());
+  const primary = selectPrimaryUserLicense(allMatches);
+  if (!primary) {
+    return {
+      status: "not_purchased",
+      hasLicense: false,
+      license: null,
+      licenseCount: 0,
+      linkageMode: "user_sub_or_verified_email"
+    };
+  }
+  const rec = primary.record;
+  let encryptionConfigured = false;
+  try {
+    getLicenseEncryptionSecret();
+    encryptionConfigured = true;
+  } catch {
+    encryptionConfigured = false;
+  }
+  return {
+    status: rec.status,
+    hasLicense: rec.status === "active" || rec.status === "unactivated",
+    licenseCount: allMatches.length,
+    linkageMode: "user_sub_or_verified_email",
+    license: {
+      id: rec.id,
+      maskedKey: rec.maskedKey,
+      licenseType: rec.licenseType,
+      status: rec.status,
+      createdAt: rec.createdAt,
+      activatedAt: rec.activatedAt,
+      lastSeenAt: rec.lastSeenAt,
+      revokedAt: rec.revokedAt,
+      canRevealKey: Boolean(rec.encryptedKey && encryptionConfigured && rec.status !== "revoked"),
+      matchMethod: primary.matchMethod,
+      linkedDevice: rec.linkedDevice ? {
+        deviceModel: rec.linkedDevice.deviceModel,
+        androidVersion: rec.linkedDevice.androidVersion ?? null,
+        appVersion: rec.linkedDevice.appVersion ?? null,
+        linkedAt: rec.linkedDevice.linkedAt
+      } : null
+    }
+  };
+}
+async function revealLicenseKeyForUser(licenseId, user) {
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return {
+      success: false,
+      status: 400,
+      error: "License ID is required."
+    };
+  }
+  try {
+    const license = await getLicenseById(cleanId);
+    if (!license) {
+      return {
+        success: false,
+        status: 404,
+        code: "LICENSE_NOT_FOUND",
+        error: "License record not found."
+      };
+    }
+    const ownership = isLicenseOwnedByAuthenticatedUser(license, user);
+    if (!ownership) {
+      return {
+        success: false,
+        status: 403,
+        code: "UNAUTHORIZED",
+        error: "You are not authorized to access this license."
+      };
+    }
+    if (license.status === "revoked") {
+      return {
+        success: false,
+        status: 403,
+        code: "UNAUTHORIZED",
+        error: "Revoked license keys cannot be revealed."
+      };
+    }
+    if (!license.encryptedKey) {
+      return {
+        success: false,
+        status: 404,
+        code: "KEY_NOT_RECOVERABLE",
+        error: "This license key cannot be recovered in plaintext."
+      };
+    }
+    try {
+      const decryptedKey = decryptLicenseKey(license.encryptedKey, license.id);
+      if (license.keyHash && hashLicenseKey(decryptedKey) !== license.keyHash) {
+        return {
+          success: false,
+          status: 500,
+          code: "DECRYPTION_FAILED",
+          error: "License key integrity check failed."
+        };
+      }
+      return {
+        success: true,
+        status: 200,
+        licenseKey: decryptedKey
+      };
+    } catch (decErr) {
+      if (decErr instanceof LicenseEncryptionConfigurationError) {
+        return {
+          success: false,
+          status: 500,
+          code: "CONFIGURATION_ERROR",
+          error: "License key decryption is currently unavailable on the server."
+        };
+      }
+      return {
+        success: false,
+        status: 500,
+        code: "DECRYPTION_FAILED",
+        error: "Failed to decrypt license key."
+      };
+    }
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      return {
+        success: false,
+        status: 503,
+        error: err.message
+      };
+    }
+    throw err;
+  }
+}
 
 // server/rateLimit.ts
 var buckets = /* @__PURE__ */ new Map();
@@ -2875,6 +3082,656 @@ function applyRateLimitHeaders(res, result) {
   if (!result.allowed && result.retryAfterSeconds > 0) {
     res.setHeader("Retry-After", String(result.retryAfterSeconds));
   }
+}
+
+// server/userAuth.ts
+import crypto5 from "crypto";
+var GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
+var GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+var GOOGLE_JWKS_ENDPOINT = "https://www.googleapis.com/oauth2/v3/certs";
+var VALID_GOOGLE_ISSUERS = /* @__PURE__ */ new Set(["https://accounts.google.com", "accounts.google.com"]);
+var USER_SESSION_COOKIE_NAME = "zoya_user_session";
+var OAUTH_TX_COOKIE_NAME = "zoya_oauth_tx";
+var SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+var OAUTH_TX_TTL_SECONDS = 60 * 10;
+var CLOCK_SKEW_SECONDS = 30;
+var UserAuthConfigError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.status = 503;
+    this.code = "OAUTH_NOT_CONFIGURED";
+    this.name = "UserAuthConfigError";
+  }
+};
+var UserAuthStorageError = class extends Error {
+  constructor(message, cause) {
+    super(message);
+    this.cause = cause;
+    this.status = 503;
+    this.code = "STORAGE_UNAVAILABLE";
+    this.name = "UserAuthStorageError";
+  }
+};
+var cachedGoogleJwks = null;
+var customJwksProviderForTests = null;
+function getGoogleOAuthConfigStatus() {
+  const missing = [];
+  const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
+  const sessionSecret = (process.env.SESSION_SECRET || "").trim();
+  if (!clientId) missing.push("GOOGLE_CLIENT_ID");
+  if (!clientSecret) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!sessionSecret || Buffer.byteLength(sessionSecret, "utf-8") < 32) {
+    missing.push("SESSION_SECRET");
+  }
+  return {
+    configured: missing.length === 0,
+    missing
+  };
+}
+function getGoogleOAuthConfig() {
+  const status = getGoogleOAuthConfigStatus();
+  if (!status.configured) {
+    throw new UserAuthConfigError(
+      "Google sign-in is not yet configured on the server. Required environment variables must be set by the site administrator."
+    );
+  }
+  const redirectUriOverride = (process.env.GOOGLE_REDIRECT_URI || "").trim() || null;
+  return {
+    clientId: (process.env.GOOGLE_CLIENT_ID || "").trim(),
+    clientSecret: (process.env.GOOGLE_CLIENT_SECRET || "").trim(),
+    redirectUriOverride,
+    sessionSecret: (process.env.SESSION_SECRET || "").trim()
+  };
+}
+function getSessionSecretOrNull() {
+  const raw = (process.env.SESSION_SECRET || "").trim();
+  if (!raw || Buffer.byteLength(raw, "utf-8") < 32) {
+    return null;
+  }
+  return raw;
+}
+function deriveAesKey(secret, purpose) {
+  return crypto5.createHash("sha256").update(`zoya_auth_v1:${purpose}:${secret}`).digest();
+}
+function deriveHmacKey(secret, purpose) {
+  return crypto5.createHash("sha256").update(`zoya_hmac_v1:${purpose}:${secret}`).digest();
+}
+function timingSafeStringEqual(a, b) {
+  const bufA = Buffer.from(a, "utf-8");
+  const bufB = Buffer.from(b, "utf-8");
+  if (bufA.length !== bufB.length) return false;
+  return crypto5.timingSafeEqual(bufA, bufB);
+}
+function generateOAuthSecurityParams() {
+  const state = crypto5.randomBytes(32).toString("base64url");
+  const nonce = crypto5.randomBytes(32).toString("base64url");
+  const codeVerifier = crypto5.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto5.createHash("sha256").update(codeVerifier).digest("base64url");
+  return { state, nonce, codeVerifier, codeChallenge };
+}
+function sealOAuthTransaction(payload, sessionSecret) {
+  const key = deriveAesKey(sessionSecret, "oauth_tx");
+  const iv = crypto5.randomBytes(12);
+  const cipher = crypto5.createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from("zoya_oauth_tx_v1", "utf-8"));
+  const plaintext = JSON.stringify(payload);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf-8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString("base64url")}.${authTag.toString("base64url")}.${encrypted.toString("base64url")}`;
+}
+function unsealOAuthTransaction(sealed, sessionSecret) {
+  if (!sealed || typeof sealed !== "string") return null;
+  const parts = sealed.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const iv = Buffer.from(parts[0], "base64url");
+    const authTag = Buffer.from(parts[1], "base64url");
+    const ciphertext = Buffer.from(parts[2], "base64url");
+    if (iv.length !== 12 || authTag.length !== 16 || ciphertext.length === 0) {
+      return null;
+    }
+    const key = deriveAesKey(sessionSecret, "oauth_tx");
+    const decipher = crypto5.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAAD(Buffer.from("zoya_oauth_tx_v1", "utf-8"));
+    decipher.setAuthTag(authTag);
+    const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf-8");
+    const parsed = JSON.parse(decrypted);
+    if (!parsed || typeof parsed.state !== "string" || typeof parsed.nonce !== "string" || typeof parsed.codeVerifier !== "string" || typeof parsed.redirectUri !== "string" || typeof parsed.exp !== "number") {
+      return null;
+    }
+    if (parsed.exp < Math.floor(Date.now() / 1e3)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+function resolveRequestOrigin(req) {
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const rawProto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+  const forwardedHost = req.headers["x-forwarded-host"];
+  const rawHost = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host || "";
+  const host = String(rawHost).split(",")[0].trim();
+  const isLocalHost = host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]");
+  const proto = rawProto ? String(rawProto).split(",")[0].trim() : isLocalHost ? "http" : "https";
+  if (host) {
+    return `${proto}://${host}`;
+  }
+  return (process.env.PUBLIC_SITE_URL || "https://zoyalive.vercel.app").replace(/\/+$/, "");
+}
+function isHttpsRequest(req) {
+  return resolveRequestOrigin(req).startsWith("https://");
+}
+function isEmbeddedPreviewHost(req) {
+  const origin = resolveRequestOrigin(req).toLowerCase();
+  return origin.includes(".run.app");
+}
+function resolveGoogleRedirectUri(req, override) {
+  if (override) {
+    return override;
+  }
+  const origin = resolveRequestOrigin(req);
+  return `${origin}/api/auth/google/callback`;
+}
+function parseCookies(reqHeaders) {
+  const result = {};
+  const rawCookie = reqHeaders["cookie"] || reqHeaders["Cookie"];
+  const headerList = Array.isArray(rawCookie) ? rawCookie : typeof rawCookie === "string" ? [rawCookie] : [];
+  for (const header of headerList) {
+    for (const part of header.split(";")) {
+      const idx = part.indexOf("=");
+      if (idx <= 0) continue;
+      const name = part.slice(0, idx).trim();
+      const value = part.slice(idx + 1).trim();
+      if (name) {
+        result[name] = value;
+      }
+    }
+  }
+  return result;
+}
+function appendSetCookieHeader(res, cookieValue) {
+  const existing = res.getHeader("Set-Cookie");
+  if (!existing) {
+    res.setHeader("Set-Cookie", cookieValue);
+  } else if (Array.isArray(existing)) {
+    res.setHeader("Set-Cookie", [...existing, cookieValue]);
+  } else {
+    res.setHeader("Set-Cookie", [String(existing), cookieValue]);
+  }
+}
+function buildCookieString(name, value, options) {
+  const parts = [
+    `${name}=${value}`,
+    `Path=${options.path || "/"}`,
+    "HttpOnly",
+    `SameSite=${options.sameSite}`,
+    `Max-Age=${options.maxAge}`
+  ];
+  if (options.secure) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+function setOAuthTxCookie(req, res, sealedValue, mode) {
+  const secure = isHttpsRequest(req);
+  const sameSite = secure && (mode === "popup" || isEmbeddedPreviewHost(req)) ? "None" : "Lax";
+  appendSetCookieHeader(
+    res,
+    buildCookieString(OAUTH_TX_COOKIE_NAME, sealedValue, {
+      maxAge: OAUTH_TX_TTL_SECONDS,
+      secure,
+      sameSite
+    })
+  );
+}
+function clearOAuthTxCookie(req, res) {
+  const secure = isHttpsRequest(req);
+  const sameSite = secure && isEmbeddedPreviewHost(req) ? "None" : "Lax";
+  appendSetCookieHeader(
+    res,
+    buildCookieString(OAUTH_TX_COOKIE_NAME, "", {
+      maxAge: 0,
+      secure,
+      sameSite
+    })
+  );
+}
+function signSessionCookieValue(sessionId, sessionSecret) {
+  const sig = crypto5.createHmac("sha256", deriveHmacKey(sessionSecret, "session_cookie")).update(sessionId).digest("base64url");
+  return `${sessionId}.${sig}`;
+}
+function verifySignedSessionCookieValue(rawCookie, sessionSecret) {
+  if (!rawCookie || typeof rawCookie !== "string") return null;
+  const parts = rawCookie.split(".");
+  if (parts.length !== 2) return null;
+  const [sessionId, sig] = parts;
+  if (!sessionId || !sig || sessionId.length < 32 || sessionId.length > 128) {
+    return null;
+  }
+  const expectedSig = crypto5.createHmac("sha256", deriveHmacKey(sessionSecret, "session_cookie")).update(sessionId).digest("base64url");
+  if (!timingSafeStringEqual(sig, expectedSig)) {
+    return null;
+  }
+  return sessionId;
+}
+function hashSessionId(sessionId) {
+  return crypto5.createHash("sha256").update(`zoya_session_v1:${sessionId}`).digest("hex");
+}
+function setUserSessionCookie(req, res, signedValue) {
+  const secure = isHttpsRequest(req);
+  const sameSite = secure && isEmbeddedPreviewHost(req) ? "None" : "Lax";
+  appendSetCookieHeader(
+    res,
+    buildCookieString(USER_SESSION_COOKIE_NAME, signedValue, {
+      maxAge: SESSION_TTL_SECONDS,
+      secure,
+      sameSite
+    })
+  );
+}
+function clearUserSessionCookie(req, res) {
+  const secure = isHttpsRequest(req);
+  const sameSite = secure && isEmbeddedPreviewHost(req) ? "None" : "Lax";
+  appendSetCookieHeader(
+    res,
+    buildCookieString(USER_SESSION_COOKIE_NAME, "", {
+      maxAge: 0,
+      secure,
+      sameSite
+    })
+  );
+}
+function verifySameOriginRequest(req) {
+  const expectedOrigin = resolveRequestOrigin(req);
+  const originHeader = typeof req.headers.origin === "string" ? req.headers.origin.trim() : "";
+  const refererHeader = typeof req.headers.referer === "string" ? req.headers.referer.trim() : "";
+  if (originHeader) {
+    return originHeader.replace(/\/+$/, "") === expectedOrigin.replace(/\/+$/, "");
+  }
+  if (refererHeader) {
+    try {
+      const refOrigin = new URL(refererHeader).origin;
+      return refOrigin.replace(/\/+$/, "") === expectedOrigin.replace(/\/+$/, "");
+    } catch {
+      return false;
+    }
+  }
+  const secFetchSite = typeof req.headers["sec-fetch-site"] === "string" ? req.headers["sec-fetch-site"].toLowerCase() : "";
+  if (secFetchSite === "cross-site") {
+    return false;
+  }
+  return true;
+}
+function applyAuthSecurityHeaders(req, res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Vary", "Origin, Cookie");
+  const expectedOrigin = resolveRequestOrigin(req);
+  const reqOrigin = typeof req.headers.origin === "string" ? req.headers.origin.trim() : "";
+  if (reqOrigin && reqOrigin.replace(/\/+$/, "") === expectedOrigin.replace(/\/+$/, "")) {
+    res.setHeader("Access-Control-Allow-Origin", reqOrigin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+  }
+}
+function createGoogleAuthorizationStart(req, mode) {
+  const config = getGoogleOAuthConfig();
+  const redirectUri = resolveGoogleRedirectUri(req, config.redirectUriOverride);
+  const { state, nonce, codeVerifier, codeChallenge } = generateOAuthSecurityParams();
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const txPayload = {
+    state,
+    nonce,
+    codeVerifier,
+    redirectUri,
+    mode,
+    createdAt: nowSec,
+    exp: nowSec + OAUTH_TX_TTL_SECONDS
+  };
+  const sealedTxCookie = sealOAuthTransaction(txPayload, config.sessionSecret);
+  const params = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile",
+    state,
+    nonce,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    prompt: "select_account"
+  });
+  return {
+    authorizationUrl: `${GOOGLE_AUTH_ENDPOINT}?${params.toString()}`,
+    sealedTxCookie
+  };
+}
+async function fetchGoogleJwks(forceRefresh = false) {
+  if (customJwksProviderForTests) {
+    return customJwksProviderForTests();
+  }
+  const now = Date.now();
+  if (!forceRefresh && cachedGoogleJwks && cachedGoogleJwks.expiresAt > now) {
+    return cachedGoogleJwks.keys;
+  }
+  const response = await fetch(GOOGLE_JWKS_ENDPOINT, {
+    method: "GET",
+    headers: { Accept: "application/json" }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Google OIDC public keys (HTTP ${response.status}).`);
+  }
+  const body = await response.json();
+  if (!body || !Array.isArray(body.keys) || body.keys.length === 0) {
+    throw new Error("Google JWKS response did not contain valid public keys.");
+  }
+  let maxAgeSec = 3600;
+  const cacheControl = response.headers.get("cache-control") || "";
+  const match = cacheControl.match(/max-age=(\d+)/i);
+  if (match) {
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed) && parsed > 60) {
+      maxAgeSec = Math.min(parsed, 86400);
+    }
+  }
+  cachedGoogleJwks = {
+    keys: body.keys,
+    expiresAt: now + maxAgeSec * 1e3
+  };
+  return body.keys;
+}
+async function verifyGoogleIdToken(idToken, expectedClientId, expectedNonce) {
+  if (!idToken || typeof idToken !== "string") {
+    throw new Error("Missing Google ID token.");
+  }
+  const parts = idToken.split(".");
+  if (parts.length !== 3) {
+    throw new Error("Malformed Google ID token.");
+  }
+  const [headerB64, payloadB64, signatureB64] = parts;
+  let header;
+  let payload;
+  try {
+    header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf-8"));
+    payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
+  } catch {
+    throw new Error("Failed to decode Google ID token.");
+  }
+  if (header.alg !== "RS256" || typeof header.kid !== "string" || !header.kid.trim()) {
+    throw new Error("Unsupported or missing Google ID token signing algorithm/key ID.");
+  }
+  let keys = await fetchGoogleJwks(false);
+  let matchingKey = keys.find((k) => k.kid === header.kid && k.kty === "RSA");
+  if (!matchingKey) {
+    keys = await fetchGoogleJwks(true);
+    matchingKey = keys.find((k) => k.kid === header.kid && k.kty === "RSA");
+  }
+  if (!matchingKey) {
+    throw new Error("No matching Google signing key found for ID token.");
+  }
+  const publicKey = crypto5.createPublicKey({
+    key: matchingKey,
+    format: "jwk"
+  });
+  const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf-8");
+  const signature = Buffer.from(signatureB64, "base64url");
+  const isSignatureValid = crypto5.verify("RSA-SHA256", signingInput, publicKey, signature);
+  if (!isSignatureValid) {
+    throw new Error("Google ID token signature verification failed.");
+  }
+  const iss = typeof payload.iss === "string" ? payload.iss : "";
+  if (!VALID_GOOGLE_ISSUERS.has(iss)) {
+    throw new Error("Google ID token issuer is invalid.");
+  }
+  const aud = payload.aud;
+  const audValid = typeof aud === "string" ? aud === expectedClientId : Array.isArray(aud) && aud.includes(expectedClientId);
+  if (!audValid) {
+    throw new Error("Google ID token audience mismatch.");
+  }
+  const nowSec = Math.floor(Date.now() / 1e3);
+  const exp = typeof payload.exp === "number" ? payload.exp : 0;
+  if (!exp || exp + CLOCK_SKEW_SECONDS < nowSec) {
+    throw new Error("Google ID token has expired.");
+  }
+  const nbf = typeof payload.nbf === "number" ? payload.nbf : null;
+  if (nbf !== null && nbf - CLOCK_SKEW_SECONDS > nowSec) {
+    throw new Error("Google ID token is not yet valid.");
+  }
+  const tokenNonce = typeof payload.nonce === "string" ? payload.nonce : "";
+  if (!tokenNonce || !expectedNonce || !timingSafeStringEqual(tokenNonce, expectedNonce)) {
+    throw new Error("Google ID token nonce mismatch.");
+  }
+  const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+  if (!sub || !/^[a-zA-Z0-9._-]{4,128}$/.test(sub)) {
+    throw new Error("Google ID token missing valid account subject identifier.");
+  }
+  const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  if (!email || !email.includes("@")) {
+    throw new Error("Google ID token missing valid email address.");
+  }
+  const emailVerified = payload.email_verified === true;
+  if (!emailVerified) {
+    throw new Error("Google account email is not verified.");
+  }
+  const rawName = typeof payload.name === "string" ? payload.name.trim() : "";
+  const name = rawName.slice(0, 120) || email.split("@")[0];
+  const rawPicture = typeof payload.picture === "string" ? payload.picture.trim() : "";
+  const picture = rawPicture && /^https:\/\/[a-zA-Z0-9.-]+\//.test(rawPicture) ? rawPicture.slice(0, 500) : null;
+  return {
+    sub,
+    email,
+    emailVerified,
+    name,
+    picture
+  };
+}
+async function exchangeGoogleAuthorizationCode(params) {
+  const formBody = new URLSearchParams({
+    code: params.code,
+    client_id: params.clientId,
+    client_secret: params.clientSecret,
+    redirect_uri: params.redirectUri,
+    grant_type: "authorization_code",
+    code_verifier: params.codeVerifier
+  });
+  const tokenRes = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json"
+    },
+    body: formBody.toString()
+  });
+  const tokenData = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok || !tokenData.id_token) {
+    throw new Error(
+      tokenData.error_description || tokenData.error || "Google token exchange failed."
+    );
+  }
+  return { idToken: tokenData.id_token };
+}
+async function upsertGoogleUser(identity) {
+  try {
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    return await serverRunTransaction(async (tx) => {
+      const existingSnap = await tx.get("users", identity.sub);
+      const existingData = existingSnap.exists ? existingSnap.data : void 0;
+      const userRecord = {
+        id: identity.sub,
+        googleSub: identity.sub,
+        email: identity.email,
+        emailVerified: identity.emailVerified,
+        name: identity.name,
+        picture: identity.picture,
+        provider: "google",
+        createdAt: existingData && typeof existingData.createdAt === "string" ? existingData.createdAt : nowIso,
+        updatedAt: nowIso,
+        lastLoginAt: nowIso
+      };
+      tx.set("users", identity.sub, userRecord);
+      return userRecord;
+    });
+  } catch (err) {
+    throw new UserAuthStorageError(
+      "Account database (Cloud Firestore) is unavailable. Could not save user account.",
+      err
+    );
+  }
+}
+async function createUserSession(user, req, sessionSecret) {
+  const sessionId = crypto5.randomBytes(32).toString("base64url");
+  const sessionIdHash = hashSessionId(sessionId);
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const expiresAtIso = new Date(now + SESSION_TTL_SECONDS * 1e3).toISOString();
+  const rawUa = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : "";
+  const userAgentHash = rawUa ? crypto5.createHash("sha256").update(rawUa).digest("hex").slice(0, 32) : null;
+  const sessionRecord = {
+    sessionIdHash,
+    userSub: user.googleSub,
+    email: user.email,
+    createdAt: nowIso,
+    expiresAt: expiresAtIso,
+    lastSeenAt: nowIso,
+    revoked: false,
+    userAgentHash
+  };
+  try {
+    await serverSetDocumentById("user_sessions", sessionIdHash, sessionRecord);
+  } catch (err) {
+    throw new UserAuthStorageError(
+      "Session database (Cloud Firestore) is unavailable. Could not create user session.",
+      err
+    );
+  }
+  return {
+    signedCookie: signSessionCookieValue(sessionId, sessionSecret),
+    session: sessionRecord
+  };
+}
+async function getAuthenticatedUserFromRequest(req) {
+  const cookies = parseCookies(req.headers);
+  const rawCookie = cookies[USER_SESSION_COOKIE_NAME];
+  if (!rawCookie) {
+    return { authenticated: false, user: null, sessionIdHash: null, hadCookie: false };
+  }
+  const sessionSecret = getSessionSecretOrNull();
+  if (!sessionSecret) {
+    return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+  }
+  const sessionId = verifySignedSessionCookieValue(rawCookie, sessionSecret);
+  if (!sessionId) {
+    return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+  }
+  const sessionIdHash = hashSessionId(sessionId);
+  try {
+    const sessionSnap = await serverGetDocumentById("user_sessions", sessionIdHash);
+    if (!sessionSnap.exists || !sessionSnap.data) {
+      return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+    }
+    const sessionData = sessionSnap.data;
+    if (sessionData.revoked === true || !sessionData.userSub || !sessionData.expiresAt) {
+      return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+    }
+    const expiresMs = Date.parse(sessionData.expiresAt);
+    if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+      serverDeleteDocumentById("user_sessions", sessionIdHash).catch(() => {
+      });
+      return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+    }
+    const userSnap = await serverGetDocumentById("users", sessionData.userSub);
+    if (!userSnap.exists || !userSnap.data) {
+      return { authenticated: false, user: null, sessionIdHash: null, hadCookie: true };
+    }
+    const rawUser = userSnap.data;
+    const user = {
+      id: String(rawUser.id || sessionData.userSub),
+      googleSub: String(rawUser.googleSub || sessionData.userSub),
+      email: String(rawUser.email || ""),
+      emailVerified: rawUser.emailVerified === true,
+      name: String(rawUser.name || ""),
+      picture: typeof rawUser.picture === "string" ? rawUser.picture : null,
+      provider: "google",
+      createdAt: String(rawUser.createdAt || ""),
+      updatedAt: String(rawUser.updatedAt || ""),
+      lastLoginAt: String(rawUser.lastLoginAt || "")
+    };
+    return {
+      authenticated: true,
+      user,
+      sessionIdHash,
+      hadCookie: true
+    };
+  } catch {
+    return {
+      authenticated: false,
+      user: null,
+      sessionIdHash: null,
+      hadCookie: true,
+      storageUnavailable: true
+    };
+  }
+}
+async function invalidateUserSessionFromRequest(req, res) {
+  const cookies = parseCookies(req.headers);
+  const rawCookie = cookies[USER_SESSION_COOKIE_NAME];
+  const sessionSecret = getSessionSecretOrNull();
+  clearUserSessionCookie(req, res);
+  if (!rawCookie || !sessionSecret) {
+    return { invalidated: false };
+  }
+  const sessionId = verifySignedSessionCookieValue(rawCookie, sessionSecret);
+  if (!sessionId) {
+    return { invalidated: false };
+  }
+  const sessionIdHash = hashSessionId(sessionId);
+  try {
+    await serverDeleteDocumentById("user_sessions", sessionIdHash);
+    return { invalidated: true };
+  } catch {
+    return { invalidated: false };
+  }
+}
+function buildPopupCallbackHtml(options) {
+  const safeError = options.errorCode ? options.errorCode.replace(/[^a-z0-9_]/gi, "") : "";
+  const fallbackUrl = options.success ? "/account" : `/?auth_error=${encodeURIComponent(safeError || "auth_failed")}`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Zoyalive Sign-In</title>
+</head>
+<body style="background:#0d0a14;color:#f4f4f5;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+  <p style="font-size:14px;opacity:0.85;">${options.success ? "Sign-in complete. Returning to Zoyalive..." : "Unable to complete sign-in. Returning to Zoyalive..."}</p>
+  <script>
+    (function () {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(
+            {
+              type: 'ZOYA_AUTH_COMPLETE',
+              success: ${options.success ? "true" : "false"},
+              errorCode: ${JSON.stringify(safeError)}
+            },
+            window.location.origin
+          );
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      window.location.replace(${JSON.stringify(fallbackUrl)});
+    })();
+  </script>
+</body>
+</html>`;
 }
 
 // server/apiHandler.ts
@@ -3039,15 +3896,291 @@ async function handleApiRequest(req, res, explicitRoute) {
   }
   pathname = pathname.replace(/\/+$/, "") || "/";
   const method = req.method?.toUpperCase() || "GET";
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-filename, Accept, X-Requested-With");
-  if (method === "OPTIONS") {
-    res.statusCode = 204;
-    res.end();
-    return true;
+  const isUserAuthOrAccountRoute = pathname.startsWith("/api/auth/") || pathname.startsWith("/api/account/");
+  if (isUserAuthOrAccountRoute) {
+    applyAuthSecurityHeaders(req, res);
+    if (method === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-filename, Accept, X-Requested-With");
+    if (method === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
   }
   try {
+    if (isUserAuthOrAccountRoute) {
+      if (pathname === "/api/auth/google/start") {
+        if (method !== "GET") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+        const startLimit = checkRateLimit(req, {
+          namespace: "google_oauth_start",
+          maxRequests: 30,
+          windowMs: 6e4
+        });
+        applyRateLimitHeaders(res, startLimit);
+        if (!startLimit.allowed) {
+          sendError(res, 429, `Too many sign-in attempts. Please wait ${startLimit.retryAfterSeconds}s.`, "RATE_LIMITED");
+          return true;
+        }
+        const rawMode = (parsedUrl.searchParams.get("mode") || "redirect").trim().toLowerCase();
+        const mode = rawMode === "popup" ? "popup" : "redirect";
+        const formatJson = parsedUrl.searchParams.get("format") === "json";
+        try {
+          const { authorizationUrl, sealedTxCookie } = createGoogleAuthorizationStart(req, mode);
+          setOAuthTxCookie(req, res, sealedTxCookie, mode);
+          if (formatJson) {
+            sendJson(res, 200, {
+              success: true,
+              mode,
+              authorizationUrl
+            });
+            return true;
+          }
+          res.statusCode = 302;
+          res.setHeader("Location", authorizationUrl);
+          res.end();
+          return true;
+        } catch (err) {
+          if (err instanceof UserAuthConfigError) {
+            if (formatJson) {
+              sendError(res, 503, err.message, err.code);
+              return true;
+            }
+            res.statusCode = 302;
+            res.setHeader("Location", "/?auth_error=oauth_not_configured");
+            res.end();
+            return true;
+          }
+          throw err;
+        }
+      }
+      if (pathname === "/api/auth/google/callback") {
+        if (method !== "GET") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+        const callbackLimit = checkRateLimit(req, {
+          namespace: "google_oauth_callback",
+          maxRequests: 30,
+          windowMs: 6e4
+        });
+        applyRateLimitHeaders(res, callbackLimit);
+        if (!callbackLimit.allowed) {
+          sendError(res, 429, "Too many authentication callbacks. Please try again shortly.", "RATE_LIMITED");
+          return true;
+        }
+        clearOAuthTxCookie(req, res);
+        const respondCallbackResult = (mode2, success, errorCode) => {
+          if (mode2 === "popup") {
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.end(buildPopupCallbackHtml({ success, errorCode }));
+            return;
+          }
+          res.statusCode = 302;
+          res.setHeader(
+            "Location",
+            success ? "/account" : `/?auth_error=${encodeURIComponent(errorCode || "auth_failed")}`
+          );
+          res.end();
+        };
+        let config;
+        try {
+          config = getGoogleOAuthConfig();
+        } catch {
+          respondCallbackResult("redirect", false, "oauth_not_configured");
+          return true;
+        }
+        const cookies = parseCookies(req.headers);
+        const tx = unsealOAuthTransaction(cookies[OAUTH_TX_COOKIE_NAME], config.sessionSecret);
+        const mode = tx?.mode === "popup" ? "popup" : "redirect";
+        const oauthError = (parsedUrl.searchParams.get("error") || "").trim();
+        if (oauthError) {
+          const safeCode = oauthError === "access_denied" ? "access_denied" : "google_error";
+          respondCallbackResult(mode, false, safeCode);
+          return true;
+        }
+        const code = (parsedUrl.searchParams.get("code") || "").trim();
+        const returnedState = (parsedUrl.searchParams.get("state") || "").trim();
+        if (!tx || !code || !returnedState || !timingSafeStringEqual(tx.state, returnedState)) {
+          respondCallbackResult(mode, false, "invalid_state");
+          return true;
+        }
+        try {
+          const { idToken } = await exchangeGoogleAuthorizationCode({
+            code,
+            codeVerifier: tx.codeVerifier,
+            redirectUri: tx.redirectUri,
+            clientId: config.clientId,
+            clientSecret: config.clientSecret
+          });
+          const verifiedIdentity = await verifyGoogleIdToken(
+            idToken,
+            config.clientId,
+            tx.nonce
+          );
+          const savedUser = await upsertGoogleUser(verifiedIdentity);
+          const { signedCookie } = await createUserSession(savedUser, req, config.sessionSecret);
+          setUserSessionCookie(req, res, signedCookie);
+          respondCallbackResult(mode, true);
+          return true;
+        } catch (err) {
+          console.error("Google OAuth callback failed:", err instanceof Error ? err.message : err);
+          const errCode = err instanceof UserAuthStorageError ? "storage_unavailable" : "verification_failed";
+          respondCallbackResult(mode, false, errCode);
+          return true;
+        }
+      }
+      if (pathname === "/api/auth/session") {
+        if (method !== "GET") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+        const oauthStatus = getGoogleOAuthConfigStatus();
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendJson(res, 200, {
+            authenticated: false,
+            user: null,
+            oauthConfigured: oauthStatus.configured
+          });
+          return true;
+        }
+        sendJson(res, 200, {
+          authenticated: true,
+          oauthConfigured: oauthStatus.configured,
+          user: {
+            id: authResult.user.id,
+            email: authResult.user.email,
+            emailVerified: authResult.user.emailVerified,
+            name: authResult.user.name,
+            picture: authResult.user.picture,
+            provider: authResult.user.provider,
+            createdAt: authResult.user.createdAt,
+            lastLoginAt: authResult.user.lastLoginAt
+          }
+        });
+        return true;
+      }
+      if (pathname === "/api/auth/logout") {
+        if (method !== "POST") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+        if (!verifySameOriginRequest(req)) {
+          sendError(res, 403, "Cross-origin logout requests are not permitted.", "CSRF_ORIGIN_MISMATCH");
+          return true;
+        }
+        await invalidateUserSessionFromRequest(req, res);
+        sendJson(res, 200, {
+          success: true,
+          message: "Signed out successfully."
+        });
+        return true;
+      }
+      if (pathname === "/api/account/dashboard") {
+        if (method !== "GET") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+          return true;
+        }
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendError(res, 401, "Authentication required to access your Zoyalive account.", "UNAUTHENTICATED");
+          return true;
+        }
+        const licenseSummary = await getUserOwnedLicenseSummary({
+          googleSub: authResult.user.googleSub,
+          email: authResult.user.email,
+          emailVerified: authResult.user.emailVerified
+        });
+        sendJson(res, 200, {
+          success: true,
+          user: {
+            id: authResult.user.id,
+            email: authResult.user.email,
+            emailVerified: authResult.user.emailVerified,
+            name: authResult.user.name,
+            picture: authResult.user.picture,
+            provider: authResult.user.provider,
+            createdAt: authResult.user.createdAt,
+            lastLoginAt: authResult.user.lastLoginAt
+          },
+          licenseSummary
+        });
+        return true;
+      }
+      if (pathname === "/api/account/license/reveal") {
+        if (method !== "POST") {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+        if (!verifySameOriginRequest(req)) {
+          sendError(res, 403, "Cross-origin requests are not permitted.", "CSRF_ORIGIN_MISMATCH");
+          return true;
+        }
+        const revealLimit = checkRateLimit(req, {
+          namespace: "account_license_reveal",
+          maxRequests: 15,
+          windowMs: 6e4
+        });
+        applyRateLimitHeaders(res, revealLimit);
+        if (!revealLimit.allowed) {
+          sendError(res, 429, `Too many requests. Please wait ${revealLimit.retryAfterSeconds}s.`, "RATE_LIMITED");
+          return true;
+        }
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendError(res, 401, "Authentication required.", "UNAUTHENTICATED");
+          return true;
+        }
+        let body = {};
+        try {
+          body = await parseJsonBody(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : "Invalid JSON body.");
+          return true;
+        }
+        const licenseId = typeof body.licenseId === "string" ? body.licenseId.trim() : "";
+        if (!licenseId) {
+          sendError(res, 400, "License ID is required.");
+          return true;
+        }
+        const revealed = await revealLicenseKeyForUser(licenseId, {
+          googleSub: authResult.user.googleSub,
+          email: authResult.user.email,
+          emailVerified: authResult.user.emailVerified
+        });
+        if (!revealed.success) {
+          sendError(res, revealed.status, revealed.error || "Unable to reveal license key.", revealed.code);
+          return true;
+        }
+        sendJson(res, 200, {
+          success: true,
+          licenseKey: revealed.licenseKey
+        });
+        return true;
+      }
+      sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
+      return true;
+    }
     if (pathname === "/api/releases/latest" && method === "GET") {
       const latest = await getLatestPublishedRelease();
       if (!latest) {
@@ -3372,7 +4505,7 @@ async function handleApiRequest(req, res, explicitRoute) {
             );
             return true;
           }
-          const serverSha256 = crypto5.createHash("sha256").update(apkBuffer).digest("hex");
+          const serverSha256 = crypto6.createHash("sha256").update(apkBuffer).digest("hex");
           const draftId2 = `rel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
           const downloadUrl2 = `/api/releases/download?id=${draftId2}`;
           const nowIso2 = (/* @__PURE__ */ new Date()).toISOString();
