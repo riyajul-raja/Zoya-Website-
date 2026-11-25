@@ -42,6 +42,15 @@ import {
   type LicenseFcmTransportPayload,
 } from '../server/fcm';
 import {
+  ENTITLEMENT_ISSUER,
+  ENTITLEMENT_AUDIENCE,
+  ENTITLEMENT_ALGORITHM,
+  ENTITLEMENT_GRACE_TTL_SECONDS,
+  getEntitlementPublicJwks,
+  signEs256EntitlementToken,
+  verifyEs256EntitlementToken,
+} from '../server/entitlementSigning';
+import {
   APK_CHUNK_SIZE,
   saveRelease,
   getAllReleases,
@@ -283,11 +292,22 @@ async function runTests() {
   const { adapter: zoyaUpdatesAdapter, metrics: firestoreMetrics } = createZoyaUpdatesTestAdapter();
   const TEST_ADMIN_PIN = 'test-pin-739184';
   const TEST_ADMIN_JWT_SECRET = crypto.randomBytes(32).toString('hex');
+  const testPrimaryEcPair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const TEST_ES256_PRIVATE_KEY_PEM = testPrimaryEcPair.privateKey
+    .export({ type: 'pkcs8', format: 'pem' })
+    .toString();
+  const TEST_ES256_KEY_ID = 'zoya-es256-test-primary';
   const origAdminEnv = {
     ZOYA_ADMIN_PIN: process.env.ZOYA_ADMIN_PIN,
     ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET,
     LICENSE_KEY_ENCRYPTION_SECRET: process.env.LICENSE_KEY_ENCRYPTION_SECRET,
+    ENTITLEMENT_ES256_PRIVATE_KEY: process.env.ENTITLEMENT_ES256_PRIVATE_KEY,
+    ENTITLEMENT_ES256_KEY_ID: process.env.ENTITLEMENT_ES256_KEY_ID,
+    ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS: process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS,
   };
+  process.env.ENTITLEMENT_ES256_PRIVATE_KEY = TEST_ES256_PRIVATE_KEY_PEM;
+  process.env.ENTITLEMENT_ES256_KEY_ID = TEST_ES256_KEY_ID;
+  delete process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS;
 
   try {
     // ---------------------------------------------------------
@@ -686,12 +706,18 @@ async function runTests() {
     assert.equal(firstActivationRes.json?.license?.linkedDevice?.deviceId, phoneADeviceId);
     assert.equal(firstActivationRes.json?.license?.linkedDevice?.deviceModel, phoneAModel);
 
-    // Verify signed entitlement token contains embedded device ID
+    // Verify ES256 signed entitlement token contains embedded device ID and strict header/claims
     const phoneAToken = firstActivationRes.json?.entitlementToken;
-    assert.ok(typeof phoneAToken === 'string', 'Activation must return HMAC entitlement token');
+    assert.ok(typeof phoneAToken === 'string', 'Activation must return ES256 entitlement token');
     const verifiedTokenPayload = verifySignedEntitlementToken(phoneAToken, hashLicenseKey(plaintextKey), phoneADeviceId);
     assert.equal(verifiedTokenPayload.valid, true, 'Entitlement token must verify with bound deviceId');
-    assert.equal(verifiedTokenPayload.payload?.did, phoneADeviceId);
+    assert.equal(verifiedTokenPayload.header?.alg, ENTITLEMENT_ALGORITHM);
+    assert.equal(verifiedTokenPayload.header?.typ, 'JWT');
+    assert.equal(verifiedTokenPayload.header?.kid, TEST_ES256_KEY_ID);
+    assert.equal(verifiedTokenPayload.payload?.deviceId, phoneADeviceId);
+    assert.equal(verifiedTokenPayload.payload?.iss, ENTITLEMENT_ISSUER);
+    assert.equal(verifiedTokenPayload.payload?.aud, ENTITLEMENT_AUDIENCE);
+    assert.equal(verifiedTokenPayload.payload?.status, 'active');
 
     // Verify token fails verification if deviceId is wrong
     const mismatchedTokenCheck = verifySignedEntitlementToken(phoneAToken, hashLicenseKey(plaintextKey), 'different_device_id');
@@ -2002,8 +2028,14 @@ async function runTests() {
     assert.equal(fcmAct1.statusCode, 200);
     assert.equal(fcmAct1.json?.license?.bindingVersion, 1, 'Initial activation must return bindingVersion 1');
     const act1TokenPayload = decodeJwtPayload(fcmAct1.json?.entitlementToken);
+    assert.equal(act1TokenPayload.iss, ENTITLEMENT_ISSUER, 'Signed entitlementToken must include canonical iss');
+    assert.equal(act1TokenPayload.aud, ENTITLEMENT_AUDIENCE, 'Signed entitlementToken must include canonical aud');
+    assert.equal(act1TokenPayload.licenseId, fcmLicId, 'Signed entitlementToken must include licenseId');
     assert.equal(act1TokenPayload.bindingVersion, 1, 'Signed entitlementToken must include bindingVersion 1');
-    assert.equal(act1TokenPayload.bv, 1, 'Signed entitlementToken must include bv 1');
+    assert.equal(act1TokenPayload.status, 'active', 'Signed entitlementToken must include status active');
+    assert.equal(act1TokenPayload.deviceId, fcmPhone1.deviceId, 'Signed entitlementToken must include deviceId');
+    assert.ok(typeof act1TokenPayload.maskedKey === 'string' && act1TokenPayload.maskedKey.length > 0);
+    assert.equal(act1TokenPayload.exp - act1TokenPayload.iat, ENTITLEMENT_GRACE_TTL_SECONDS);
 
     // Repeated Fast Active on same phone preserves bindingVersion 1 in both response and token
     const fcmAct1Repeat = await invokeHandler({
@@ -2302,6 +2334,347 @@ async function runTests() {
 
     setLicenseFcmSenderForTesting(null);
     console.log('  ✓ Passed FCM registration, token refresh, Admin unbind/revoke notifications, failure non-rollback & zero-leakage checks.');
+
+    // ---------------------------------------------------------
+    // 15. ASYMMETRIC ES256 OFFLINE ENTITLEMENT SIGNING, VERIFICATION & PUBLIC JWKS
+    // ---------------------------------------------------------
+    console.log('Test 15: ES256 asymmetric entitlement signing, strict claim verification, HMAC rejection, JWKS & rotation...');
+    resetRateLimits();
+
+    // 15a. Public JWKS endpoint (direct + Vercel rewrite + method enforcement + zero private fields)
+    const jwksMethodErr = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/jwks',
+    });
+    assert.equal(jwksMethodErr.statusCode, 405, 'POST /api/licenses/jwks must return 405 Method Not Allowed');
+
+    const jwksRes = await invokeHandler({
+      method: 'GET',
+      url: '/api/licenses/jwks',
+    });
+    assert.equal(jwksRes.statusCode, 200, 'GET /api/licenses/jwks must return 200');
+    assert.ok(
+      typeof jwksRes.headers['cache-control'] === 'string' && jwksRes.headers['cache-control'].includes('public'),
+      'GET /api/licenses/jwks should include public Cache-Control header'
+    );
+    assert.ok(Array.isArray(jwksRes.json?.keys) && jwksRes.json.keys.length === 1);
+    const publishedKey = jwksRes.json.keys[0];
+    assert.deepEqual(
+      Object.keys(publishedKey).sort(),
+      ['crv', 'kid', 'kty', 'x', 'y'],
+      'Published JWK must contain ONLY public EC P-256 fields (kid, kty, crv, x, y) and NO private material'
+    );
+    assert.equal(publishedKey.kid, TEST_ES256_KEY_ID);
+    assert.equal(publishedKey.kty, 'EC');
+    assert.equal(publishedKey.crv, 'P-256');
+    assert.equal((publishedKey as any).d, undefined, 'Private parameter d must NEVER appear in public JWK');
+
+    const jwksRewriteRes = await invokeHandler({
+      method: 'GET',
+      url: '/api/devices/register?__route=/api/licenses/jwks',
+    });
+    assert.equal(jwksRewriteRes.statusCode, 200, 'Vercel rewrite route for /api/licenses/jwks must return 200');
+    assert.deepEqual(jwksRewriteRes.json, jwksRes.json);
+
+    // 15b. Fresh license: unactivated check returns NO active token; activation returns ES256 token verifiable with public JWK
+    const es256Create = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { customerName: 'ES256 Offline User', customerEmail: 'es256@example.com', licenseType: 'Lifetime' },
+    });
+    assert.equal(es256Create.statusCode, 201);
+    const es256LicId = es256Create.json.license.id;
+    const es256LicKey = es256Create.json.generatedKey;
+    const es256KeyHash = hashLicenseKey(es256LicKey);
+    createdLicenseIds.push(es256LicId);
+
+    const es256Phone = {
+      deviceId: 'android_es256_pixel9_pro_001',
+      deviceModel: 'Google Pixel 9 Pro',
+      androidVersion: 'Android 15',
+      appVersion: '3.0.0',
+    };
+
+    const verifyBeforeAct = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: es256LicKey, deviceInfo: es256Phone },
+    });
+    assert.equal(verifyBeforeAct.statusCode, 403);
+    assert.equal(verifyBeforeAct.json?.entitlementToken, undefined, 'Unactivated license must NEVER receive an entitlement token');
+
+    const es256ActRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: es256LicKey, deviceInfo: es256Phone },
+    });
+    assert.equal(es256ActRes.statusCode, 200);
+    const es256Token: string = es256ActRes.json?.entitlementToken;
+    assert.ok(typeof es256Token === 'string' && es256Token.split('.').length === 3);
+
+    // Independently verify JWS using ONLY the public JWK returned by GET /api/licenses/jwks
+    const [tokHeaderB64, tokPayloadB64, tokSigB64] = es256Token.split('.');
+    const tokHeader = JSON.parse(Buffer.from(tokHeaderB64, 'base64url').toString('utf-8'));
+    const tokPayload = JSON.parse(Buffer.from(tokPayloadB64, 'base64url').toString('utf-8'));
+    assert.deepEqual(tokHeader, {
+      alg: 'ES256',
+      typ: 'JWT',
+      kid: TEST_ES256_KEY_ID,
+    });
+    assert.equal(tokPayload.iss, ENTITLEMENT_ISSUER);
+    assert.equal(tokPayload.aud, ENTITLEMENT_AUDIENCE);
+    assert.equal(tokPayload.licenseId, es256LicId);
+    assert.equal(tokPayload.bindingVersion, 1);
+    assert.equal(tokPayload.status, 'active');
+    assert.equal(tokPayload.deviceId, es256Phone.deviceId);
+    assert.equal(tokPayload.maskedKey, es256ActRes.json.license.maskedKey);
+    assert.ok(Number.isInteger(tokPayload.iat) && tokPayload.iat > 0);
+    assert.equal(tokPayload.exp, tokPayload.iat + ENTITLEMENT_GRACE_TTL_SECONDS);
+
+    const importedPubKey = crypto.createPublicKey({
+      key: {
+        kty: publishedKey.kty,
+        crv: publishedKey.crv,
+        x: publishedKey.x,
+        y: publishedKey.y,
+      },
+      format: 'jwk',
+    });
+    const rawSigBuf = Buffer.from(tokSigB64, 'base64url');
+    assert.equal(rawSigBuf.length, 64, 'ES256 compact JWS signature must be 64-byte IEEE P1363 format');
+    const offlineVerifyOk = crypto.verify(
+      'sha256',
+      Buffer.from(`${tokHeaderB64}.${tokPayloadB64}`, 'utf-8'),
+      { key: importedPubKey, dsaEncoding: 'ieee-p1363' },
+      rawSigBuf
+    );
+    assert.equal(offlineVerifyOk, true, 'Offline ES256 verification using GET /api/licenses/jwks public key must succeed');
+
+    // Server-side strict verification succeeds with matching expected values
+    const serverVerifyOk = verifyEs256EntitlementToken(es256Token, {
+      expectedKeyHash: es256KeyHash,
+      expectedDeviceId: es256Phone.deviceId,
+      expectedLicenseId: es256LicId,
+      expectedBindingVersion: 1,
+    });
+    assert.equal(serverVerifyOk.valid, true);
+
+    // 15c. Negative cryptographic & claim verification tests
+    const signCustomJws = (
+      headerObj: Record<string, unknown>,
+      claimsObj: Record<string, unknown>,
+      privateKeyObj: crypto.KeyObject = testPrimaryEcPair.privateKey
+    ): string => {
+      const h = Buffer.from(JSON.stringify(headerObj), 'utf-8').toString('base64url');
+      const p = Buffer.from(JSON.stringify(claimsObj), 'utf-8').toString('base64url');
+      const sig = crypto.sign('sha256', Buffer.from(`${h}.${p}`, 'utf-8'), {
+        key: privateKeyObj,
+        dsaEncoding: 'ieee-p1363',
+      });
+      return `${h}.${p}.${sig.toString('base64url')}`;
+    };
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const validBaseHeader = { alg: 'ES256', typ: 'JWT', kid: TEST_ES256_KEY_ID };
+    const validBaseClaims = {
+      iss: ENTITLEMENT_ISSUER,
+      aud: ENTITLEMENT_AUDIENCE,
+      licenseId: es256LicId,
+      bindingVersion: 1,
+      status: 'active',
+      deviceId: es256Phone.deviceId,
+      maskedKey: es256ActRes.json.license.maskedKey,
+      kh: es256KeyHash,
+      act: new Date(nowSec * 1000).toISOString(),
+      iat: nowSec,
+      exp: nowSec + ENTITLEMENT_GRACE_TTL_SECONDS,
+    };
+
+    // Invalid signature (corrupted signature byte)
+    const flippedSig = Buffer.from(rawSigBuf);
+    flippedSig[0] ^= 0xff;
+    const badSigToken = `${tokHeaderB64}.${tokPayloadB64}.${flippedSig.toString('base64url')}`;
+    assert.equal(verifyEs256EntitlementToken(badSigToken).valid, false, 'Invalid signature must be rejected');
+
+    // Modified payload with original signature
+    const tamperedPayloadB64 = Buffer.from(
+      JSON.stringify({ ...tokPayload, bindingVersion: 999 }),
+      'utf-8'
+    ).toString('base64url');
+    const tamperedPayloadToken = `${tokHeaderB64}.${tamperedPayloadB64}.${tokSigB64}`;
+    assert.equal(verifyEs256EntitlementToken(tamperedPayloadToken).valid, false, 'Modified payload must be rejected');
+
+    // Wrong iss
+    const wrongIssToken = signCustomJws(validBaseHeader, { ...validBaseClaims, iss: 'https://evil.example.com' });
+    assert.equal(verifyEs256EntitlementToken(wrongIssToken).valid, false, 'Wrong iss must be rejected');
+
+    // Wrong aud
+    const wrongAudToken = signCustomJws(validBaseHeader, { ...validBaseClaims, aud: 'com.other.app' });
+    assert.equal(verifyEs256EntitlementToken(wrongAudToken).valid, false, 'Wrong aud must be rejected');
+
+    // Wrong status
+    const wrongStatusToken = signCustomJws(validBaseHeader, { ...validBaseClaims, status: 'revoked' });
+    assert.equal(verifyEs256EntitlementToken(wrongStatusToken).valid, false, 'Non-active status must be rejected');
+
+    // Wrong deviceId
+    assert.equal(
+      verifyEs256EntitlementToken(es256Token, { expectedDeviceId: 'android_other_device_999' }).valid,
+      false,
+      'Wrong deviceId must be rejected'
+    );
+
+    // Wrong licenseId
+    assert.equal(
+      verifyEs256EntitlementToken(es256Token, { expectedLicenseId: 'lic_other_id_999' }).valid,
+      false,
+      'Wrong licenseId must be rejected'
+    );
+
+    // Invalid bindingVersion (wrong expected version, 0, non-integer)
+    assert.equal(
+      verifyEs256EntitlementToken(es256Token, { expectedBindingVersion: 2 }).valid,
+      false,
+      'Superseded bindingVersion must be rejected'
+    );
+    const zeroBvToken = signCustomJws(validBaseHeader, { ...validBaseClaims, bindingVersion: 0 });
+    assert.equal(verifyEs256EntitlementToken(zeroBvToken).valid, false, 'bindingVersion 0 must be rejected');
+    const floatBvToken = signCustomJws(validBaseHeader, { ...validBaseClaims, bindingVersion: 1.5 });
+    assert.equal(verifyEs256EntitlementToken(floatBvToken).valid, false, 'Non-integer bindingVersion must be rejected');
+
+    // Expired token
+    const expiredEs256Token = signCustomJws(validBaseHeader, {
+      ...validBaseClaims,
+      iat: nowSec - 7200,
+      exp: nowSec - 10,
+    });
+    assert.equal(verifyEs256EntitlementToken(expiredEs256Token).valid, false, 'Expired token must be rejected');
+
+    // Unknown kid
+    const unknownKidToken = signCustomJws({ alg: 'ES256', typ: 'JWT', kid: 'zoya-es256-unknown-999' }, validBaseClaims);
+    assert.equal(verifyEs256EntitlementToken(unknownKidToken).valid, false, 'Unknown kid must be rejected');
+
+    // Algorithm substitution (alg: none)
+    const algNoneHeader = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT', kid: TEST_ES256_KEY_ID })).toString('base64url');
+    const algNonePayload = Buffer.from(JSON.stringify(validBaseClaims)).toString('base64url');
+    assert.equal(
+      verifyEs256EntitlementToken(`${algNoneHeader}.${algNonePayload}.fake`).valid,
+      false,
+      'alg=none token must be rejected'
+    );
+
+    // HMAC (HS256) token strictly rejected — directly AND during offline grace outage
+    const hmacHeader = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT', kid: TEST_ES256_KEY_ID })).toString('base64url');
+    const hmacBody = Buffer.from(JSON.stringify(validBaseClaims)).toString('base64url');
+    const hmacSig = crypto
+      .createHmac('sha256', getJwtSecret())
+      .update(`${hmacHeader}.${hmacBody}`)
+      .digest('base64url');
+    const hmacToken = `${hmacHeader}.${hmacBody}.${hmacSig}`;
+    assert.equal(
+      verifySignedEntitlementToken(hmacToken, es256KeyHash, es256Phone.deviceId).valid,
+      false,
+      'HMAC (HS256) token must NEVER be accepted as an ES256 verified token'
+    );
+
+    setSimulatedStorageFailureForTesting(true);
+    const offlineGraceWithHmac = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: {
+        licenseKey: es256LicKey,
+        entitlementToken: hmacToken,
+        deviceInfo: es256Phone,
+      },
+    });
+    assert.equal(offlineGraceWithHmac.statusCode, 503, 'Offline grace must reject HMAC token during storage outage');
+    assert.equal(offlineGraceWithHmac.json?.valid, false);
+
+    const offlineGraceWithEs256 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: {
+        licenseKey: es256LicKey,
+        entitlementToken: es256Token,
+        deviceInfo: es256Phone,
+      },
+    });
+    setSimulatedStorageFailureForTesting(false);
+    assert.equal(offlineGraceWithEs256.statusCode, 200, 'Offline grace must accept valid ES256 token on bound device');
+    assert.equal(offlineGraceWithEs256.json?.isOfflineGrace, true);
+    assert.equal(offlineGraceWithEs256.json?.license?.id, es256LicId);
+    assert.equal(offlineGraceWithEs256.json?.license?.bindingVersion, 1);
+
+    // 15d. Key rotation: active key rotates to Key 2 while Key 1 stays in ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS
+    const rotatedEcPair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const rotatedPrivatePem = rotatedEcPair.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const prevKeyWithAccidentalPrivateField = { ...publishedKey, d: 'SHOULD_NEVER_BE_EXPOSED' };
+    process.env.ENTITLEMENT_ES256_PRIVATE_KEY = rotatedPrivatePem;
+    process.env.ENTITLEMENT_ES256_KEY_ID = 'zoya-es256-test-rotated';
+    process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS = JSON.stringify([prevKeyWithAccidentalPrivateField]);
+
+    const rotatedJwks = getEntitlementPublicJwks();
+    assert.equal(rotatedJwks.keys.length, 2, 'Rotated JWKS must include both active and retired public keys');
+    for (const k of rotatedJwks.keys) {
+      assert.deepEqual(Object.keys(k).sort(), ['crv', 'kid', 'kty', 'x', 'y'], 'Rotated JWKs must never leak private fields');
+    }
+    assert.equal(
+      verifyEs256EntitlementToken(es256Token, { expectedKeyHash: es256KeyHash, expectedDeviceId: es256Phone.deviceId }).valid,
+      true,
+      'Previously issued token signed with retired kid must remain verifiable during rotation'
+    );
+    const newlySignedRotatedToken = signEs256EntitlementToken({
+      licenseId: es256LicId,
+      keyHash: es256KeyHash,
+      maskedKey: es256ActRes.json.license.maskedKey,
+      activatedAt: new Date().toISOString(),
+      deviceId: es256Phone.deviceId,
+      bindingVersion: 1,
+    });
+    const rotatedVerify = verifyEs256EntitlementToken(newlySignedRotatedToken, {
+      expectedKeyHash: es256KeyHash,
+      expectedDeviceId: es256Phone.deviceId,
+    });
+    assert.equal(rotatedVerify.valid, true);
+    assert.equal(rotatedVerify.header?.kid, 'zoya-es256-test-rotated');
+
+    // 15e. Fail-closed when ENTITLEMENT_ES256_PRIVATE_KEY is unset (and MUST NOT mutate Firestore)
+    const unconfiguredLicCreate = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { customerName: 'Fail Closed User', customerEmail: 'failclosed@example.com', licenseType: 'Lifetime' },
+    });
+    assert.equal(unconfiguredLicCreate.statusCode, 201);
+    const unconfId = unconfiguredLicCreate.json.license.id;
+    const unconfKey = unconfiguredLicCreate.json.generatedKey;
+    createdLicenseIds.push(unconfId);
+
+    delete process.env.ENTITLEMENT_ES256_PRIVATE_KEY;
+    delete process.env.ENTITLEMENT_ES256_KEY_ID;
+    delete process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS;
+
+    const unconfJwksRes = await invokeHandler({ method: 'GET', url: '/api/licenses/jwks' });
+    assert.equal(unconfJwksRes.statusCode, 503, 'GET /api/licenses/jwks must fail closed (503) when signing key is unset');
+    assert.equal(unconfJwksRes.json?.code, 'ENTITLEMENT_SIGNING_NOT_CONFIGURED');
+
+    const unconfActRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: unconfKey, deviceInfo: es256Phone },
+    });
+    assert.equal(unconfActRes.statusCode, 503, 'POST /api/licenses/activate must fail closed (503) when signing key is unset');
+    assert.equal(unconfActRes.json?.code, 'ENTITLEMENT_SIGNING_NOT_CONFIGURED');
+
+    const unconfDoc = await zoyaUpdatesAdapter.getDocumentById('licenses', unconfId);
+    assert.equal(unconfDoc.data?.status, 'unactivated', 'Failed activation due to missing signing key must NOT mutate Firestore');
+    assert.equal(unconfDoc.data?.linkedDevice, null);
+
+    // Restore test primary key before cleanup
+    process.env.ENTITLEMENT_ES256_PRIVATE_KEY = TEST_ES256_PRIVATE_KEY_PEM;
+    process.env.ENTITLEMENT_ES256_KEY_ID = TEST_ES256_KEY_ID;
+
+    console.log('  ✓ Passed ES256 signing, offline JWK verification, tampering/HMAC rejection, key rotation & fail-closed checks.');
   } finally {
     setLicenseFcmSenderForTesting(null);
     setSimulatedStorageFailureForTesting(false);
@@ -2325,7 +2698,7 @@ async function runTests() {
     }
   }
 
-  console.log('\nALL 14 CLEAN ONE-PHONE LIFETIME LICENSE, STAGE 2, DEVICE UNBIND & FCM NOTIFICATION TESTS PASSED SUCCESSFULLY!');
+  console.log('\nALL 15 CLEAN ONE-PHONE LIFETIME LICENSE, STAGE 2, DEVICE UNBIND, FCM & ES256 ENTITLEMENT TESTS PASSED SUCCESSFULLY!');
   process.exit(0);
 }
 

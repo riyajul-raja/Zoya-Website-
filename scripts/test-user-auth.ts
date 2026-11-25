@@ -224,7 +224,9 @@ async function runTests() {
     SESSION_SECRET: process.env.SESSION_SECRET,
     LICENSE_KEY_ENCRYPTION_SECRET: process.env.LICENSE_KEY_ENCRYPTION_SECRET,
     ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET,
-    ENTITLEMENT_TOKEN_SECRET: process.env.ENTITLEMENT_TOKEN_SECRET,
+    ENTITLEMENT_ES256_PRIVATE_KEY: process.env.ENTITLEMENT_ES256_PRIVATE_KEY,
+    ENTITLEMENT_ES256_KEY_ID: process.env.ENTITLEMENT_ES256_KEY_ID,
+    ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS: process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS,
   };
 
   try {
@@ -249,7 +251,12 @@ async function runTests() {
     process.env.SESSION_SECRET = crypto.randomBytes(32).toString('hex');
     process.env.LICENSE_KEY_ENCRYPTION_SECRET = crypto.randomBytes(32).toString('hex');
     process.env.ADMIN_JWT_SECRET = crypto.randomBytes(32).toString('hex');
-    process.env.ENTITLEMENT_TOKEN_SECRET = crypto.randomBytes(32).toString('hex');
+    const ephemeralEcPair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    process.env.ENTITLEMENT_ES256_PRIVATE_KEY = ephemeralEcPair.privateKey
+      .export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+    process.env.ENTITLEMENT_ES256_KEY_ID = 'zoya-es256-test-user-auth';
+    delete process.env.ENTITLEMENT_ES256_ADDITIONAL_PUBLIC_JWKS;
 
     // 2. OAuth start generates PKCE, state, nonce and sets HttpOnly Secure cookie
     const startRes = await invokeApi({

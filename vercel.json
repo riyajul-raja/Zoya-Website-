@@ -66,6 +66,10 @@
       "destination": "/api/devices/register?__route=/api/licenses/fcm/register"
     },
     {
+      "source": "/api/licenses/jwks",
+      "destination": "/api/devices/register?__route=/api/licenses/jwks"
+    },
+    {
       "source": "/api/auth/google/start",
       "destination": "/api/auth?__route=/api/auth/google/start"
     },

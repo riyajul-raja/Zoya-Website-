@@ -59,6 +59,10 @@ import {
   LicenseStorageError,
 } from './licenses';
 import {
+  getEntitlementPublicJwks,
+  EntitlementSigningConfigurationError,
+} from './entitlementSigning';
+import {
   checkRateLimit,
   applyRateLimitHeaders,
 } from './rateLimit';
@@ -334,6 +338,11 @@ export async function handleApiRequest(
     rawReqPath === '/licenses/verify'
   ) {
     pathname = '/api/licenses/verify';
+  } else if (
+    rawReqPath === '/api/licenses/jwks' ||
+    rawReqPath === '/licenses/jwks'
+  ) {
+    pathname = '/api/licenses/jwks';
   } else {
     pathname = explicitRoute || parsedUrl.pathname;
   }
@@ -1162,6 +1171,40 @@ export async function handleApiRequest(
       return true;
     }
 
+    // 5e. GET /api/licenses/jwks (Read-only public EC P-256 JWK Set for offline Android ES256 verification)
+    if (pathname === '/api/licenses/jwks') {
+      if (method !== 'GET') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected GET.`);
+        return true;
+      }
+
+      const rateLimit = checkRateLimit(req, {
+        namespace: 'license_jwks',
+        maxRequests: 60,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          code: 'RATE_LIMITED',
+          error: `Too many JWKS requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        });
+        return true;
+      }
+
+      const jwks = getEntitlementPublicJwks();
+      if (!res.writableEnded && !res.headersSent) {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.end(JSON.stringify(jwks));
+      }
+      return true;
+    }
+
     // ----------------------------------------------------
     // ADMIN AUTHENTICATION ENDPOINTS
     // ----------------------------------------------------
@@ -1910,6 +1953,10 @@ export async function handleApiRequest(
     return true;
   } catch (err: unknown) {
     if (err instanceof AdminAuthConfigurationError) {
+      sendError(res, err.status, err.message, err.code);
+      return true;
+    }
+    if (err instanceof EntitlementSigningConfigurationError) {
       sendError(res, err.status, err.message, err.code);
       return true;
     }

@@ -7,11 +7,20 @@ import {
   serverDeleteDocumentById,
   serverRunTransaction,
 } from './firebase';
-import { getJwtSecret, type AdminUser } from './auth';
+import { type AdminUser } from './auth';
+import {
+  assertEntitlementSigningConfigured,
+  signEs256EntitlementToken,
+  verifyEs256EntitlementToken,
+  EntitlementSigningConfigurationError,
+  type EntitlementTokenClaims,
+} from './entitlementSigning';
 import {
   sendLicenseDeviceFcmNotification,
   type LicenseFcmNotificationResult,
 } from './fcm';
+
+export { EntitlementSigningConfigurationError };
 
 export class LicenseStorageError extends Error {
   public readonly status = 503;
@@ -1403,98 +1412,40 @@ export function generateSignedEntitlementToken(payload: {
     payload.bindingVersion >= 1
       ? payload.bindingVersion
       : 1;
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const nowSec = Math.floor(Date.now() / 1000);
-  const expSec = nowSec + 30 * 24 * 60 * 60; // 30-day offline grace validity
-  const body = Buffer.from(
-    JSON.stringify({
-      id: payload.licenseId,
-      kh: payload.keyHash,
-      mk: payload.maskedKey,
-      act: payload.activatedAt,
-      did: payload.deviceId || null,
-      bv: safeBindingVersion,
-      bindingVersion: safeBindingVersion,
-      iat: nowSec,
-      exp: expSec,
-    })
-  ).toString('base64url');
+  const deviceId = typeof payload.deviceId === 'string' ? payload.deviceId.trim() : '';
+  if (!deviceId) {
+    throw new Error('Cannot sign entitlement token without a bound deviceId.');
+  }
 
-  const signature = crypto
-    .createHmac('sha256', getJwtSecret())
-    .update(`${header}.${body}`)
-    .digest('base64url');
-
-  return `${header}.${body}.${signature}`;
+  return signEs256EntitlementToken({
+    licenseId: payload.licenseId,
+    keyHash: payload.keyHash,
+    maskedKey: payload.maskedKey,
+    activatedAt: payload.activatedAt,
+    deviceId,
+    bindingVersion: safeBindingVersion,
+    status: 'active',
+  });
 }
 
 export function verifySignedEntitlementToken(
   token: string | null | undefined,
   expectedKeyHash: string,
   expectedDeviceId?: string | null,
-  expectedBindingVersion?: number | null
-): { valid: boolean; payload?: any; reason?: string } {
-  if (!token || typeof token !== 'string') {
-    return { valid: false, reason: 'Entitlement token missing or invalid.' };
-  }
-
-  const parts = token.trim().split('.');
-  if (parts.length !== 3) {
-    return { valid: false, reason: 'Entitlement token malformed.' };
-  }
-
-  const [header, body, signature] = parts;
-  const expectedSig = crypto
-    .createHmac('sha256', getJwtSecret())
-    .update(`${header}.${body}`)
-    .digest('base64url');
-
-  const sigBuf = Buffer.from(signature, 'utf-8');
-  const expBuf = Buffer.from(expectedSig, 'utf-8');
-  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-    return { valid: false, reason: 'Entitlement token signature mismatch or untrusted.' };
-  }
-
-  try {
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf-8'));
-    if (!payload || typeof payload !== 'object') {
-      return { valid: false, reason: 'Entitlement token payload invalid.' };
-    }
-
-    if (payload.kh !== expectedKeyHash) {
-      return { valid: false, reason: 'Entitlement token key mismatch.' };
-    }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (!payload.exp || payload.exp < nowSec) {
-      return { valid: false, reason: 'Entitlement token grace period expired.' };
-    }
-
-    // Preserve one-phone device binding during offline grace validation
-    if (expectedDeviceId && payload.did && payload.did !== expectedDeviceId) {
-      return { valid: false, reason: 'Entitlement token was issued to a different Android device.' };
-    }
-
-    if (
-      typeof expectedBindingVersion === 'number' &&
-      Number.isInteger(expectedBindingVersion) &&
-      expectedBindingVersion >= 1
-    ) {
-      const tokenBv =
-        typeof payload.bindingVersion === 'number'
-          ? payload.bindingVersion
-          : typeof payload.bv === 'number'
-            ? payload.bv
-            : null;
-      if (tokenBv !== null && tokenBv !== expectedBindingVersion) {
-        return { valid: false, reason: 'Entitlement token belongs to a superseded license binding version.' };
-      }
-    }
-
-    return { valid: true, payload };
-  } catch {
-    return { valid: false, reason: 'Entitlement token parse error.' };
-  }
+  expectedBindingVersion?: number | null,
+  expectedLicenseId?: string | null
+): {
+  valid: boolean;
+  header?: { alg: 'ES256'; typ: 'JWT'; kid: string };
+  payload?: EntitlementTokenClaims;
+  reason?: string;
+} {
+  return verifyEs256EntitlementToken(token, {
+    expectedKeyHash,
+    expectedDeviceId,
+    expectedBindingVersion,
+    expectedLicenseId,
+  });
 }
 
 export interface AndroidValidationRequest {
@@ -1547,7 +1498,7 @@ export interface AndroidValidationResponse {
  * - On first activation: atomically binds the license to the phone (200)
  * - On repeated validation from same phone: idempotent success (200)
  * - On attempt from a different phone: rejects with DEVICE_MISMATCH (403)
- * - During Firestore outages: allows 30-day offline grace validation if previously verified HMAC token matches same phone.
+ * - During Firestore outages: allows 30-day offline grace validation if previously verified ES256 entitlement token matches same phone.
  */
 export async function validateLicenseForAndroid(
   payload: AndroidValidationRequest
@@ -1613,6 +1564,9 @@ export async function validateLicenseForAndroid(
           error: 'This lifetime license has been revoked and is no longer valid.',
         };
       }
+
+      // Fail closed BEFORE mutating Firestore if ES256 entitlement signing is not configured
+      assertEntitlementSigningConfigured();
 
       // Execute atomic transaction for device binding and validation
       const txResult = await serverRunTransaction(async (tx) => {
@@ -1772,19 +1726,10 @@ export async function validateLicenseForAndroid(
       };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
-        // Offline grace validation for previously activated phone submitting valid signed token
+        // Offline grace validation for previously activated phone submitting valid ES256-signed token
         const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
         if (tokenVerification.valid && tokenVerification.payload) {
-          const graceBindingVersion =
-            typeof tokenVerification.payload.bindingVersion === 'number' &&
-            Number.isInteger(tokenVerification.payload.bindingVersion) &&
-            tokenVerification.payload.bindingVersion >= 1
-              ? tokenVerification.payload.bindingVersion
-              : typeof tokenVerification.payload.bv === 'number' &&
-                  Number.isInteger(tokenVerification.payload.bv) &&
-                  tokenVerification.payload.bv >= 1
-                ? tokenVerification.payload.bv
-                : 1;
+          const graceBindingVersion = tokenVerification.payload.bindingVersion;
           return {
             valid: true,
             status: 'active',
@@ -1795,8 +1740,8 @@ export async function validateLicenseForAndroid(
             error:
               'Server storage is temporarily unavailable. License validated via cryptographic offline grace token on bound device.',
             license: {
-              id: tokenVerification.payload.id || 'grace_id',
-              maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
+              id: tokenVerification.payload.licenseId,
+              maskedKey: tokenVerification.payload.maskedKey || maskLicenseKey(normalizedKey).maskedKey,
               licenseType: 'Lifetime',
               status: 'active',
               customerName: 'Lifetime Subscriber',
@@ -1976,6 +1921,9 @@ export async function activateLicenseForAndroid(
         };
       }
 
+      // Fail closed BEFORE mutating Firestore if ES256 entitlement signing is not configured
+      assertEntitlementSigningConfigured();
+
       // First activation (or reactivation on a new phone after unbind): atomically bind device
       const txResult = await serverRunTransaction(async (tx) => {
         const snap = await tx.get('licenses', existing.id);
@@ -2105,16 +2053,7 @@ export async function activateLicenseForAndroid(
       if (err instanceof LicenseStorageError) {
         const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
         if (tokenVerification.valid && tokenVerification.payload) {
-          const graceBindingVersion =
-            typeof tokenVerification.payload.bindingVersion === 'number' &&
-            Number.isInteger(tokenVerification.payload.bindingVersion) &&
-            tokenVerification.payload.bindingVersion >= 1
-              ? tokenVerification.payload.bindingVersion
-              : typeof tokenVerification.payload.bv === 'number' &&
-                  Number.isInteger(tokenVerification.payload.bv) &&
-                  tokenVerification.payload.bv >= 1
-                ? tokenVerification.payload.bv
-                : 1;
+          const graceBindingVersion = tokenVerification.payload.bindingVersion;
           return {
             valid: true,
             status: 'active',
@@ -2125,8 +2064,8 @@ export async function activateLicenseForAndroid(
             error:
               'Server storage is temporarily unavailable. License validated via cryptographic offline grace token on bound device.',
             license: {
-              id: tokenVerification.payload.id || 'grace_id',
-              maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
+              id: tokenVerification.payload.licenseId,
+              maskedKey: tokenVerification.payload.maskedKey || maskLicenseKey(normalizedKey).maskedKey,
               licenseType: 'Lifetime',
               status: 'active',
               customerName: 'Lifetime Subscriber',
