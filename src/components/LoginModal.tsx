@@ -139,8 +139,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     const mode: 'popup' | 'redirect' = isInsideIframe ? 'popup' : 'redirect';
 
+    if (mode === 'redirect') {
+      window.location.assign('/api/auth/google/start?mode=redirect');
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/auth/google/start?mode=${mode}&format=json`, {
+      const response = await fetch('/api/auth/google/start?mode=popup&format=json', {
         method: 'GET',
         credentials: 'include',
         cache: 'no-store',
@@ -163,11 +168,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         } else {
           setErrorMessage(data.error || 'Unable to start Google sign-in. Please try again.');
         }
-        return;
-      }
-
-      if (mode === 'redirect') {
-        window.location.assign(data.authorizationUrl);
         return;
       }
 

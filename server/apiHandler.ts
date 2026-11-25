@@ -491,7 +491,10 @@ export async function handleApiRequest(
         }
 
         const cookies = parseCookies(req.headers);
-        const tx = unsealOAuthTransaction(cookies[OAUTH_TX_COOKIE_NAME], config.sessionSecret);
+        const rawTxCookie = (cookies[OAUTH_TX_COOKIE_NAME] || '').trim();
+        const tx = rawTxCookie
+          ? unsealOAuthTransaction(rawTxCookie, config.sessionSecret)
+          : null;
         const mode: 'redirect' | 'popup' = tx?.mode === 'popup' ? 'popup' : 'redirect';
 
         const oauthError = (parsedUrl.searchParams.get('error') || '').trim();
@@ -503,6 +506,19 @@ export async function handleApiRequest(
 
         const code = (parsedUrl.searchParams.get('code') || '').trim();
         const returnedState = (parsedUrl.searchParams.get('state') || '').trim();
+
+        if (!rawTxCookie) {
+          // Missing one-time OAuth transaction cookie (e.g., already consumed on an earlier
+          // callback invocation). Only when no tx cookie exists, check if a valid server-verified
+          // session is already active and treat the login as already completed.
+          const existingAuth = await getAuthenticatedUserFromRequest(req);
+          if (existingAuth.authenticated && existingAuth.user) {
+            respondCallbackResult(mode, true);
+            return true;
+          }
+          respondCallbackResult(mode, false, 'invalid_state');
+          return true;
+        }
 
         if (!tx || !code || !returnedState || !timingSafeStringEqual(tx.state, returnedState)) {
           respondCallbackResult(mode, false, 'invalid_state');

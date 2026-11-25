@@ -70,34 +70,46 @@ export default function App() {
     }
   }, []);
 
-  // Verify user session strictly from server HttpOnly cookie
+  const verifySessionPromiseRef = React.useRef<Promise<AuthenticatedUser | null> | null>(null);
+
+  // Verify user session strictly from server HttpOnly cookie (deduplicates concurrent in-flight checks)
   const verifyUserSession = useCallback(async (): Promise<AuthenticatedUser | null> => {
-    setAuthLoading(true);
-    try {
-      const res = await fetch('/api/auth/session', {
-        method: 'GET',
-        credentials: 'include',
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        authenticated?: boolean;
-        user?: AuthenticatedUser | null;
-      };
-
-      if (res.ok && data.authenticated && data.user) {
-        setAuthUser(data.user);
-        return data.user;
-      }
-
-      setAuthUser(null);
-      return null;
-    } catch {
-      setAuthUser(null);
-      return null;
-    } finally {
-      setAuthLoading(false);
+    if (verifySessionPromiseRef.current) {
+      return verifySessionPromiseRef.current;
     }
+
+    setAuthLoading(true);
+    const requestPromise = (async (): Promise<AuthenticatedUser | null> => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+          user?: AuthenticatedUser | null;
+        };
+
+        if (res.ok && data.authenticated && data.user) {
+          setAuthUser(data.user);
+          return data.user;
+        }
+
+        setAuthUser(null);
+        return null;
+      } catch {
+        setAuthUser(null);
+        return null;
+      } finally {
+        verifySessionPromiseRef.current = null;
+        setAuthLoading(false);
+      }
+    })();
+
+    verifySessionPromiseRef.current = requestPromise;
+    return requestPromise;
   }, []);
 
   const navigateToHome = useCallback((replaceHistory = false) => {
@@ -128,23 +140,54 @@ export default function App() {
 
   // Initial load: fetch releases, verify server session, handle OAuth callback error params & route protection
   useEffect(() => {
+    let isCancelled = false;
     fetchLatestRelease();
+
+    const stripAuthErrorParam = () => {
+      const currentParams = new URLSearchParams(window.location.search);
+      if (!currentParams.has('auth_error')) return;
+      currentParams.delete('auth_error');
+      const remainingQuery = currentParams.toString();
+      const cleanUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, '', cleanUrl);
+    };
 
     const params = new URLSearchParams(window.location.search);
     const authErrorParam = params.get('auth_error');
-    if (authErrorParam) {
+    const normalizedAuthError = authErrorParam ? authErrorParam.trim().toLowerCase() : null;
+    const isInvalidStateError = normalizedAuthError === 'invalid_state';
+
+    if (authErrorParam && !isInvalidStateError) {
       const mapped = mapAuthErrorCode(authErrorParam);
       setLoginError(mapped);
       setLoginOpen(true);
-      params.delete('auth_error');
-      const remainingQuery = params.toString();
-      const cleanUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}${window.location.hash}`;
-      window.history.replaceState({}, '', cleanUrl);
+      stripAuthErrorParam();
     }
 
     const requestedAccountRoute = isAccountPath(window.location.pathname);
 
     verifyUserSession().then((verifiedUser) => {
+      if (isCancelled) return;
+
+      if (isInvalidStateError) {
+        stripAuthErrorParam();
+        if (verifiedUser) {
+          setAuthUser(verifiedUser);
+          setLoginError(null);
+          setLoginOpen(false);
+          navigateToAccount(true);
+          return;
+        }
+
+        if (requestedAccountRoute) {
+          setActiveView('home');
+          window.history.replaceState({ view: 'home' }, '', '/');
+        }
+        setLoginError(mapAuthErrorCode(authErrorParam));
+        setLoginOpen(true);
+        return;
+      }
+
       if (requestedAccountRoute) {
         if (verifiedUser) {
           setActiveView('account');
@@ -152,7 +195,9 @@ export default function App() {
           // Direct unauthenticated access to /account redirects to homepage and opens Login Card
           setActiveView('home');
           window.history.replaceState({ view: 'home' }, '', '/');
-          setLoginError('Please sign in with Google to access your Zoyalive account dashboard.');
+          if (!authErrorParam) {
+            setLoginError('Please sign in with Google to access your Zoyalive account dashboard.');
+          }
           setLoginOpen(true);
         }
       }
@@ -169,8 +214,11 @@ export default function App() {
       }
     };
     window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [fetchLatestRelease, verifyUserSession]);
+    return () => {
+      isCancelled = true;
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [fetchLatestRelease, verifyUserSession, navigateToAccount]);
 
   // Protect browser back/forward navigation so protected account view is never exposed after logout
   useEffect(() => {
