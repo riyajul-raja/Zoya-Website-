@@ -38,6 +38,10 @@ import {
   type LicenseRecord,
 } from '../server/licenses';
 import {
+  setLicenseFcmSenderForTesting,
+  type LicenseFcmTransportPayload,
+} from '../server/fcm';
+import {
   APK_CHUNK_SIZE,
   saveRelease,
   getAllReleases,
@@ -146,8 +150,20 @@ async function invokeHandler(options: {
 function createZoyaUpdatesTestAdapter(): {
   adapter: ServerFirestoreAdapter;
   collections: Map<string, Map<string, Record<string, any>>>;
+  metrics: {
+    setDocumentCalls: number;
+    transactionCalls: number;
+    txSetCalls: number;
+    queryCalls: number;
+  };
 } {
   const collections = new Map<string, Map<string, Record<string, any>>>();
+  const metrics = {
+    setDocumentCalls: 0,
+    transactionCalls: 0,
+    txSetCalls: 0,
+    queryCalls: 0,
+  };
   const getColMap = (col: string) => {
     let m = collections.get(col);
     if (!m) {
@@ -171,6 +187,7 @@ function createZoyaUpdatesTestAdapter(): {
       return { exists: Boolean(data), id: docId, data: data ? { ...data } : undefined };
     },
     async queryDocumentsEq(collectionName: string, field: string, value: unknown, maxResults = 1) {
+      metrics.queryCalls += 1;
       const col = getColMap(collectionName);
       const matches: Array<{ id: string; data: Record<string, any> }> = [];
       for (const [id, data] of col.entries()) {
@@ -187,6 +204,7 @@ function createZoyaUpdatesTestAdapter(): {
       data: Record<string, any>,
       options?: { merge?: boolean }
     ) {
+      metrics.setDocumentCalls += 1;
       const col = getColMap(collectionName);
       const cleanData: Record<string, any> = {};
       for (const [k, v] of Object.entries(data)) {
@@ -205,6 +223,7 @@ function createZoyaUpdatesTestAdapter(): {
       col.delete(docId);
     },
     async runTransaction<T>(updateFunction: (transaction: any) => Promise<T>): Promise<T> {
+      metrics.transactionCalls += 1;
       // In-memory atomic transaction simulation
       const tx = {
         async get(collectionName: string, docId: string) {
@@ -213,6 +232,7 @@ function createZoyaUpdatesTestAdapter(): {
           return { exists: Boolean(data), id: docId, data: data ? { ...data } : undefined };
         },
         async queryDocumentsEq(collectionName: string, field: string, value: unknown, maxResults = 1) {
+          metrics.queryCalls += 1;
           const col = getColMap(collectionName);
           const matches: Array<{ id: string; data: Record<string, any> }> = [];
           for (const [id, data] of col.entries()) {
@@ -224,6 +244,7 @@ function createZoyaUpdatesTestAdapter(): {
           return matches;
         },
         set(collectionName: string, docId: string, data: Record<string, any>, options?: { merge?: boolean }) {
+          metrics.txSetCalls += 1;
           const col = getColMap(collectionName);
           const cleanData: Record<string, any> = {};
           for (const [k, v] of Object.entries(data)) {
@@ -246,7 +267,7 @@ function createZoyaUpdatesTestAdapter(): {
     },
   };
 
-  return { adapter, collections };
+  return { adapter, collections, metrics };
 }
 
 async function runTests() {
@@ -259,7 +280,14 @@ async function runTests() {
   };
 
   const createdLicenseIds: string[] = [];
-  const { adapter: zoyaUpdatesAdapter, collections: zoyaCollections } = createZoyaUpdatesTestAdapter();
+  const { adapter: zoyaUpdatesAdapter, metrics: firestoreMetrics } = createZoyaUpdatesTestAdapter();
+  const TEST_ADMIN_PIN = 'test-pin-739184';
+  const TEST_ADMIN_JWT_SECRET = crypto.randomBytes(32).toString('hex');
+  const origAdminEnv = {
+    ZOYA_ADMIN_PIN: process.env.ZOYA_ADMIN_PIN,
+    ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET,
+    LICENSE_KEY_ENCRYPTION_SECRET: process.env.LICENSE_KEY_ENCRYPTION_SECRET,
+  };
 
   try {
     // ---------------------------------------------------------
@@ -330,24 +358,77 @@ async function runTests() {
     console.log('  ✓ Passed canonical zoya-updates/(default) routing & zero-fallback checks.');
 
     // ---------------------------------------------------------
-    // 2. ADMIN PORTAL PIN ON EVERY OPEN, SESSION INVALIDATION & UNAUTHORIZED REJECTION
+    // 2. ADMIN PORTAL PIN ON EVERY OPEN, FAIL-CLOSED CONFIG, COOKIE/CORS/CSRF & UNAUTHORIZED REJECTION
     // ---------------------------------------------------------
-    console.log('Test 2: Admin Portal PIN login, session invalidation on logout & direct access rejection...');
+    console.log('Test 2: Admin Portal fail-closed config, env-based PIN login, Secure cookie, CORS/CSRF & logout checks...');
 
+    // 2a. Fail closed when ZOYA_ADMIN_PIN is missing
+    delete process.env.ZOYA_ADMIN_PIN;
+    delete process.env.ADMIN_JWT_SECRET;
+    const missingPinLogin = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/login',
+      body: { pin: TEST_ADMIN_PIN },
+    });
+    assert.equal(missingPinLogin.statusCode, 500, 'Missing ZOYA_ADMIN_PIN must fail closed with 500');
+    assert.equal(missingPinLogin.json?.code, 'ADMIN_AUTH_NOT_CONFIGURED');
+
+    // 2b. Fail closed when ADMIN_JWT_SECRET is missing or too short
+    process.env.ZOYA_ADMIN_PIN = TEST_ADMIN_PIN;
+    process.env.ADMIN_JWT_SECRET = 'short_secret';
+    const invalidJwtSecretLogin = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/login',
+      body: { pin: TEST_ADMIN_PIN },
+    });
+    assert.equal(invalidJwtSecretLogin.statusCode, 500, 'Short/invalid ADMIN_JWT_SECRET must fail closed with 500');
+    assert.equal(invalidJwtSecretLogin.json?.code, 'ADMIN_AUTH_NOT_CONFIGURED');
+
+    // 2c. Configure valid environment secrets and verify login + Secure HttpOnly SameSite=Strict cookie + same-origin CORS
+    process.env.ADMIN_JWT_SECRET = TEST_ADMIN_JWT_SECRET;
     const pinLoginSuccess = await invokeHandler({
       method: 'POST',
       url: '/api/admin/login',
-      body: { pin: '8825316434' },
+      headers: {
+        host: 'zoyalive.vercel.app',
+        'x-forwarded-proto': 'https',
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { pin: TEST_ADMIN_PIN },
     });
-    assert.equal(pinLoginSuccess.statusCode, 200, 'Admin PIN must succeed with HTTP 200');
+    assert.equal(pinLoginSuccess.statusCode, 200, 'Configured Admin PIN must succeed with HTTP 200');
     assert.equal(pinLoginSuccess.json?.success, true);
     assert.ok(typeof pinLoginSuccess.json?.token === 'string' && pinLoginSuccess.json.token.length > 20);
     assert.ok(
       typeof pinLoginSuccess.headers['set-cookie'] === 'string' &&
-        pinLoginSuccess.headers['set-cookie'].includes('SameSite=Strict'),
-      'Login must set SameSite=Strict HttpOnly cookie'
+        pinLoginSuccess.headers['set-cookie'].includes('HttpOnly') &&
+        pinLoginSuccess.headers['set-cookie'].includes('SameSite=Strict') &&
+        pinLoginSuccess.headers['set-cookie'].includes('Secure'),
+      'Login on HTTPS must set HttpOnly, SameSite=Strict, Secure cookie'
+    );
+    assert.equal(
+      pinLoginSuccess.headers['access-control-allow-origin'],
+      'https://zoyalive.vercel.app',
+      'Admin API CORS must reflect only the legitimate website origin'
     );
     const adminToken: string = pinLoginSuccess.json.token;
+    const adminCookiePair = pinLoginSuccess.headers['set-cookie'].split(';')[0];
+
+    // Untrusted cross-origin request must NEVER receive wildcard or reflected CORS header
+    const untrustedCorsSession = await invokeHandler({
+      method: 'GET',
+      url: '/api/admin/session',
+      headers: {
+        host: 'zoyalive.vercel.app',
+        'x-forwarded-proto': 'https',
+        origin: 'https://evil-attacker.example',
+      },
+    });
+    assert.equal(
+      untrustedCorsSession.headers['access-control-allow-origin'],
+      undefined,
+      'Admin API must NOT return Access-Control-Allow-Origin for untrusted origins'
+    );
 
     const sessionCheck = await invokeHandler({
       method: 'GET',
@@ -357,6 +438,34 @@ async function runTests() {
     assert.equal(sessionCheck.statusCode, 200);
     assert.equal(sessionCheck.json?.authenticated, true);
 
+    // Cookie-authenticated Admin mutation from cross-origin must be blocked by CSRF check
+    const csrfBlockedMutation = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: {
+        host: 'zoyalive.vercel.app',
+        'x-forwarded-proto': 'https',
+        origin: 'https://evil-attacker.example',
+        cookie: adminCookiePair,
+      },
+      body: { customerName: 'CSRF Attacker', customerEmail: 'csrf@evil.example' },
+    });
+    assert.equal(csrfBlockedMutation.statusCode, 403, 'Cross-origin cookie-authenticated admin mutation must fail with 403');
+    assert.equal(csrfBlockedMutation.json?.code, 'CSRF_ORIGIN_MISMATCH');
+
+    // Cross-origin logout must also be blocked by CSRF check
+    const csrfBlockedLogout = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/logout',
+      headers: {
+        host: 'zoyalive.vercel.app',
+        'x-forwarded-proto': 'https',
+        origin: 'https://evil-attacker.example',
+        cookie: adminCookiePair,
+      },
+    });
+    assert.equal(csrfBlockedLogout.statusCode, 403, 'Cross-origin logout must fail with 403 CSRF_ORIGIN_MISMATCH');
+
     // Verify invalid PIN rejection
     const wrongPinLogin = await invokeHandler({
       method: 'POST',
@@ -365,17 +474,23 @@ async function runTests() {
     });
     assert.equal(wrongPinLogin.statusCode, 401, 'Invalid PIN must return 401');
 
-    // Verify session invalidation on logout (PIN required on every open)
+    // Verify session invalidation on same-origin logout (PIN required on every open)
     const logoutRes = await invokeHandler({
       method: 'POST',
       url: '/api/admin/logout',
-      headers: { Authorization: `Bearer ${adminToken}` },
+      headers: {
+        host: 'zoyalive.vercel.app',
+        'x-forwarded-proto': 'https',
+        origin: 'https://zoyalive.vercel.app',
+        Authorization: `Bearer ${adminToken}`,
+      },
     });
     assert.equal(logoutRes.statusCode, 200);
     assert.ok(
       typeof logoutRes.headers['set-cookie'] === 'string' &&
-        logoutRes.headers['set-cookie'].includes('Max-Age=0'),
-      'Logout must invalidate session cookie'
+        logoutRes.headers['set-cookie'].includes('Max-Age=0') &&
+        logoutRes.headers['set-cookie'].includes('Secure'),
+      'Logout must invalidate Secure session cookie'
     );
 
     // Old admin session cannot automatically reopen the portal without PIN
@@ -1082,7 +1197,7 @@ async function runTests() {
     const freshLoginRes = await invokeHandler({
       method: 'POST',
       url: '/api/admin/login',
-      body: { pin: '8825316434' },
+      body: { pin: TEST_ADMIN_PIN },
     });
     assert.equal(freshLoginRes.statusCode, 200);
     const freshAdminToken: string = freshLoginRes.json.token;
@@ -1243,7 +1358,897 @@ async function runTests() {
     assert.equal(androidVal.json?.code, 'LICENSE_VALID');
     assert.equal(androidVal.json?.status, 'active');
     console.log('  ✓ Passed permanent visibility, AES-256-GCM authenticated encryption & admin reveal checks.');
+
+    // ---------------------------------------------------------
+    // 12. STAGE 2 — FAST ACTIVE (/api/licenses/activate) & SEPARATE READ-ONLY VERIFICATION (/api/licenses/verify)
+    // ---------------------------------------------------------
+    console.log('Test 12: Stage 2 Fast Active (/api/licenses/activate), Read-Only Verify (/api/licenses/verify) & Vercel routing...');
+    resetRateLimits();
+
+    const s2Key = generateCryptographicLicenseKey();
+    const s2CreateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        customerName: 'Stage 2 Fast Active Customer',
+        customerEmail: 'stage2@zoyatest.internal',
+      },
+    });
+    assert.equal(s2CreateRes.statusCode, 201);
+    const s2LicenseId: string = s2CreateRes.json.license.id;
+    const s2PlaintextKey: string = s2CreateRes.json.generatedKey;
+    createdLicenseIds.push(s2LicenseId);
+    assert.ok(s2PlaintextKey && s2Key !== s2PlaintextKey);
+
+    const s2DeviceA = {
+      deviceId: 'android_stage2_primary_pixel_001',
+      deviceModel: 'Google Pixel 9',
+      androidVersion: 'Android 15',
+      appVersion: '2.6.0',
+    };
+    const s2DeviceB = {
+      deviceId: 'android_stage2_intruder_galaxy_002',
+      deviceModel: 'Samsung Galaxy S25',
+      androidVersion: 'Android 15',
+      appVersion: '2.6.0',
+    };
+
+    // 12a. Read-only verify BEFORE activation rejects unactivated license WITHOUT activating or writing
+    const metricsBeforeUnactVerify = { ...firestoreMetrics };
+    const unactivatedVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: {
+        licenseKey: s2PlaintextKey,
+        deviceInfo: s2DeviceA,
+        // Adversarial client-supplied status/valid fields must be completely ignored
+        status: 'active',
+        valid: true,
+        activated: true,
+      },
+    });
+    assert.equal(unactivatedVerifyRes.statusCode, 403, 'Verify before activation must reject with HTTP 403');
+    assert.equal(unactivatedVerifyRes.json?.valid, false);
+    assert.equal(unactivatedVerifyRes.json?.status, 'unactivated');
+    assert.equal(unactivatedVerifyRes.json?.code, 'LICENSE_NOT_ACTIVATED');
+    assert.equal(
+      firestoreMetrics.transactionCalls,
+      metricsBeforeUnactVerify.transactionCalls,
+      'Verify on unactivated license must NOT run Firestore transactions'
+    );
+    assert.equal(
+      firestoreMetrics.setDocumentCalls,
+      metricsBeforeUnactVerify.setDocumentCalls,
+      'Verify on unactivated license must NOT perform Firestore writes'
+    );
+    const docAfterUnactVerify = await zoyaUpdatesAdapter.getDocumentById('licenses', s2LicenseId);
+    assert.equal(docAfterUnactVerify.data?.status, 'unactivated', 'License must remain unactivated');
+    assert.equal(docAfterUnactVerify.data?.linkedDevice, null, 'License must remain unbound');
+
+    // 12b. Initial Fast Active (/api/licenses/activate) atomically binds license to Device A
+    const metricsBeforeFirstAct = { ...firestoreMetrics };
+    const firstFastActiveRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: {
+        licenseKey: s2PlaintextKey,
+        deviceInfo: s2DeviceA,
+      },
+    });
+    assert.equal(firstFastActiveRes.statusCode, 200);
+    assert.equal(firstFastActiveRes.json?.valid, true);
+    assert.equal(firstFastActiveRes.json?.status, 'active');
+    assert.equal(firstFastActiveRes.json?.code, 'LICENSE_VALID');
+    assert.ok(typeof firstFastActiveRes.json?.entitlementToken === 'string');
+    assert.equal(firstFastActiveRes.json?.license?.linkedDevice?.deviceId, s2DeviceA.deviceId);
+    assert.equal(
+      firestoreMetrics.transactionCalls - metricsBeforeFirstAct.transactionCalls,
+      1,
+      'First Fast Active must execute exactly 1 atomic transaction'
+    );
+    assert.equal(
+      firestoreMetrics.txSetCalls - metricsBeforeFirstAct.txSetCalls,
+      1,
+      'First Fast Active must write device binding cleanly'
+    );
+
+    const docAfterFirstAct = await zoyaUpdatesAdapter.getDocumentById('licenses', s2LicenseId);
+    const initialValidationCount = docAfterFirstAct.data?.validationCount;
+    const initialLastSeenAt = docAfterFirstAct.data?.lastSeenAt;
+    const initialAuditLength = docAfterFirstAct.data?.auditLog?.length;
+    assert.equal(initialValidationCount, 1);
+
+    // 12c. Repeated Fast Active on SAME device (even after in-memory cache reset) skips unnecessary writes/transactions
+    clearLicenseInMemoryCache();
+    const metricsBeforeRepeatAct = { ...firestoreMetrics };
+    const repeatFastActiveRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: {
+        licenseKey: s2PlaintextKey,
+        deviceInfo: s2DeviceA,
+      },
+    });
+    assert.equal(repeatFastActiveRes.statusCode, 200);
+    assert.equal(repeatFastActiveRes.json?.valid, true);
+    assert.equal(repeatFastActiveRes.json?.code, 'LICENSE_VALID');
+    assert.ok(typeof repeatFastActiveRes.json?.entitlementToken === 'string');
+    assert.equal(
+      firestoreMetrics.transactionCalls,
+      metricsBeforeRepeatAct.transactionCalls,
+      'Repeated Fast Active on same device must NOT run unnecessary transactions'
+    );
+    assert.equal(
+      firestoreMetrics.txSetCalls,
+      metricsBeforeRepeatAct.txSetCalls,
+      'Repeated Fast Active on same device must NOT perform transaction writes'
+    );
+    assert.equal(
+      firestoreMetrics.setDocumentCalls,
+      metricsBeforeRepeatAct.setDocumentCalls,
+      'Repeated Fast Active on same device must NOT perform document writes'
+    );
+    assert.ok(
+      firestoreMetrics.queryCalls > metricsBeforeRepeatAct.queryCalls,
+      'Repeated Fast Active must read directly from persistent Firestore storage (bypassing in-memory cache)'
+    );
+
+    // 12d. Fast Active from DIFFERENT device rejects with 403 DEVICE_MISMATCH and zero writes
+    const metricsBeforeMismatchAct = { ...firestoreMetrics };
+    const mismatchFastActiveRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: {
+        licenseKey: s2PlaintextKey,
+        deviceInfo: s2DeviceB,
+      },
+    });
+    assert.equal(mismatchFastActiveRes.statusCode, 403);
+    assert.equal(mismatchFastActiveRes.json?.valid, false);
+    assert.equal(mismatchFastActiveRes.json?.code, 'DEVICE_MISMATCH');
+    assert.equal(firestoreMetrics.transactionCalls, metricsBeforeMismatchAct.transactionCalls);
+    assert.equal(firestoreMetrics.txSetCalls, metricsBeforeMismatchAct.txSetCalls);
+
+    // 12e. Separate Read-Only Verify succeeds on bound Device A with ZERO writes and unchanged record state
+    clearLicenseInMemoryCache();
+    const metricsBeforeVerifyOk = { ...firestoreMetrics };
+    const verifyOkRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: {
+        licenseKey: s2PlaintextKey,
+        deviceInfo: s2DeviceA,
+      },
+    });
+    assert.equal(verifyOkRes.statusCode, 200);
+    assert.equal(verifyOkRes.json?.valid, true);
+    assert.equal(verifyOkRes.json?.status, 'active');
+    assert.equal(verifyOkRes.json?.code, 'LICENSE_VALID');
+    assert.equal(verifyOkRes.json?.license?.id, s2LicenseId);
+    assert.equal(verifyOkRes.json?.license?.linkedDevice?.deviceId, s2DeviceA.deviceId);
+    // Security: Verify response never leaks sensitive fields
+    assert.equal(verifyOkRes.json?.license?.encryptedKey, undefined);
+    assert.equal(verifyOkRes.json?.license?.keyHash, undefined);
+    assert.equal(JSON.stringify(verifyOkRes.json).includes(s2PlaintextKey), false);
+    assert.equal(
+      firestoreMetrics.transactionCalls,
+      metricsBeforeVerifyOk.transactionCalls,
+      '/api/licenses/verify must NOT run Firestore transactions'
+    );
+    assert.equal(
+      firestoreMetrics.setDocumentCalls,
+      metricsBeforeVerifyOk.setDocumentCalls,
+      '/api/licenses/verify must NOT write to Firestore'
+    );
+    assert.equal(
+      firestoreMetrics.txSetCalls,
+      metricsBeforeVerifyOk.txSetCalls,
+      '/api/licenses/verify must NOT mutate records in transactions'
+    );
+    assert.ok(
+      firestoreMetrics.queryCalls > metricsBeforeVerifyOk.queryCalls,
+      '/api/licenses/verify must read directly from persistent Firestore storage'
+    );
+
+    const docAfterVerifyOk = await zoyaUpdatesAdapter.getDocumentById('licenses', s2LicenseId);
+    assert.equal(docAfterVerifyOk.data?.validationCount, initialValidationCount, 'Verify must not increment validationCount');
+    assert.equal(docAfterVerifyOk.data?.lastSeenAt, initialLastSeenAt, 'Verify must not mutate lastSeenAt');
+    assert.equal(docAfterVerifyOk.data?.auditLog?.length, initialAuditLength, 'Verify must not append auditLog entries');
+
+    // 12f. Read-Only Verify rejects mismatched device, unknown key, and malformed key
+    const verifyMismatchRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceB },
+    });
+    assert.equal(verifyMismatchRes.statusCode, 403);
+    assert.equal(verifyMismatchRes.json?.code, 'DEVICE_MISMATCH');
+
+    const verifyUnknownRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: generateCryptographicLicenseKey(), deviceInfo: s2DeviceA },
+    });
+    assert.equal(verifyUnknownRes.statusCode, 404);
+    assert.equal(verifyUnknownRes.json?.code, 'UNKNOWN_KEY');
+
+    const verifyMalformedRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: 'INVALID-FORMAT', deviceInfo: s2DeviceA },
+    });
+    assert.equal(verifyMalformedRes.statusCode, 400);
+    assert.equal(verifyMalformedRes.json?.code, 'MALFORMED_KEY');
+
+    // 12g. Verify outage fails closed with 503 STORAGE_UNAVAILABLE
+    setSimulatedStorageFailureForTesting(true);
+    const verifyOutageRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceA },
+    });
+    setSimulatedStorageFailureForTesting(false);
+    assert.equal(verifyOutageRes.statusCode, 503);
+    assert.equal(verifyOutageRes.json?.code, 'STORAGE_UNAVAILABLE');
+
+    // 12h. Vercel rewrite routing check (/api/devices/register?__route=...) + vercel.json assertions
+    const vercelConfig = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'vercel.json'), 'utf-8'));
+    const rewrites = vercelConfig.rewrites as Array<{ source: string; destination: string }>;
+    assert.ok(
+      rewrites.some(
+        (r) =>
+          r.source === '/api/licenses/activate' &&
+          r.destination === '/api/devices/register?__route=/api/licenses/activate'
+      ),
+      'vercel.json must rewrite /api/licenses/activate'
+    );
+    assert.ok(
+      rewrites.some(
+        (r) =>
+          r.source === '/api/licenses/verify' &&
+          r.destination === '/api/devices/register?__route=/api/licenses/verify'
+      ),
+      'vercel.json must rewrite /api/licenses/verify'
+    );
+
+    const rewrittenActivateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/devices/register?__route=/api/licenses/activate',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(rewrittenActivateRes.statusCode, 200);
+    assert.equal(rewrittenActivateRes.json?.code, 'LICENSE_VALID');
+
+    const rewrittenVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/devices/register?__route=/api/licenses/verify',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(rewrittenVerifyRes.statusCode, 200);
+    assert.equal(rewrittenVerifyRes.json?.code, 'LICENSE_VALID');
+
+    // 12i. Revocation is immediately reflected on both /api/licenses/verify and /api/licenses/activate
+    // (even without clearing in-memory cache in another handler call)
+    const s2RevokeRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${s2LicenseId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'revoke', reason: 'Stage 2 revocation persistence check' },
+    });
+    assert.equal(s2RevokeRes.statusCode, 200);
+
+    const verifyRevokedRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(verifyRevokedRes.statusCode, 403);
+    assert.equal(verifyRevokedRes.json?.code, 'LICENSE_REVOKED');
+
+    const activateRevokedRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: s2PlaintextKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(activateRevokedRes.statusCode, 403);
+    assert.equal(activateRevokedRes.json?.code, 'LICENSE_REVOKED');
+
+    // 12j. Backward compatibility: POST /api/licenses/validate retains existing contract
+    const s2CompatKey = generateCryptographicLicenseKey();
+    const compatCreateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { customerName: 'Compat Validate Tester', customerEmail: 'compat@zoyatest.internal' },
+    });
+    assert.equal(compatCreateRes.statusCode, 201);
+    const compatKey: string = compatCreateRes.json.generatedKey;
+    createdLicenseIds.push(compatCreateRes.json.license.id);
+    assert.ok(s2CompatKey !== compatKey);
+
+    const compatValidate1 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/validate',
+      body: { licenseKey: compatKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(compatValidate1.statusCode, 200);
+    assert.equal(compatValidate1.json?.code, 'LICENSE_VALID');
+    assert.ok(typeof compatValidate1.json?.entitlementToken === 'string');
+
+    const compatValidate2 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/validate',
+      body: { licenseKey: compatKey, deviceInfo: s2DeviceA },
+    });
+    assert.equal(compatValidate2.statusCode, 200);
+    const compatDoc = await zoyaUpdatesAdapter.getDocumentById('licenses', compatCreateRes.json.license.id);
+    assert.equal(compatDoc.data?.validationCount, 2, 'Legacy /api/licenses/validate keeps existing validationCount increment');
+
+    console.log('  ✓ Passed Stage 2 Fast Active, Read-Only Verify, cache bypass & Vercel rewrite checks.');
+
+    // ---------------------------------------------------------
+    // 13. LICENSE LOGOUT / DEVICE UNBIND (ADMIN TRANSACTION, COOLDOWN BYPASS, PREVIOUS-DEVICE GUARD & CONCURRENCY)
+    // ---------------------------------------------------------
+    console.log('Test 13: License Logout / Device Unbind (Admin transaction, previous-device restriction, cooldown bypass & concurrency)...');
+    resetRateLimits();
+
+    const unbindCreateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        customerName: 'Unbind Security Tester',
+        customerEmail: 'unbind-tester@zoyatest.internal',
+      },
+    });
+    assert.equal(unbindCreateRes.statusCode, 201);
+    const unbindLicId: string = unbindCreateRes.json.license.id;
+    const unbindLicKey: string = unbindCreateRes.json.generatedKey;
+    createdLicenseIds.push(unbindLicId);
+    assert.equal(unbindCreateRes.json.license.bindingVersion, 1);
+    assert.equal(unbindCreateRes.json.license.unbindCount, 0);
+    assert.equal(unbindCreateRes.json.license.lastUnboundAt, null);
+
+    // 13a. Already-unactivated license cannot be unbound
+    const unbindBeforeActiveRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Should fail on unactivated license' },
+    });
+    assert.equal(unbindBeforeActiveRes.statusCode, 400);
+    assert.equal(unbindBeforeActiveRes.json?.code, 'LICENSE_NOT_BOUND');
+
+    const deviceOld = {
+      deviceId: 'android_unbind_old_device_001',
+      deviceModel: 'OnePlus 11',
+      androidVersion: 'Android 14',
+      appVersion: '2.6.0',
+    };
+    const deviceNew = {
+      deviceId: 'android_unbind_new_device_002',
+      deviceModel: 'Google Pixel 9 Pro',
+      androidVersion: 'Android 15',
+      appVersion: '2.6.0',
+    };
+
+    // Activate on deviceOld
+    const oldActivateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceOld },
+    });
+    assert.equal(oldActivateRes.statusCode, 200);
+
+    // 13b. Admin unbind executes inside an atomic Firestore transaction & preserves ownership/key/history
+    const txBeforeAdminUnbind = firestoreMetrics.transactionCalls;
+    const adminUnbindRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Customer upgraded phone via support ticket' },
+    });
+    assert.equal(adminUnbindRes.statusCode, 200);
+    assert.equal(
+      firestoreMetrics.transactionCalls - txBeforeAdminUnbind,
+      1,
+      'Admin unbind must execute inside an atomic Firestore transaction'
+    );
+    assert.equal(adminUnbindRes.json?.license?.status, 'unactivated');
+    assert.equal(adminUnbindRes.json?.license?.linkedDevice, null);
+    assert.equal(adminUnbindRes.json?.license?.bindingVersion, 2);
+    assert.equal(adminUnbindRes.json?.license?.unbindCount, 1);
+    assert.ok(adminUnbindRes.json?.license?.lastUnboundAt);
+    assert.equal(adminUnbindRes.json?.license?.customerEmail, 'unbind-tester@zoyatest.internal');
+    assert.equal(adminUnbindRes.json?.license?.keyHash, hashLicenseKey(unbindLicKey));
+
+    // Already unbound license cannot be unbound a second time
+    const doubleAdminUnbindRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'rebind', reason: 'Second unbind should be rejected' },
+    });
+    assert.equal(doubleAdminUnbindRes.statusCode, 400);
+    assert.equal(doubleAdminUnbindRes.json?.code, 'LICENSE_NOT_BOUND');
+
+    // 13c. Previous device CANNOT silently reclaim the unbound license on /validate OR /activate
+    const oldReclaimValidate = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/validate',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceOld },
+    });
+    assert.equal(oldReclaimValidate.statusCode, 403, 'Legacy /validate must block previously unbound device from silently reclaiming license');
+    assert.equal(oldReclaimValidate.json?.code, 'DEVICE_MISMATCH');
+
+    const oldReclaimActivate = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceOld },
+    });
+    assert.equal(oldReclaimActivate.statusCode, 403, 'Fast Active /activate must block previously unbound device from silently reclaiming license');
+    assert.equal(oldReclaimActivate.json?.code, 'DEVICE_MISMATCH');
+
+    const oldVerifyAfterUnbind = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceOld },
+    });
+    assert.equal(oldVerifyAfterUnbind.statusCode, 403);
+    assert.equal(oldVerifyAfterUnbind.json?.code, 'LICENSE_NOT_ACTIVATED');
+
+    // 13d. New device CAN activate after unbinding, and passes /verify
+    const newDeviceActivateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceNew },
+    });
+    assert.equal(newDeviceActivateRes.statusCode, 200);
+    assert.equal(newDeviceActivateRes.json?.license?.linkedDevice?.deviceId, deviceNew.deviceId);
+
+    const newDeviceVerifyRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: unbindLicKey, deviceInfo: deviceNew },
+    });
+    assert.equal(newDeviceVerifyRes.statusCode, 200);
+    assert.equal(newDeviceVerifyRes.json?.code, 'LICENSE_VALID');
+
+    // 13e. Admin unbind BYPASSES active 24-hour user cooldown
+    const docBeforeCooldownTest = await zoyaUpdatesAdapter.getDocumentById('licenses', unbindLicId);
+    assert.ok(docBeforeCooldownTest.exists && docBeforeCooldownTest.data);
+    await zoyaUpdatesAdapter.setDocumentById('licenses', unbindLicId, {
+      ...docBeforeCooldownTest.data,
+      lastUserUnboundAt: new Date().toISOString(),
+    });
+    clearLicenseInMemoryCache();
+
+    const adminBypassCooldownRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'rebind', reason: 'Admin support override during 24h user cooldown' },
+    });
+    assert.equal(adminBypassCooldownRes.statusCode, 200, 'Admin unbind must bypass 24-hour user cooldown');
+    assert.equal(adminBypassCooldownRes.json?.license?.bindingVersion, 3);
+    assert.equal(adminBypassCooldownRes.json?.license?.unbindCount, 2);
+
+    // 13f. Concurrent activation vs admin unbind safety
+    const deviceThird = {
+      deviceId: 'android_unbind_concurrent_003',
+      deviceModel: 'Nothing Phone 2',
+      androidVersion: 'Android 14',
+      appVersion: '2.6.0',
+    };
+    const [concurrentActRes, concurrentUnbindRes] = await Promise.all([
+      invokeHandler({
+        method: 'POST',
+        url: '/api/licenses/activate',
+        body: { licenseKey: unbindLicKey, deviceInfo: deviceThird },
+      }),
+      invokeHandler({
+        method: 'POST',
+        url: `/api/admin/licenses/${unbindLicId}`,
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body: { action: 'unbind', reason: 'Concurrent unbind race safety test' },
+      }),
+    ]);
+    assert.equal(concurrentActRes.statusCode, 200, 'Activation must succeed cleanly');
+    assert.ok(
+      concurrentUnbindRes.statusCode === 200 || concurrentUnbindRes.statusCode === 400,
+      'Concurrent unbind must either cleanly unbind post-activation (200) or reject pre-activation (400)'
+    );
+    const postRaceDoc = await zoyaUpdatesAdapter.getDocumentById('licenses', unbindLicId);
+    assert.ok(
+      (postRaceDoc.data?.status === 'active' && postRaceDoc.data?.linkedDevice?.deviceId === deviceThird.deviceId) ||
+        (postRaceDoc.data?.status === 'unactivated' && postRaceDoc.data?.linkedDevice === null),
+      'Firestore record must end in a consistent state after concurrent activation/unbind'
+    );
+
+    // 13g. Revoked license cannot be unbound
+    const revokeForUnbindRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'revoke', reason: 'Revoke before unbind test' },
+    });
+    assert.equal(revokeForUnbindRes.statusCode, 200);
+
+    const adminUnbindRevokedRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${unbindLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Should fail on revoked license' },
+    });
+    assert.equal(adminUnbindRevokedRes.statusCode, 400);
+    assert.equal(adminUnbindRevokedRes.json?.code, 'LICENSE_REVOKED');
+
+    console.log('  ✓ Passed Admin transactional unbind, cooldown bypass, previous-device protection & concurrency checks.');
+
+    // --------------------------------------------------------
+    // TEST 14: FCM-Based License Unbind & Revocation Notifications
+    // --------------------------------------------------------
+    console.log('Test 14: FCM token registration, Admin unbind/revoke push notifications, failure non-rollback & leakage checks...');
+    resetRateLimits();
+
+    const capturedFcmPayloads: LicenseFcmTransportPayload[] = [];
+    setLicenseFcmSenderForTesting(async (payload) => {
+      capturedFcmPayloads.push(payload);
+      return { ok: true, messageId: `projects/zoya-updates/messages/test_${capturedFcmPayloads.length}` };
+    });
+
+    // 14a. Verify Vercel rewrite and 8-function serverless limit
+    const vercelCfgFcm = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'vercel.json'), 'utf-8'));
+    assert.ok(
+      (vercelCfgFcm.rewrites as Array<{ source: string; destination: string }>).some(
+        (r) =>
+          r.source === '/api/licenses/fcm/register' &&
+          r.destination === '/api/devices/register?__route=/api/licenses/fcm/register'
+      ),
+      'vercel.json must rewrite /api/licenses/fcm/register to /api/devices/register'
+    );
+    const apiDir = path.resolve(process.cwd(), 'api');
+    const collectFiles = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        return entry.isDirectory() ? collectFiles(full) : [full];
+      });
+    assert.equal(collectFiles(apiDir).length, 8, 'Vercel serverless function count under api/ must remain 8');
+
+    // Create a fresh license for FCM tests
+    const fcmCreateRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: {
+        customerName: 'FCM Notification Customer',
+        customerEmail: 'fcm-customer@example.com',
+        licenseType: 'Lifetime',
+      },
+    });
+    assert.equal(fcmCreateRes.statusCode, 201);
+    const fcmLicId = fcmCreateRes.json.license.id;
+    const fcmLicKey = fcmCreateRes.json.generatedKey;
+    createdLicenseIds.push(fcmLicId);
+
+    const fcmPhone1 = {
+      deviceId: 'android_fcm_bound_phone_001',
+      deviceModel: 'Google Pixel 9 Pro',
+      androidVersion: 'Android 15',
+      appVersion: '2.7.0',
+    };
+    const fcmPhone2 = {
+      deviceId: 'android_fcm_new_phone_002',
+      deviceModel: 'Samsung Galaxy S25 Ultra',
+      androidVersion: 'Android 15',
+      appVersion: '2.7.0',
+    };
+    const fcmToken1 = 'fcm_reg_token_phone1_alpha_1234567890_secret';
+    const fcmToken1Refreshed = 'fcm_reg_token_phone1_beta_0987654321_secret';
+    const fcmToken2 = 'fcm_reg_token_phone2_gamma_5555555555_secret';
+
+    // 14b. Reject unactivated license FCM registration (even if client spoofs status: 'active')
+    const regUnactivatedRes = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: {
+        licenseKey: fcmLicKey,
+        deviceId: fcmPhone1.deviceId,
+        fcmToken: fcmToken1,
+        status: 'active',
+      },
+    });
+    assert.equal(regUnactivatedRes.statusCode, 403);
+    assert.equal(regUnactivatedRes.json?.code, 'LICENSE_UNACTIVATED');
+
+    // 14c. Reject unknown key, malformed key, invalid deviceId, and invalid FCM token
+    const regUnknownKey = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: {
+        licenseKey: 'ZOYA-AAAA-BBBB-CCCC',
+        deviceId: fcmPhone1.deviceId,
+        fcmToken: fcmToken1,
+      },
+    });
+    assert.equal(regUnknownKey.statusCode, 404);
+    assert.equal(regUnknownKey.json?.code, 'UNKNOWN_KEY');
+
+    const regBadToken = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: {
+        licenseKey: fcmLicKey,
+        deviceId: fcmPhone1.deviceId,
+        fcmToken: 'short',
+      },
+    });
+    assert.equal(regBadToken.statusCode, 400);
+    assert.equal(regBadToken.json?.code, 'INVALID_FCM_TOKEN');
+
+    // Activate on Phone 1 via Fast Active
+    const fcmAct1 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone1 },
+    });
+    assert.equal(fcmAct1.statusCode, 200);
+
+    // 14d. Reject mismatched device trying to register its FCM token against Phone 1's license
+    const regMismatch = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: {
+        licenseKey: fcmLicKey,
+        deviceId: fcmPhone2.deviceId,
+        fcmToken: fcmToken2,
+      },
+    });
+    assert.equal(regMismatch.statusCode, 403);
+    assert.equal(regMismatch.json?.code, 'DEVICE_MISMATCH');
+
+    // 14e. Valid FCM token registration via Vercel rewrite route & token replacement
+    const regValid1 = await invokeHandler({
+      method: 'POST',
+      url: '/api/devices/register?__route=/api/licenses/fcm/register',
+      body: {
+        licenseKey: fcmLicKey,
+        deviceId: fcmPhone1.deviceId,
+        fcmToken: fcmToken1,
+      },
+    });
+    assert.equal(regValid1.statusCode, 200);
+    assert.equal(regValid1.json?.success, true);
+    assert.equal(regValid1.json?.registered, true);
+    assert.equal(regValid1.json?.replaced, false);
+    assert.equal(JSON.stringify(regValid1.json).includes(fcmToken1), false, 'FCM token must not leak in register response');
+    assert.equal(JSON.stringify(regValid1.json).includes(fcmLicKey), false, 'License key must not leak in register response');
+
+    // Token refresh / replacement
+    const regReplace1 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: {
+        licenseKey: fcmLicKey,
+        deviceId: fcmPhone1.deviceId,
+        fcmToken: fcmToken1Refreshed,
+      },
+    });
+    assert.equal(regReplace1.statusCode, 200);
+    assert.equal(regReplace1.json?.replaced, true);
+
+    // Verify stored in Firestore, and NEVER leaked in Admin list/detail or public verify/validate/activate responses
+    const storedAfterReg = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
+    assert.equal(storedAfterReg.data?.deviceFcmToken, fcmToken1Refreshed);
+
+    const adminListCheck = await invokeHandler({
+      method: 'GET',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(adminListCheck.statusCode, 200);
+    assert.equal(JSON.stringify(adminListCheck.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in GET /api/admin/licenses');
+
+    const adminDetailCheck = await invokeHandler({
+      method: 'GET',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    assert.equal(adminDetailCheck.statusCode, 200);
+    assert.equal(JSON.stringify(adminDetailCheck.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in GET /api/admin/licenses/:id');
+    assert.equal((adminDetailCheck.json.license as any).deviceFcmToken, undefined);
+
+    const publicVerifyCheck = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone1 },
+    });
+    assert.equal(publicVerifyCheck.statusCode, 200);
+    assert.equal(JSON.stringify(publicVerifyCheck.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in POST /api/licenses/verify');
+
+    // 14f. Failed transaction (simulated storage outage) must NOT send any FCM notification
+    capturedFcmPayloads.length = 0;
+    setSimulatedStorageFailureForTesting(true);
+    const failedTxUnbind = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Should fail during outage' },
+    });
+    setSimulatedStorageFailureForTesting(false);
+    assert.equal(failedTxUnbind.statusCode, 503);
+    assert.equal(capturedFcmPayloads.length, 0, 'No FCM notification may be sent when Firestore transaction fails');
+
+    // 14g. Admin unbind captures refreshed token, commits transaction, clears token, and sends device-specific license_unbound notification
+    const adminUnbindFcmRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Customer upgrading to Galaxy S25 Ultra' },
+    });
+    assert.equal(adminUnbindFcmRes.statusCode, 200);
+    assert.equal(adminUnbindFcmRes.json?.license?.status, 'unactivated');
+    assert.equal(JSON.stringify(adminUnbindFcmRes.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in Admin unbind response');
+    assert.equal(capturedFcmPayloads.length, 1, 'Admin unbind must dispatch exactly one device-specific FCM message');
+    assert.equal(capturedFcmPayloads[0].token, fcmToken1Refreshed, 'Notification must target the captured old device token');
+    assert.equal(capturedFcmPayloads[0].eventType, 'license_unbound');
+    assert.equal(capturedFcmPayloads[0].data.event, 'license_unbound');
+    assert.equal(capturedFcmPayloads[0].data.action, 'OPEN_LICENSE_ACTIVATION');
+    assert.equal(capturedFcmPayloads[0].data.initiatedBy, 'admin');
+    assert.equal(JSON.stringify(capturedFcmPayloads[0].data).includes(fcmLicKey), false, 'Plaintext license key must never appear in FCM payload');
+    assert.equal(JSON.stringify(capturedFcmPayloads[0].data).includes(fcmToken1Refreshed), false, 'FCM token must never appear in FCM data payload');
+
+    const storedAfterAdminUnbind = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
+    assert.equal(storedAfterAdminUnbind.data?.deviceFcmToken, null, 'deviceFcmToken must be cleared after unbind');
+
+    // 14h. Re-activate on Phone 2, register Phone 2 token, simulate FCM failure (UNREGISTERED + stale cleanup & thrown error) -> NO rollback!
+    const fcmAct2 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone2 },
+    });
+    assert.equal(fcmAct2.statusCode, 200);
+
+    const regPhone2 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: { licenseKey: fcmLicKey, deviceId: fcmPhone2.deviceId, fcmToken: fcmToken2 },
+    });
+    assert.equal(regPhone2.statusCode, 200);
+
+    // Seed stale mirror entry in /fcm_devices to verify stale token removal on UNREGISTERED
+    const staleDocId = crypto.createHash('sha256').update(fcmToken2).digest('hex').substring(0, 40);
+    await zoyaUpdatesAdapter.setDocumentById('fcm_devices', staleDocId, { token: fcmToken2 });
+
+    capturedFcmPayloads.length = 0;
+    setLicenseFcmSenderForTesting(async (payload) => {
+      capturedFcmPayloads.push(payload);
+      return { ok: false, errorCode: 'UNREGISTERED', errorMessage: 'Requested entity was not found.' };
+    });
+
+    const unbindOnFcmError = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'rebind', reason: 'Testing non-rollback when FCM returns UNREGISTERED' },
+    });
+    assert.equal(unbindOnFcmError.statusCode, 200, 'Admin unbind must still succeed even if FCM returns UNREGISTERED');
+    assert.equal(capturedFcmPayloads.length, 1);
+    const staleAfterCleanup = await zoyaUpdatesAdapter.getDocumentById('fcm_devices', staleDocId);
+    assert.equal(staleAfterCleanup.exists, false, 'Stale UNREGISTERED token must be removed from /fcm_devices');
+    const docAfterFcmErrUnbind = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
+    assert.equal(docAfterFcmErrUnbind.data?.status, 'unactivated', 'Unbind must NOT roll back on FCM error');
+
+    // 14i. Admin Revoke on active bound device sends distinct `license_revoked` notification, and revoking when FCM throws does NOT roll back
+    const fcmPhone3 = {
+      deviceId: 'android_fcm_revoke_phone_003',
+      deviceModel: 'OnePlus 13',
+      androidVersion: 'Android 15',
+      appVersion: '2.7.0',
+    };
+    const fcmToken3 = 'fcm_reg_token_phone3_delta_9999999999_secret';
+    const actPhone3 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone3 },
+    });
+    assert.equal(actPhone3.statusCode, 200);
+
+    const regPhone3 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: { licenseKey: fcmLicKey, deviceId: fcmPhone3.deviceId, fcmToken: fcmToken3 },
+    });
+    assert.equal(regPhone3.statusCode, 200);
+
+    capturedFcmPayloads.length = 0;
+    setLicenseFcmSenderForTesting(async (payload) => {
+      capturedFcmPayloads.push(payload);
+      throw new Error('Simulated FCM network outage');
+    });
+
+    const revokeWithFcmOutage = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'revoke', reason: 'Abuse / refund revocation test' },
+    });
+    assert.equal(revokeWithFcmOutage.statusCode, 200, 'Admin revoke must succeed even if FCM transport throws');
+    assert.equal(revokeWithFcmOutage.json?.license?.status, 'revoked');
+    assert.equal(JSON.stringify(revokeWithFcmOutage.json).includes(fcmToken3), false, 'FCM token must not leak in Admin revoke response');
+    assert.equal(capturedFcmPayloads.length, 1, 'Admin revoke must attempt exactly one device-specific FCM message');
+    assert.equal(capturedFcmPayloads[0].token, fcmToken3);
+    assert.equal(capturedFcmPayloads[0].eventType, 'license_revoked');
+    assert.equal(capturedFcmPayloads[0].data.event, 'license_revoked');
+    assert.equal(capturedFcmPayloads[0].data.action, 'SHOW_LICENSE_REVOKED');
+    assert.equal(capturedFcmPayloads[0].data.initiatedBy, 'admin');
+
+    const storedAfterRevoke = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
+    assert.equal(storedAfterRevoke.data?.status, 'revoked', 'Revocation must stay committed when FCM fails');
+    assert.equal(storedAfterRevoke.data?.deviceFcmToken, null, 'deviceFcmToken must be cleared on revocation');
+
+    // Re-entering revoked key on activate, verify, validate, and fcm/register must ALL fail with 403 LICENSE_REVOKED
+    const reactivateRevoked = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone3 },
+    });
+    assert.equal(reactivateRevoked.statusCode, 403);
+    assert.equal(reactivateRevoked.json?.code, 'LICENSE_REVOKED');
+
+    const regRevokedFcm = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: { licenseKey: fcmLicKey, deviceId: fcmPhone3.deviceId, fcmToken: fcmToken3 },
+    });
+    assert.equal(regRevokedFcm.statusCode, 403);
+    assert.equal(regRevokedFcm.json?.code, 'LICENSE_REVOKED');
+
+    // Double-revoke fails transaction -> must NOT send another FCM message
+    capturedFcmPayloads.length = 0;
+    const doubleRevokeRes = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${fcmLicId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'revoke', reason: 'Duplicate revoke attempt' },
+    });
+    assert.equal(doubleRevokeRes.statusCode, 400);
+    assert.equal(capturedFcmPayloads.length, 0, 'Failed duplicate revoke must not send FCM notification');
+
+    // 14j. Backward compatibility: unbind & revoke succeed when NO FCM token is registered
+    const legacyNoFcmCreate = await invokeHandler({
+      method: 'POST',
+      url: '/api/admin/licenses',
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { customerName: 'No FCM User', customerEmail: 'nofcm@example.com', licenseType: 'Lifetime' },
+    });
+    assert.equal(legacyNoFcmCreate.statusCode, 201);
+    const noFcmId = legacyNoFcmCreate.json.license.id;
+    const noFcmKey = legacyNoFcmCreate.json.generatedKey;
+    createdLicenseIds.push(noFcmId);
+
+    const noFcmAct = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: noFcmKey, deviceInfo: { deviceId: 'android_no_fcm_phone_001', deviceModel: 'Redmi Note 13' } },
+    });
+    assert.equal(noFcmAct.statusCode, 200);
+
+    capturedFcmPayloads.length = 0;
+    const noFcmUnbind = await invokeHandler({
+      method: 'POST',
+      url: `/api/admin/licenses/${noFcmId}`,
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: { action: 'unbind', reason: 'Legacy license without FCM token' },
+    });
+    assert.equal(noFcmUnbind.statusCode, 200);
+    assert.equal(capturedFcmPayloads.length, 0, 'No FCM message attempted when license has no registered FCM token');
+
+    setLicenseFcmSenderForTesting(null);
+    console.log('  ✓ Passed FCM registration, token refresh, Admin unbind/revoke notifications, failure non-rollback & zero-leakage checks.');
   } finally {
+    setLicenseFcmSenderForTesting(null);
     setSimulatedStorageFailureForTesting(false);
     for (const id of createdLicenseIds) {
       try {
@@ -1256,9 +2261,16 @@ async function runTests() {
     clearLicenseInMemoryCache();
     clearReleasesInMemoryCache();
     resetRateLimits();
+    for (const [k, v] of Object.entries(origAdminEnv)) {
+      if (v === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = v;
+      }
+    }
   }
 
-  console.log('\nALL 11 CLEAN ONE-PHONE LIFETIME LICENSE & FIREBASE TESTS PASSED SUCCESSFULLY!');
+  console.log('\nALL 14 CLEAN ONE-PHONE LIFETIME LICENSE, STAGE 2, DEVICE UNBIND & FCM NOTIFICATION TESTS PASSED SUCCESSFULLY!');
   process.exit(0);
 }
 

@@ -26,6 +26,9 @@ export interface UserLicenseView {
   lastSeenAt: string | null;
   revokedAt: string | null;
   canRevealKey: boolean;
+  canUnbindDevice: boolean;
+  lastUnboundAt: string | null;
+  nextUnbindAvailableAt: string | null;
   matchMethod: 'user_sub' | 'verified_email';
   linkedDevice: UserLinkedDeviceView | null;
 }

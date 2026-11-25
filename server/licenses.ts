@@ -8,6 +8,10 @@ import {
   serverRunTransaction,
 } from './firebase';
 import { getJwtSecret, type AdminUser } from './auth';
+import {
+  sendLicenseDeviceFcmNotification,
+  type LicenseFcmNotificationResult,
+} from './fcm';
 
 export class LicenseStorageError extends Error {
   public readonly status = 503;
@@ -53,6 +57,7 @@ export type LicenseAuditAction =
   | 'activated'
   | 'validated'
   | 'device_rebound'
+  | 'device_unbound'
   | 'revoked';
 
 export interface LicenseAuditEntry {
@@ -92,8 +97,17 @@ export interface LicenseRecord {
   linkedDevice: LinkedDeviceInfo | null;
   lastSeenAt: string | null;
   validationCount: number;
+  bindingVersion: number;
+  lastUnboundAt: string | null;
+  lastUserUnboundAt?: string | null;
+  unbindCount: number;
+  lastUnboundDeviceId?: string | null;
+  deviceFcmToken?: string | null;
+  deviceFcmTokenUpdatedAt?: string | null;
   auditLog: LicenseAuditEntry[];
 }
+
+export const USER_UNBIND_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export interface LicenseSummaryStats {
   total: number;
@@ -134,6 +148,33 @@ export function isValidDeviceId(id: unknown): boolean {
     return false;
   }
   return /^[a-zA-Z0-9_\-.:]+$/.test(trimmed);
+}
+
+/**
+ * Validates an Android FCM registration token server-side.
+ * Rejects empty, whitespace-containing, control-character, or abnormally short/long values.
+ */
+export function isValidFcmRegistrationToken(token: unknown): boolean {
+  if (typeof token !== 'string') return false;
+  const trimmed = token.trim();
+  if (trimmed !== token) return false;
+  if (trimmed.length < 20 || trimmed.length > 4096) return false;
+  if (/[\s\x00-\x1F\x7F]/.test(trimmed)) return false;
+  return true;
+}
+
+/**
+ * Strips sensitive server-only fields (such as device FCM registration tokens) before
+ * returning a LicenseRecord in any API, Admin Portal, or public response.
+ */
+export function sanitizeLicenseForResponse(record: LicenseRecord): LicenseRecord {
+  const copy = { ...(record as unknown as Record<string, unknown>) };
+  delete copy.deviceFcmToken;
+  delete copy.deviceFcmTokenUpdatedAt;
+  delete copy.licenseKey;
+  delete copy.plaintextKey;
+  delete copy.rawKey;
+  return copy as unknown as LicenseRecord;
 }
 
 /**
@@ -460,10 +501,68 @@ function normalizeRecordOnRead(raw: Record<string, any>): LicenseRecord {
     linkedDevice,
     lastSeenAt: raw.lastSeenAt ? String(raw.lastSeenAt) : null,
     validationCount: Number(raw.validationCount) || (status === 'active' ? 1 : 0),
+    bindingVersion:
+      typeof raw.bindingVersion === 'number' && Number.isInteger(raw.bindingVersion) && raw.bindingVersion >= 1
+        ? raw.bindingVersion
+        : 1,
+    lastUnboundAt: raw.lastUnboundAt ? String(raw.lastUnboundAt) : null,
+    lastUserUnboundAt: raw.lastUserUnboundAt ? String(raw.lastUserUnboundAt) : null,
+    unbindCount:
+      typeof raw.unbindCount === 'number' && Number.isInteger(raw.unbindCount) && raw.unbindCount >= 0
+        ? raw.unbindCount
+        : 0,
+    lastUnboundDeviceId:
+      raw.lastUnboundDeviceId && typeof raw.lastUnboundDeviceId === 'string'
+        ? raw.lastUnboundDeviceId.trim()
+        : null,
+    deviceFcmToken:
+      raw.deviceFcmToken && typeof raw.deviceFcmToken === 'string'
+        ? raw.deviceFcmToken.trim()
+        : null,
+    deviceFcmTokenUpdatedAt:
+      raw.deviceFcmTokenUpdatedAt && typeof raw.deviceFcmTokenUpdatedAt === 'string'
+        ? raw.deviceFcmTokenUpdatedAt.trim()
+        : null,
     auditLog: Array.isArray(raw.auditLog) ? raw.auditLog : [],
   };
 
   return sanitizeRecordForStorage(record);
+}
+
+function invalidateLicenseCaches(licenseId?: string | null, keyHash?: string | null): void {
+  if (licenseId) {
+    idToLicenseCache.delete(licenseId);
+  }
+  if (keyHash) {
+    keyHashToLicenseCache.delete(keyHash);
+  }
+  allLicensesCache = null;
+}
+
+export function getUserUnbindCooldownStatus(
+  record: Pick<LicenseRecord, 'lastUserUnboundAt'>,
+  nowMs = Date.now()
+): {
+  active: boolean;
+  nextUnbindAvailableAt: string | null;
+  remainingMs: number;
+} {
+  if (!record.lastUserUnboundAt) {
+    return { active: false, nextUnbindAvailableAt: null, remainingMs: 0 };
+  }
+  const parsedMs = Date.parse(record.lastUserUnboundAt);
+  if (!Number.isFinite(parsedMs)) {
+    return { active: false, nextUnbindAvailableAt: null, remainingMs: 0 };
+  }
+  const nextAvailableMs = parsedMs + USER_UNBIND_COOLDOWN_MS;
+  if (nowMs < nextAvailableMs) {
+    return {
+      active: true,
+      nextUnbindAvailableAt: new Date(nextAvailableMs).toISOString(),
+      remainingMs: nextAvailableMs - nowMs,
+    };
+  }
+  return { active: false, nextUnbindAvailableAt: null, remainingMs: 0 };
 }
 
 /**
@@ -551,8 +650,13 @@ export async function getLicenseById(id: string): Promise<LicenseRecord | null> 
 
 /**
  * Retrieves a single license by its SHA-256 keyHash using an indexed query (1 document read).
+ * Supports bypassing the short-lived in-memory cache so activation and verification always read
+ * directly from persistent Firestore storage.
  */
-export async function getLicenseByKeyHash(keyHash: string): Promise<LicenseRecord | null> {
+export async function getLicenseByKeyHash(
+  keyHash: string,
+  options?: { bypassCache?: boolean }
+): Promise<LicenseRecord | null> {
   if (!keyHash) return null;
 
   if (useInMemoryStoreForTesting) {
@@ -563,9 +667,11 @@ export async function getLicenseByKeyHash(keyHash: string): Promise<LicenseRecor
     return null;
   }
 
-  const cached = keyHashToLicenseCache.get(keyHash);
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
-    return cached.data;
+  if (!options?.bypassCache) {
+    const cached = keyHashToLicenseCache.get(keyHash);
+    if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+      return cached.data;
+    }
   }
 
   assertStorageAvailable();
@@ -834,6 +940,13 @@ export async function createLifetimeLicense(
         linkedDevice: null,
         lastSeenAt: null,
         validationCount: 0,
+        bindingVersion: 1,
+        lastUnboundAt: null,
+        lastUserUnboundAt: null,
+        unbindCount: 0,
+        lastUnboundDeviceId: null,
+        deviceFcmToken: null,
+        deviceFcmTokenUpdatedAt: null,
         auditLog,
       };
 
@@ -972,15 +1085,167 @@ export interface AdminRebindLicenseInput {
 }
 
 /**
- * Rebinds an existing license to allow activation on a new phone.
- * Strictly requires authorized administrator action and records the rebind reason in audit history.
+ * Unbinds / rebinds an existing activated license to allow activation on a new phone.
+ * - Executes inside an atomic Firestore transaction (`serverRunTransaction`) to prevent race conditions.
+ * - Strictly requires authorized administrator action and a reason.
+ * - Admin unbind bypasses the 24-hour user cooldown.
+ * - Never revokes or deletes the license; preserves ownership, key, and append-only audit history.
+ * - Records `lastUnboundDeviceId` so the previously bound phone cannot silently reclaim the license.
  */
 export async function rebindLicenseDeviceByAdmin(
   licenseId: string,
   input: AdminRebindLicenseInput,
   admin: AdminUser
 ): Promise<
-  | { success: true; license: LicenseRecord }
+  | { success: true; license: LicenseRecord; fcmNotification?: LicenseFcmNotificationResult }
+  | { success: false; status: number; error: string; code?: string }
+> {
+  if (!admin || admin.role !== 'admin') {
+    return { success: false, status: 401, code: 'UNAUTHORIZED', error: 'Unauthorized administrator session.' };
+  }
+
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return { success: false, status: 400, error: 'License ID is required.' };
+  }
+
+  const reason = sanitizeText(input?.reason, 300);
+  if (!reason || reason.length < 3) {
+    return {
+      success: false,
+      status: 400,
+      error: 'Administrator authorization reason is required to unbind/rebind a device (minimum 3 characters).',
+    };
+  }
+
+  return withLicenseLock(async () => {
+    try {
+      assertStorageAvailable();
+
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get('licenses', cleanId);
+        if (!snap.exists || !snap.data) {
+          return { type: 'not_found' as const };
+        }
+
+        const current = normalizeRecordOnRead(snap.data);
+        if (current.status === 'revoked') {
+          return { type: 'revoked' as const };
+        }
+
+        if (current.status !== 'active' || !current.linkedDevice || !current.linkedDevice.deviceId) {
+          return { type: 'not_bound' as const };
+        }
+
+        const prevDevice = current.linkedDevice;
+        const capturedFcmToken = current.deviceFcmToken || null;
+        const prevDeviceLabel = `${prevDevice.deviceModel} (${prevDevice.deviceId})`;
+        const nowIso = new Date().toISOString();
+        const actorLabel = `${admin.name} <${admin.email}>`;
+        const nextBindingVersion = (current.bindingVersion || 1) + 1;
+        const nextUnbindCount = (current.unbindCount || 0) + 1;
+
+        const auditEntry: LicenseAuditEntry = {
+          id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          action: 'device_rebound',
+          timestamp: nowIso,
+          actor: actorLabel,
+          details: `Device unbound/rebound by ${admin.name} (binding v${nextBindingVersion}). Released from ${prevDeviceLabel}. Reason: ${reason}`,
+        };
+
+        const updated: LicenseRecord = sanitizeRecordForStorage({
+          ...current,
+          status: 'unactivated',
+          linkedDevice: null,
+          bindingVersion: nextBindingVersion,
+          lastUnboundAt: nowIso,
+          unbindCount: nextUnbindCount,
+          lastUnboundDeviceId: prevDevice.deviceId,
+          deviceFcmToken: null,
+          deviceFcmTokenUpdatedAt: null,
+          updatedAt: nowIso,
+          auditLog: [...(current.auditLog || []), auditEntry],
+        });
+
+        tx.set('licenses', current.id, updated);
+        return {
+          type: 'success' as const,
+          record: updated,
+          capturedFcmToken,
+        };
+      });
+
+      if (txResult.type === 'not_found') {
+        return { success: false, status: 404, code: 'LICENSE_NOT_FOUND', error: 'License record not found.' };
+      }
+
+      if (txResult.type === 'revoked') {
+        return { success: false, status: 400, code: 'LICENSE_REVOKED', error: 'Cannot unbind or rebind a revoked license.' };
+      }
+
+      if (txResult.type === 'not_bound') {
+        return {
+          success: false,
+          status: 400,
+          code: 'LICENSE_NOT_BOUND',
+          error: 'This license does not currently have an active bound device to unbind.',
+        };
+      }
+
+      const saved = txResult.record;
+      invalidateLicenseCaches(saved.id, saved.keyHash);
+
+      // Dispatch device-specific FCM notification strictly AFTER transaction commits.
+      // FCM failure must never roll back or fail a committed unbind.
+      let fcmNotification: LicenseFcmNotificationResult | undefined;
+      try {
+        fcmNotification = await sendLicenseDeviceFcmNotification({
+          fcmToken: txResult.capturedFcmToken,
+          eventType: 'license_unbound',
+          licenseId: saved.id,
+          maskedKey: saved.maskedKey,
+          bindingVersion: saved.bindingVersion,
+          initiatedBy: 'admin',
+          timestamp: saved.lastUnboundAt || saved.updatedAt,
+        });
+      } catch {
+        // Non-fatal: unbind has already committed in Firestore
+      }
+
+      return {
+        success: true,
+        license: sanitizeLicenseForResponse(saved),
+        fcmNotification,
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return { success: false, status: 503, code: 'STORAGE_UNAVAILABLE', error: err.message };
+      }
+      throw new LicenseStorageError(
+        'Persistent license storage (Cloud Firestore) failed while unbinding license device.',
+        err
+      );
+    }
+  });
+}
+
+export interface RevokeLicenseInput {
+  reason?: unknown;
+}
+
+/**
+ * Revokes a license atomically so it permanently fails future activation/verification/validation requests.
+ * - Executes inside an atomic Firestore transaction (`serverRunTransaction`).
+ * - Captures and clears any linked device FCM token inside the transaction.
+ * - Sends a device-specific `license_revoked` FCM notification strictly AFTER the transaction commits.
+ * - FCM delivery failure never rolls back or fails a committed revocation.
+ */
+export async function revokeLicense(
+  licenseId: string,
+  input: RevokeLicenseInput,
+  admin: AdminUser
+): Promise<
+  | { success: true; license: LicenseRecord; fcmNotification?: LicenseFcmNotificationResult }
   | { success: false; status: number; error: string }
 > {
   if (!admin || admin.role !== 'admin') {
@@ -992,87 +1257,65 @@ export async function rebindLicenseDeviceByAdmin(
     return { success: false, status: 400, error: 'License ID is required.' };
   }
 
-  const reason = sanitizeText(input.reason, 300);
-  if (!reason || reason.length < 3) {
-    return {
-      success: false,
-      status: 400,
-      error: 'Administrator authorization reason is required to rebind a device (minimum 3 characters).',
-    };
-  }
-
   return withLicenseLock(async () => {
     try {
-      const existing = await getLicenseById(cleanId);
-      if (!existing) {
+      assertStorageAvailable();
+
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get('licenses', cleanId);
+        if (!snap.exists || !snap.data) {
+          return { type: 'not_found' as const };
+        }
+
+        const current = normalizeRecordOnRead(snap.data);
+        if (current.status === 'revoked') {
+          return { type: 'already_revoked' as const };
+        }
+
+        const reason = sanitizeText(input?.reason, 300) || 'Revoked by administrator';
+        const nowIso = new Date().toISOString();
+        const actorLabel = `${admin.name} <${admin.email}>`;
+        const capturedFcmToken =
+          current.status === 'active' && current.linkedDevice && current.linkedDevice.deviceId
+            ? current.deviceFcmToken || null
+            : null;
+
+        const auditEntry: LicenseAuditEntry = {
+          id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          action: 'revoked',
+          timestamp: nowIso,
+          actor: actorLabel,
+          details: `License revoked by ${admin.name}. Reason: ${reason}`,
+        };
+
+        const updated: LicenseRecord = sanitizeRecordForStorage({
+          ...current,
+          status: 'revoked',
+          revokedAt: nowIso,
+          revokedBy: {
+            email: admin.email,
+            name: admin.name,
+          },
+          revokeReason: reason,
+          deviceFcmToken: null,
+          deviceFcmTokenUpdatedAt: null,
+          updatedAt: nowIso,
+          auditLog: [...(current.auditLog || []), auditEntry],
+        });
+
+        tx.set('licenses', current.id, updated);
+        return {
+          type: 'success' as const,
+          record: updated,
+          capturedFcmToken,
+        };
+      });
+
+      if (txResult.type === 'not_found') {
         return { success: false, status: 404, error: 'License record not found.' };
       }
 
-      if (existing.status === 'revoked') {
-        return { success: false, status: 400, error: 'Cannot rebind a revoked license.' };
-      }
-
-      const prevDeviceLabel = existing.linkedDevice?.deviceModel
-        ? `${existing.linkedDevice.deviceModel} (${existing.linkedDevice.deviceId})`
-        : 'previous device';
-
-      const nowIso = new Date().toISOString();
-      const actorLabel = `${admin.name} <${admin.email}>`;
-
-      const auditEntry: LicenseAuditEntry = {
-        id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-        action: 'device_rebound',
-        timestamp: nowIso,
-        actor: actorLabel,
-        details: `Device binding reset by ${admin.name}. Released from ${prevDeviceLabel}. Reason: ${reason}`,
-      };
-
-      const updated: LicenseRecord = {
-        ...existing,
-        status: 'unactivated',
-        linkedDevice: null,
-        updatedAt: nowIso,
-        auditLog: [...(existing.auditLog || []), auditEntry],
-      };
-
-      const saved = await saveLicenseRecord(updated);
-      return { success: true, license: saved };
-    } catch (err) {
-      if (err instanceof LicenseStorageError) {
-        return { success: false, status: 503, error: err.message };
-      }
-      throw err;
-    }
-  });
-}
-
-export interface RevokeLicenseInput {
-  reason?: unknown;
-}
-
-/**
- * Revokes a license so it permanently fails future validation requests.
- */
-export async function revokeLicense(
-  licenseId: string,
-  input: RevokeLicenseInput,
-  admin: AdminUser
-): Promise<
-  | { success: true; license: LicenseRecord }
-  | { success: false; status: number; error: string }
-> {
-  if (!admin || admin.role !== 'admin') {
-    return { success: false, status: 401, error: 'Unauthorized administrator session.' };
-  }
-
-  return withLicenseLock(async () => {
-    try {
-      const existing = await getLicenseById(licenseId);
-      if (!existing) {
-        return { success: false, status: 404, error: 'License record not found.' };
-      }
-
-      if (existing.status === 'revoked') {
+      if (txResult.type === 'already_revoked') {
         return {
           success: false,
           status: 400,
@@ -1080,33 +1323,31 @@ export async function revokeLicense(
         };
       }
 
-      const reason = sanitizeText(input?.reason, 300) || 'Revoked by administrator';
-      const nowIso = new Date().toISOString();
-      const actorLabel = `${admin.name} <${admin.email}>`;
+      const saved = txResult.record;
+      invalidateLicenseCaches(saved.id, saved.keyHash);
 
-      const auditEntry: LicenseAuditEntry = {
-        id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
-        action: 'revoked',
-        timestamp: nowIso,
-        actor: actorLabel,
-        details: `License revoked by ${admin.name}. Reason: ${reason}`,
+      // Dispatch device-specific `license_revoked` FCM notification strictly AFTER transaction commits.
+      // FCM failure must never roll back or fail a committed revocation.
+      let fcmNotification: LicenseFcmNotificationResult | undefined;
+      try {
+        fcmNotification = await sendLicenseDeviceFcmNotification({
+          fcmToken: txResult.capturedFcmToken,
+          eventType: 'license_revoked',
+          licenseId: saved.id,
+          maskedKey: saved.maskedKey,
+          bindingVersion: saved.bindingVersion,
+          initiatedBy: 'admin',
+          timestamp: saved.revokedAt || saved.updatedAt,
+        });
+      } catch {
+        // Non-fatal: revocation has already committed in Firestore
+      }
+
+      return {
+        success: true,
+        license: sanitizeLicenseForResponse(saved),
+        fcmNotification,
       };
-
-      const updated: LicenseRecord = {
-        ...existing,
-        status: 'revoked',
-        revokedAt: nowIso,
-        revokedBy: {
-          email: admin.email,
-          name: admin.name,
-        },
-        revokeReason: reason,
-        updatedAt: nowIso,
-        auditLog: [...(existing.auditLog || []), auditEntry],
-      };
-
-      const saved = await saveLicenseRecord(updated);
-      return { success: true, license: saved };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
         return {
@@ -1115,7 +1356,10 @@ export async function revokeLicense(
           error: err.message,
         };
       }
-      throw err;
+      throw new LicenseStorageError(
+        'Persistent license storage (Cloud Firestore) failed while revoking license.',
+        err
+      );
     }
   });
 }
@@ -1218,6 +1462,7 @@ export interface AndroidValidationResponse {
   status: 'active' | 'unactivated' | 'revoked' | 'device_mismatch' | 'not_found' | 'malformed' | 'storage_error';
   code:
     | 'LICENSE_VALID'
+    | 'LICENSE_NOT_ACTIVATED'
     | 'MALFORMED_KEY'
     | 'UNKNOWN_KEY'
     | 'INVALID_DEVICE_INFO'
@@ -1295,7 +1540,7 @@ export async function validateLicenseForAndroid(
 
   return withLicenseLock(async () => {
     try {
-      const existing = await getLicenseByKeyHash(keyHash);
+      const existing = await getLicenseByKeyHash(keyHash, { bypassCache: true });
       if (!existing) {
         return {
           valid: false,
@@ -1376,7 +1621,14 @@ export async function validateLicenseForAndroid(
           return { type: 'success' as const, record: updated, isFirstActivation: false };
         }
 
-        // FIRST-TIME ACTIVATION: Atomic binding to this phone
+        // Prevent a recently unbound phone from silently reclaiming the license on background /validate calls
+        if (current.lastUnboundDeviceId && current.lastUnboundDeviceId === clientDevice.deviceId) {
+          return {
+            type: 'previous_device_unbound' as const,
+          };
+        }
+
+        // FIRST-TIME ACTIVATION (or new phone activation after unbind): Atomic binding to this phone
         const newLinkedDevice: LinkedDeviceInfo = {
           deviceId: clientDevice.deviceId,
           deviceModel: clientDevice.deviceModel,
@@ -1401,6 +1653,9 @@ export async function validateLicenseForAndroid(
           lastSeenAt: nowIso,
           validationCount: 1,
           linkedDevice: newLinkedDevice,
+          lastUnboundDeviceId: null,
+          deviceFcmToken: null,
+          deviceFcmTokenUpdatedAt: null,
           updatedAt: nowIso,
           auditLog: updatedAudit,
         };
@@ -1417,6 +1672,17 @@ export async function validateLicenseForAndroid(
           httpStatus: 403,
           revokedAt: txResult.revokedAt,
           error: 'This lifetime license has been revoked.',
+        };
+      }
+
+      if (txResult.type === 'previous_device_unbound') {
+        return {
+          valid: false,
+          status: 'device_mismatch',
+          code: 'DEVICE_MISMATCH',
+          httpStatus: 403,
+          error:
+            'This device was unbound from the license and cannot automatically reclaim it. Activate the license on your new Android device first.',
         };
       }
 
@@ -1513,6 +1779,424 @@ export async function validateLicenseForAndroid(
   });
 }
 
+function buildSafeAndroidLicenseView(record: LicenseRecord): NonNullable<AndroidValidationResponse['license']> {
+  return {
+    id: record.id,
+    maskedKey: record.maskedKey,
+    licenseType: 'Lifetime',
+    status: 'active',
+    customerName: record.customerName,
+    activatedAt: record.activatedAt || record.updatedAt || new Date().toISOString(),
+    lastSeenAt: record.lastSeenAt || record.activatedAt || new Date().toISOString(),
+    linkedDevice: record.linkedDevice,
+  };
+}
+
+/**
+ * STAGE 2 — FAST ACTIVE (POST /api/licenses/activate)
+ * Handles initial license activation and reactivation after app data clear / reinstall.
+ * - Reads directly from persistent Firestore storage (bypasses in-memory cache as source of truth).
+ * - First activation: atomically binds the license to the device via transaction and persists `active`.
+ * - Repeated activation on the SAME bound device while already `active`: returns 200 + entitlementToken
+ *   WITHOUT repeating Firestore writes or running unnecessary activation transactions.
+ * - Rejects revoked licenses and device mismatches cleanly; never silently rebinds an activated key.
+ */
+export async function activateLicenseForAndroid(
+  payload: AndroidValidationRequest
+): Promise<AndroidValidationResponse> {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'MALFORMED_KEY',
+      httpStatus: 400,
+      error: 'Request payload is required.',
+    };
+  }
+
+  const normalizedKey = normalizeLicenseKey(payload.licenseKey);
+  if (!normalizedKey || !isValidLicenseKeyFormat(normalizedKey)) {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'MALFORMED_KEY',
+      httpStatus: 400,
+      error: 'License key format is invalid. Expected ZOYA-XXXX-XXXX-XXXX.',
+    };
+  }
+
+  const keyHash = hashLicenseKey(normalizedKey);
+  const rawToken = typeof payload.entitlementToken === 'string' ? payload.entitlementToken.trim() : '';
+
+  const deviceValidation = validateClientDeviceInfo(payload.deviceInfo);
+  if (!deviceValidation.valid || !deviceValidation.data) {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'INVALID_DEVICE_INFO',
+      httpStatus: 400,
+      error: deviceValidation.error || 'A valid Android device identifier is required.',
+    };
+  }
+
+  const clientDevice = deviceValidation.data;
+
+  return withLicenseLock(async () => {
+    try {
+      // Read directly from persistent Firestore storage (never trust stale in-memory cache)
+      const existing = await getLicenseByKeyHash(keyHash, { bypassCache: true });
+      if (!existing) {
+        return {
+          valid: false,
+          status: 'not_found',
+          code: 'UNKNOWN_KEY',
+          httpStatus: 404,
+          error: 'License key not found.',
+        };
+      }
+
+      if (existing.status === 'revoked') {
+        return {
+          valid: false,
+          status: 'revoked',
+          code: 'LICENSE_REVOKED',
+          httpStatus: 403,
+          revokedAt: existing.revokedAt,
+          error: 'This lifetime license has been revoked and is no longer valid.',
+        };
+      }
+
+      // Fast Active fast-path: already active and bound to a device
+      if (existing.status === 'active' && existing.linkedDevice && existing.linkedDevice.deviceId) {
+        if (existing.linkedDevice.deviceId !== clientDevice.deviceId) {
+          return {
+            valid: false,
+            status: 'device_mismatch',
+            code: 'DEVICE_MISMATCH',
+            httpStatus: 403,
+            error: `This lifetime license is already bound to another phone (${existing.linkedDevice.deviceModel}). One-phone lifetime license policy is strictly enforced.`,
+          };
+        }
+
+        // Same device & already active: return success WITHOUT repeating Firestore writes or transactions
+        const entitlementToken = generateSignedEntitlementToken({
+          licenseId: existing.id,
+          keyHash: existing.keyHash,
+          maskedKey: existing.maskedKey,
+          activatedAt: existing.activatedAt || existing.updatedAt || new Date().toISOString(),
+          deviceId: existing.linkedDevice.deviceId,
+        });
+
+        return {
+          valid: true,
+          status: 'active',
+          code: 'LICENSE_VALID',
+          httpStatus: 200,
+          entitlementToken,
+          license: buildSafeAndroidLicenseView(existing),
+        };
+      }
+
+      // Prevent the previously unbound device from silently reclaiming the license before a new device binds
+      if (
+        !existing.linkedDevice &&
+        existing.lastUnboundDeviceId &&
+        existing.lastUnboundDeviceId === clientDevice.deviceId
+      ) {
+        return {
+          valid: false,
+          status: 'device_mismatch',
+          code: 'DEVICE_MISMATCH',
+          httpStatus: 403,
+          error:
+            'This device was unbound from the license and cannot automatically reclaim it. Activate the license on your new Android device first.',
+        };
+      }
+
+      // First activation (or reactivation on a new phone after unbind): atomically bind device
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get('licenses', existing.id);
+        if (!snap.exists || !snap.data) {
+          throw new Error('License document missing during transaction.');
+        }
+
+        const current = normalizeRecordOnRead(snap.data);
+        if (current.status === 'revoked') {
+          return {
+            type: 'revoked' as const,
+            revokedAt: current.revokedAt,
+          };
+        }
+
+        if (current.linkedDevice && current.linkedDevice.deviceId) {
+          if (current.linkedDevice.deviceId !== clientDevice.deviceId) {
+            return {
+              type: 'mismatch' as const,
+              boundModel: current.linkedDevice.deviceModel,
+            };
+          }
+
+          if (current.status === 'active') {
+            // Concurrent request already activated on the same device: no redundant write needed
+            return { type: 'already_active' as const, record: current };
+          }
+        }
+
+        if (current.lastUnboundDeviceId && current.lastUnboundDeviceId === clientDevice.deviceId) {
+          return {
+            type: 'previous_device_unbound' as const,
+          };
+        }
+
+        const nowIso = new Date().toISOString();
+        const newLinkedDevice: LinkedDeviceInfo = {
+          deviceId: clientDevice.deviceId,
+          deviceModel: clientDevice.deviceModel,
+          androidVersion: clientDevice.androidVersion,
+          appVersion: clientDevice.appVersion,
+          linkedAt: nowIso,
+        };
+
+        const updatedAudit = [...(current.auditLog || [])];
+        updatedAudit.push({
+          id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          action: 'activated',
+          timestamp: nowIso,
+          actor: 'Zoya Android Phone',
+          details: `Lifetime license activated and permanently bound to ${clientDevice.deviceModel} (${clientDevice.deviceId}).`,
+        });
+
+        const updated: LicenseRecord = {
+          ...current,
+          status: 'active',
+          activatedAt: current.activatedAt || nowIso,
+          lastSeenAt: nowIso,
+          validationCount: 1,
+          linkedDevice: newLinkedDevice,
+          lastUnboundDeviceId: null,
+          deviceFcmToken: null,
+          deviceFcmTokenUpdatedAt: null,
+          updatedAt: nowIso,
+          auditLog: updatedAudit,
+        };
+
+        tx.set('licenses', current.id, updated);
+        return { type: 'activated' as const, record: updated };
+      });
+
+      if (txResult.type === 'revoked') {
+        return {
+          valid: false,
+          status: 'revoked',
+          code: 'LICENSE_REVOKED',
+          httpStatus: 403,
+          revokedAt: txResult.revokedAt,
+          error: 'This lifetime license has been revoked.',
+        };
+      }
+
+      if (txResult.type === 'previous_device_unbound') {
+        return {
+          valid: false,
+          status: 'device_mismatch',
+          code: 'DEVICE_MISMATCH',
+          httpStatus: 403,
+          error:
+            'This device was unbound from the license and cannot automatically reclaim it. Activate the license on your new Android device first.',
+        };
+      }
+
+      if (txResult.type === 'mismatch') {
+        return {
+          valid: false,
+          status: 'device_mismatch',
+          code: 'DEVICE_MISMATCH',
+          httpStatus: 403,
+          error: `This lifetime license is already bound to another phone (${txResult.boundModel}). One-phone lifetime license policy is strictly enforced.`,
+        };
+      }
+
+      const saved = txResult.record;
+      cacheLicenseRecord(saved);
+      allLicensesCache = null;
+
+      const entitlementToken = generateSignedEntitlementToken({
+        licenseId: saved.id,
+        keyHash: saved.keyHash,
+        maskedKey: saved.maskedKey,
+        activatedAt: saved.activatedAt || new Date().toISOString(),
+        deviceId: saved.linkedDevice?.deviceId || clientDevice.deviceId,
+      });
+
+      return {
+        valid: true,
+        status: 'active',
+        code: 'LICENSE_VALID',
+        httpStatus: 200,
+        entitlementToken,
+        license: buildSafeAndroidLicenseView(saved),
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
+        if (tokenVerification.valid && tokenVerification.payload) {
+          return {
+            valid: true,
+            status: 'active',
+            code: 'LICENSE_VALID',
+            httpStatus: 200,
+            isOfflineGrace: true,
+            entitlementToken: rawToken,
+            error:
+              'Server storage is temporarily unavailable. License validated via cryptographic offline grace token on bound device.',
+            license: {
+              id: tokenVerification.payload.id || 'grace_id',
+              maskedKey: tokenVerification.payload.mk || maskLicenseKey(normalizedKey).maskedKey,
+              licenseType: 'Lifetime',
+              status: 'active',
+              customerName: 'Lifetime Subscriber',
+              activatedAt: tokenVerification.payload.act || new Date().toISOString(),
+              lastSeenAt: new Date().toISOString(),
+              linkedDevice: {
+                deviceId: clientDevice.deviceId,
+                deviceModel: clientDevice.deviceModel,
+                linkedAt: tokenVerification.payload.act || new Date().toISOString(),
+              },
+            },
+          };
+        }
+
+        if (tokenVerification.reason?.includes('different Android device')) {
+          return {
+            valid: false,
+            status: 'device_mismatch',
+            code: 'DEVICE_MISMATCH',
+            httpStatus: 403,
+            error: 'Offline grace token was issued to a different Android device.',
+          };
+        }
+
+        return {
+          valid: false,
+          status: 'storage_error',
+          code: 'STORAGE_UNAVAILABLE',
+          httpStatus: 503,
+          error: err.message,
+        };
+      }
+      throw err;
+    }
+  });
+}
+
+/**
+ * STAGE 2 — SEPARATE READ-ONLY VERIFICATION (POST /api/licenses/verify)
+ * Strictly checks the previously persisted license record directly from Firestore without activating,
+ * rebinding, writing, running transactions, or trusting client-supplied activation state.
+ */
+export async function verifyLicenseForAndroid(
+  payload: AndroidValidationRequest
+): Promise<AndroidValidationResponse> {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'MALFORMED_KEY',
+      httpStatus: 400,
+      error: 'Request payload is required.',
+    };
+  }
+
+  const normalizedKey = normalizeLicenseKey(payload.licenseKey);
+  if (!normalizedKey || !isValidLicenseKeyFormat(normalizedKey)) {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'MALFORMED_KEY',
+      httpStatus: 400,
+      error: 'License key format is invalid. Expected ZOYA-XXXX-XXXX-XXXX.',
+    };
+  }
+
+  const deviceValidation = validateClientDeviceInfo(payload.deviceInfo);
+  if (!deviceValidation.valid || !deviceValidation.data) {
+    return {
+      valid: false,
+      status: 'malformed',
+      code: 'INVALID_DEVICE_INFO',
+      httpStatus: 400,
+      error: deviceValidation.error || 'A valid Android device identifier is required.',
+    };
+  }
+
+  const keyHash = hashLicenseKey(normalizedKey);
+  const clientDevice = deviceValidation.data;
+
+  try {
+    // Always read directly from persistent Firestore storage (never rely on in-memory cache)
+    const existing = await getLicenseByKeyHash(keyHash, { bypassCache: true });
+    if (!existing) {
+      return {
+        valid: false,
+        status: 'not_found',
+        code: 'UNKNOWN_KEY',
+        httpStatus: 404,
+        error: 'License key not found.',
+      };
+    }
+
+    if (existing.status === 'revoked') {
+      return {
+        valid: false,
+        status: 'revoked',
+        code: 'LICENSE_REVOKED',
+        httpStatus: 403,
+        revokedAt: existing.revokedAt,
+        error: 'This lifetime license has been revoked and is no longer valid.',
+      };
+    }
+
+    if (existing.status !== 'active' || !existing.linkedDevice || !existing.linkedDevice.deviceId) {
+      return {
+        valid: false,
+        status: 'unactivated',
+        code: 'LICENSE_NOT_ACTIVATED',
+        httpStatus: 403,
+        error: 'This lifetime license has not been activated yet. Activate it first via /api/licenses/activate.',
+      };
+    }
+
+    if (existing.linkedDevice.deviceId !== clientDevice.deviceId) {
+      return {
+        valid: false,
+        status: 'device_mismatch',
+        code: 'DEVICE_MISMATCH',
+        httpStatus: 403,
+        error: `This lifetime license is bound to another phone (${existing.linkedDevice.deviceModel}). One-phone lifetime license policy is strictly enforced.`,
+      };
+    }
+
+    return {
+      valid: true,
+      status: 'active',
+      code: 'LICENSE_VALID',
+      httpStatus: 200,
+      license: buildSafeAndroidLicenseView(existing),
+    };
+  } catch (err) {
+    if (err instanceof LicenseStorageError) {
+      return {
+        valid: false,
+        status: 'storage_error',
+        code: 'STORAGE_UNAVAILABLE',
+        httpStatus: 503,
+        error: err.message,
+      };
+    }
+    throw err;
+  }
+}
+
 export interface UserAccountLicenseView {
   id: string;
   maskedKey: string;
@@ -1523,6 +2207,9 @@ export interface UserAccountLicenseView {
   lastSeenAt: string | null;
   revokedAt: string | null;
   canRevealKey: boolean;
+  canUnbindDevice: boolean;
+  lastUnboundAt: string | null;
+  nextUnbindAvailableAt: string | null;
   matchMethod: 'user_sub' | 'verified_email';
   linkedDevice: {
     deviceModel: string;
@@ -1666,6 +2353,8 @@ export async function getUserOwnedLicenseSummary(user: {
     encryptionConfigured = false;
   }
 
+  const cooldown = getUserUnbindCooldownStatus(rec);
+
   return {
     status: rec.status,
     hasLicense: rec.status === 'active' || rec.status === 'unactivated',
@@ -1681,6 +2370,9 @@ export async function getUserOwnedLicenseSummary(user: {
       lastSeenAt: rec.lastSeenAt,
       revokedAt: rec.revokedAt,
       canRevealKey: Boolean(rec.encryptedKey && encryptionConfigured && rec.status !== 'revoked'),
+      canUnbindDevice: Boolean(rec.status === 'active' && rec.linkedDevice && !cooldown.active),
+      lastUnboundAt: rec.lastUnboundAt ?? null,
+      nextUnbindAvailableAt: cooldown.active ? cooldown.nextUnbindAvailableAt : null,
       matchMethod: primary.matchMethod,
       linkedDevice: rec.linkedDevice
         ? {
@@ -1791,4 +2483,431 @@ export async function revealLicenseKeyForUser(
     }
     throw err;
   }
+}
+
+export interface UserUnbindDeviceResult {
+  success: boolean;
+  status: number;
+  message?: string;
+  licenseSummary?: UserAccountLicenseSummary;
+  fcmNotification?: LicenseFcmNotificationResult;
+  error?: string;
+  code?:
+    | 'LICENSE_NOT_FOUND'
+    | 'UNAUTHORIZED'
+    | 'LICENSE_REVOKED'
+    | 'LICENSE_NOT_BOUND'
+    | 'UNBIND_COOLDOWN_ACTIVE'
+    | 'STORAGE_UNAVAILABLE';
+  nextUnbindAvailableAt?: string | null;
+}
+
+/**
+ * Allows an authenticated license owner to unbind/release their currently bound Android phone.
+ * - Executes inside an atomic Firestore transaction (`serverRunTransaction`).
+ * - Verifies license ownership strictly server-side (`userSub` or verified Google email).
+ * - Enforces a server-side 24-hour user cooldown per license.
+ * - Preserves customer ownership, key, and append-only audit history; never revokes or deletes the license.
+ * - Captures and clears any linked device FCM token inside the transaction, then sends a device-specific
+ *   `license_unbound` FCM notification strictly AFTER commit (non-fatal if FCM fails).
+ * - Records `lastUnboundDeviceId` so the unbound phone cannot silently reclaim the license.
+ */
+export async function unbindLicenseDeviceForUser(
+  licenseId: string,
+  user: { googleSub: string; email: string; emailVerified: boolean }
+): Promise<UserUnbindDeviceResult> {
+  const cleanId = sanitizeText(licenseId, 100);
+  if (!cleanId) {
+    return {
+      success: false,
+      status: 400,
+      error: 'License ID is required.',
+    };
+  }
+
+  return withLicenseLock(async () => {
+    try {
+      assertStorageAvailable();
+
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get('licenses', cleanId);
+        if (!snap.exists || !snap.data) {
+          return { type: 'not_found' as const };
+        }
+
+        const current = normalizeRecordOnRead(snap.data);
+        const ownership = isLicenseOwnedByAuthenticatedUser(current, user);
+        if (!ownership) {
+          return { type: 'unauthorized' as const };
+        }
+
+        if (current.status === 'revoked') {
+          return { type: 'revoked' as const };
+        }
+
+        if (current.status !== 'active' || !current.linkedDevice || !current.linkedDevice.deviceId) {
+          return { type: 'not_bound' as const };
+        }
+
+        const nowMs = Date.now();
+        const cooldown = getUserUnbindCooldownStatus(current, nowMs);
+        if (cooldown.active) {
+          return {
+            type: 'cooldown' as const,
+            nextUnbindAvailableAt: cooldown.nextUnbindAvailableAt,
+          };
+        }
+
+        const nowIso = new Date(nowMs).toISOString();
+        const prevDevice = current.linkedDevice;
+        const capturedFcmToken = current.deviceFcmToken || null;
+        const prevDeviceLabel = `${prevDevice.deviceModel} (${prevDevice.deviceId})`;
+        const nextBindingVersion = (current.bindingVersion || 1) + 1;
+        const nextUnbindCount = (current.unbindCount || 0) + 1;
+
+        const auditEntry: LicenseAuditEntry = {
+          id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          action: 'device_unbound',
+          timestamp: nowIso,
+          actor: `Account Owner <${user.email}>`,
+          details: `Device unbound by license owner (${user.email}, match: ${ownership}, binding v${nextBindingVersion}). Released from ${prevDeviceLabel}.`,
+        };
+
+        const updated: LicenseRecord = sanitizeRecordForStorage({
+          ...current,
+          userSub: current.userSub || user.googleSub,
+          status: 'unactivated',
+          linkedDevice: null,
+          bindingVersion: nextBindingVersion,
+          lastUnboundAt: nowIso,
+          lastUserUnboundAt: nowIso,
+          unbindCount: nextUnbindCount,
+          lastUnboundDeviceId: prevDevice.deviceId,
+          deviceFcmToken: null,
+          deviceFcmTokenUpdatedAt: null,
+          updatedAt: nowIso,
+          auditLog: [...(current.auditLog || []), auditEntry],
+        });
+
+        tx.set('licenses', current.id, updated);
+        return {
+          type: 'success' as const,
+          record: updated,
+          prevDeviceModel: prevDevice.deviceModel,
+          capturedFcmToken,
+        };
+      });
+
+      if (txResult.type === 'not_found') {
+        return {
+          success: false,
+          status: 404,
+          code: 'LICENSE_NOT_FOUND',
+          error: 'License record not found.',
+        };
+      }
+
+      if (txResult.type === 'unauthorized') {
+        return {
+          success: false,
+          status: 403,
+          code: 'UNAUTHORIZED',
+          error: 'You are not authorized to unbind this license.',
+        };
+      }
+
+      if (txResult.type === 'revoked') {
+        return {
+          success: false,
+          status: 403,
+          code: 'LICENSE_REVOKED',
+          error: 'Revoked licenses cannot be unbound.',
+        };
+      }
+
+      if (txResult.type === 'not_bound') {
+        return {
+          success: false,
+          status: 400,
+          code: 'LICENSE_NOT_BOUND',
+          error: 'This license is not currently bound to an active device.',
+        };
+      }
+
+      if (txResult.type === 'cooldown') {
+        return {
+          success: false,
+          status: 429,
+          code: 'UNBIND_COOLDOWN_ACTIVE',
+          nextUnbindAvailableAt: txResult.nextUnbindAvailableAt,
+          error: txResult.nextUnbindAvailableAt
+            ? `You can unbind this license once every 24 hours. Next unbind available after ${txResult.nextUnbindAvailableAt}.`
+            : 'You can unbind this license once every 24 hours. Please try again later.',
+        };
+      }
+
+      const saved = txResult.record;
+      invalidateLicenseCaches(saved.id, saved.keyHash);
+
+      // Dispatch device-specific `license_unbound` FCM notification strictly AFTER transaction commits.
+      // FCM failure must never roll back or fail a committed unbind.
+      let fcmNotification: LicenseFcmNotificationResult | undefined;
+      try {
+        fcmNotification = await sendLicenseDeviceFcmNotification({
+          fcmToken: txResult.capturedFcmToken,
+          eventType: 'license_unbound',
+          licenseId: saved.id,
+          maskedKey: saved.maskedKey,
+          bindingVersion: saved.bindingVersion,
+          initiatedBy: 'user',
+          timestamp: saved.lastUnboundAt || saved.updatedAt,
+        });
+      } catch {
+        // Non-fatal: unbind has already committed in Firestore
+      }
+
+      const licenseSummary = await getUserOwnedLicenseSummary(user);
+      return {
+        success: true,
+        status: 200,
+        message: `Device "${txResult.prevDeviceModel}" has been unbound. Your license remains linked to your Google account and is ready to activate on a new Android phone.`,
+        licenseSummary,
+        fcmNotification,
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          success: false,
+          status: 503,
+          code: 'STORAGE_UNAVAILABLE',
+          error: err.message,
+        };
+      }
+      throw new LicenseStorageError(
+        'Persistent license storage (Cloud Firestore) failed while unbinding license device.',
+        err
+      );
+    }
+  });
+}
+
+export interface RegisterLicenseFcmTokenRequest {
+  licenseKey?: unknown;
+  deviceId?: unknown;
+  deviceInfo?: { deviceId?: unknown } | null;
+  fcmToken?: unknown;
+  token?: unknown;
+}
+
+export interface RegisterLicenseFcmTokenResponse {
+  success: boolean;
+  httpStatus: number;
+  registered?: boolean;
+  replaced?: boolean;
+  updatedAt?: string;
+  code?:
+    | 'FCM_TOKEN_REGISTERED'
+    | 'MALFORMED_KEY'
+    | 'INVALID_DEVICE_INFO'
+    | 'INVALID_FCM_TOKEN'
+    | 'UNKNOWN_KEY'
+    | 'LICENSE_UNACTIVATED'
+    | 'LICENSE_REVOKED'
+    | 'DEVICE_MISMATCH'
+    | 'STORAGE_UNAVAILABLE';
+  error?: string;
+}
+
+/**
+ * Securely registers or refreshes an Android device's FCM token against its existing activated license.
+ * - Verifies license key hash directly against persistent Firestore storage (never trusts client status).
+ * - Requires `status === 'active'` and `linkedDevice.deviceId === deviceId`.
+ * - Rejects malformed keys, invalid device IDs, invalid FCM tokens, unknown keys, unactivated licenses,
+ *   revoked licenses, and mismatched devices.
+ * - Executes inside an atomic Firestore transaction (`serverRunTransaction`) to prevent race conditions.
+ * - Never returns FCM tokens, plaintext keys, key hashes, or secrets in responses.
+ */
+export async function registerLicenseDeviceFcmToken(
+  payload: RegisterLicenseFcmTokenRequest
+): Promise<RegisterLicenseFcmTokenResponse> {
+  if (!payload || typeof payload !== 'object') {
+    return {
+      success: false,
+      httpStatus: 400,
+      code: 'MALFORMED_KEY',
+      error: 'Request payload is required.',
+    };
+  }
+
+  const normalizedKey = normalizeLicenseKey(payload.licenseKey);
+  if (!normalizedKey || !isValidLicenseKeyFormat(normalizedKey)) {
+    return {
+      success: false,
+      httpStatus: 400,
+      code: 'MALFORMED_KEY',
+      error: 'License key format is invalid. Expected ZOYA-XXXX-XXXX-XXXX.',
+    };
+  }
+
+  const rawDeviceId =
+    payload.deviceId !== undefined
+      ? payload.deviceId
+      : payload.deviceInfo && typeof payload.deviceInfo === 'object'
+        ? payload.deviceInfo.deviceId
+        : undefined;
+
+  if (!isValidDeviceId(rawDeviceId)) {
+    return {
+      success: false,
+      httpStatus: 400,
+      code: 'INVALID_DEVICE_INFO',
+      error: 'A valid Android deviceId is required.',
+    };
+  }
+  const cleanDeviceId = String(rawDeviceId).trim();
+
+  const rawFcmToken = payload.fcmToken !== undefined ? payload.fcmToken : payload.token;
+  if (!isValidFcmRegistrationToken(rawFcmToken)) {
+    return {
+      success: false,
+      httpStatus: 400,
+      code: 'INVALID_FCM_TOKEN',
+      error: 'A valid FCM registration token is required.',
+    };
+  }
+  const cleanFcmToken = String(rawFcmToken).trim();
+
+  const keyHash = hashLicenseKey(normalizedKey);
+
+  return withLicenseLock(async () => {
+    try {
+      assertStorageAvailable();
+
+      const existing = await getLicenseByKeyHash(keyHash, { bypassCache: true });
+      if (!existing) {
+        return {
+          success: false,
+          httpStatus: 404,
+          code: 'UNKNOWN_KEY',
+          error: 'License key not found.',
+        };
+      }
+
+      const txResult = await serverRunTransaction(async (tx) => {
+        const snap = await tx.get('licenses', existing.id);
+        if (!snap.exists || !snap.data) {
+          return { type: 'not_found' as const };
+        }
+
+        const current = normalizeRecordOnRead(snap.data);
+
+        if (current.status === 'revoked') {
+          return { type: 'revoked' as const };
+        }
+
+        if (current.status !== 'active' || !current.linkedDevice || !current.linkedDevice.deviceId) {
+          return { type: 'unactivated' as const };
+        }
+
+        if (current.linkedDevice.deviceId !== cleanDeviceId) {
+          return { type: 'mismatch' as const };
+        }
+
+        if (current.deviceFcmToken === cleanFcmToken) {
+          return {
+            type: 'unchanged' as const,
+            record: current,
+            updatedAt: current.deviceFcmTokenUpdatedAt || current.updatedAt,
+          };
+        }
+
+        const nowIso = new Date().toISOString();
+        const hadExistingToken = Boolean(current.deviceFcmToken);
+        const updated: LicenseRecord = sanitizeRecordForStorage({
+          ...current,
+          deviceFcmToken: cleanFcmToken,
+          deviceFcmTokenUpdatedAt: nowIso,
+          updatedAt: nowIso,
+        });
+
+        tx.set('licenses', current.id, updated);
+        return {
+          type: 'saved' as const,
+          record: updated,
+          replaced: hadExistingToken,
+          updatedAt: nowIso,
+        };
+      });
+
+      if (txResult.type === 'not_found') {
+        return {
+          success: false,
+          httpStatus: 404,
+          code: 'UNKNOWN_KEY',
+          error: 'License key not found.',
+        };
+      }
+
+      if (txResult.type === 'revoked') {
+        return {
+          success: false,
+          httpStatus: 403,
+          code: 'LICENSE_REVOKED',
+          error: 'This lifetime license has been revoked and cannot register an FCM token.',
+        };
+      }
+
+      if (txResult.type === 'unactivated') {
+        return {
+          success: false,
+          httpStatus: 403,
+          code: 'LICENSE_UNACTIVATED',
+          error: 'License must be actively bound to this device before registering an FCM token.',
+        };
+      }
+
+      if (txResult.type === 'mismatch') {
+        return {
+          success: false,
+          httpStatus: 403,
+          code: 'DEVICE_MISMATCH',
+          error: 'This license is bound to a different Android device.',
+        };
+      }
+
+      if (txResult.type === 'unchanged') {
+        return {
+          success: true,
+          httpStatus: 200,
+          registered: true,
+          replaced: false,
+          updatedAt: txResult.updatedAt,
+          code: 'FCM_TOKEN_REGISTERED',
+        };
+      }
+
+      invalidateLicenseCaches(txResult.record.id, txResult.record.keyHash);
+      return {
+        success: true,
+        httpStatus: 200,
+        registered: true,
+        replaced: txResult.replaced,
+        updatedAt: txResult.updatedAt,
+        code: 'FCM_TOKEN_REGISTERED',
+      };
+    } catch (err) {
+      if (err instanceof LicenseStorageError) {
+        return {
+          success: false,
+          httpStatus: 503,
+          code: 'STORAGE_UNAVAILABLE',
+          error: err.message,
+        };
+      }
+      throw new LicenseStorageError(
+        'Persistent license storage (Cloud Firestore) failed while registering device FCM token.',
+        err
+      );
+    }
+  });
 }

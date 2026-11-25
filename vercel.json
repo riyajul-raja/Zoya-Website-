@@ -54,6 +54,18 @@
       "destination": "/api/devices/register?__route=/api/licenses/validate"
     },
     {
+      "source": "/api/licenses/activate",
+      "destination": "/api/devices/register?__route=/api/licenses/activate"
+    },
+    {
+      "source": "/api/licenses/verify",
+      "destination": "/api/devices/register?__route=/api/licenses/verify"
+    },
+    {
+      "source": "/api/licenses/fcm/register",
+      "destination": "/api/devices/register?__route=/api/licenses/fcm/register"
+    },
+    {
       "source": "/api/auth/google/start",
       "destination": "/api/auth?__route=/api/auth/google/start"
     },
@@ -76,6 +88,10 @@
     {
       "source": "/api/account/license/reveal",
       "destination": "/api/auth?__route=/api/account/license/reveal"
+    },
+    {
+      "source": "/api/account/license/unbind",
+      "destination": "/api/auth?__route=/api/account/license/unbind"
     },
     {
       "source": "/account",

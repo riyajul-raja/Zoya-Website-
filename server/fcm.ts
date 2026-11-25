@@ -912,3 +912,276 @@ export async function sendManualPushNotification(params: {
     inFlightManualKeys.delete(contentDedupKey);
   }
 }
+
+export type LicenseFcmEventType = 'license_unbound' | 'license_revoked';
+
+export interface LicenseFcmNotificationParams {
+  fcmToken: string | null | undefined;
+  eventType: LicenseFcmEventType;
+  licenseId: string;
+  maskedKey: string;
+  bindingVersion: number;
+  initiatedBy: 'admin' | 'user';
+  timestamp: string;
+}
+
+export interface LicenseFcmNotificationResult {
+  attempted: boolean;
+  acceptedByFcm: boolean;
+  skipped?: boolean;
+  configured: boolean;
+  eventType: LicenseFcmEventType;
+  messageId?: string;
+  staleTokenRemoved?: boolean;
+  errorCode?: string;
+  reason?: string;
+}
+
+export interface LicenseFcmTransportPayload {
+  token: string;
+  data: Record<string, string>;
+  collapseKey: string;
+  eventType: LicenseFcmEventType;
+}
+
+export type LicenseFcmTestSender = (
+  payload: LicenseFcmTransportPayload
+) => Promise<{ ok: boolean; messageId?: string; errorCode?: string; errorMessage?: string }>;
+
+let licenseFcmTestSender: LicenseFcmTestSender | null = null;
+
+/**
+ * Test-only hook allowing automated tests to inspect device-specific license FCM payloads
+ * and simulate FCM acceptance, stale token errors, or network outages without live calls.
+ */
+export function setLicenseFcmSenderForTesting(sender: LicenseFcmTestSender | null): void {
+  licenseFcmTestSender = sender;
+}
+
+/**
+ * Dispatches a high-priority data-only FCM HTTP v1 message strictly to a single device token.
+ * Data-only messages invoke Android FirebaseMessagingService.onMessageReceived() immediately
+ * in both foreground and background states so the client can lock features right away.
+ * Never targets a topic or broadcasts to multiple devices.
+ */
+async function sendFcmV1DeviceDataMessage(
+  projectId: string,
+  accessToken: string,
+  token: string,
+  data: Record<string, string>,
+  collapseKey: string
+): Promise<{ ok: boolean; messageId?: string; errorCode?: string; errorMessage?: string }> {
+  const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
+
+  const fcmPayload = {
+    message: {
+      token,
+      data,
+      android: {
+        priority: 'HIGH',
+        collapse_key: collapseKey,
+        ttl: '604800s',
+      },
+    },
+  };
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(fcmPayload),
+  });
+
+  const rawText = await res.text();
+  let parsed: any = {};
+  try {
+    parsed = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    // Ignore parse error on non-JSON error body
+  }
+
+  if (res.ok && parsed.name) {
+    return { ok: true, messageId: String(parsed.name) };
+  }
+
+  const errorCode =
+    parsed?.error?.details?.[0]?.errorCode ||
+    parsed?.error?.status ||
+    String(res.status);
+  const errorMessage =
+    parsed?.error?.message || `FCM HTTP v1 error (${res.status})`;
+
+  return { ok: false, errorCode, errorMessage };
+}
+
+function isStaleFcmTokenError(errorCode?: string, errorMessage?: string): boolean {
+  const code = String(errorCode || '').toUpperCase();
+  if (code === 'UNREGISTERED' || code === 'NOT_FOUND') {
+    return true;
+  }
+  if (code === 'INVALID_ARGUMENT') {
+    const msg = String(errorMessage || '').toLowerCase();
+    return msg.includes('registration token') || msg.includes('not a valid fcm');
+  }
+  return false;
+}
+
+/**
+ * Best-effort cleanup of a stale FCM token from legacy `/fcm_devices` collection
+ * (the license document itself already clears `deviceFcmToken` atomically during unbind/revoke).
+ */
+async function removeStaleTokenFromFcmDevices(fcmToken: string): Promise<boolean> {
+  try {
+    const tokenDocId = crypto
+      .createHash('sha256')
+      .update(fcmToken)
+      .digest('hex')
+      .substring(0, 40);
+    await serverDeleteDocumentById('fcm_devices', tokenDocId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sends a device-specific FCM push notification for a committed license unbind or revocation event.
+ * - MUST only be invoked AFTER the Firestore transaction commits.
+ * - Targets ONLY the single captured device FCM token (never topics or broadcasts).
+ * - Never throws; failures are captured safely so committed unbind/revoke operations are never rolled back.
+ * - Never logs plaintext license keys, FCM tokens, private keys, or customer PII.
+ * - Reports `acceptedByFcm` honestly (FCM accepting a send request does not guarantee device delivery).
+ */
+export async function sendLicenseDeviceFcmNotification(
+  params: LicenseFcmNotificationParams
+): Promise<LicenseFcmNotificationResult> {
+  const cleanToken = typeof params.fcmToken === 'string' ? params.fcmToken.trim() : '';
+  const eventType = params.eventType;
+  const creds = getServiceAccountCredentials();
+  const configured = Boolean(creds || licenseFcmTestSender);
+
+  if (!cleanToken) {
+    return {
+      attempted: false,
+      acceptedByFcm: false,
+      skipped: true,
+      configured,
+      eventType,
+      reason: 'No FCM registration token was registered for the bound device.',
+    };
+  }
+
+  const isRevoked = eventType === 'license_revoked';
+  const title = isRevoked ? 'Zoya License Revoked' : 'Zoya License Unbound';
+  const body = isRevoked
+    ? 'Your Zoya license has been revoked. Licensed features are now disabled on this device.'
+    : 'Your Zoya license was unbound from this device. Activate a license key to continue using licensed features.';
+  const action = isRevoked ? 'SHOW_LICENSE_REVOKED' : 'OPEN_LICENSE_ACTIVATION';
+  const collapseKey = isRevoked ? 'zoya_license_revoked' : 'zoya_license_unbound';
+
+  const data: Record<string, string> = {
+    event: eventType,
+    type: eventType,
+    action,
+    licenseId: String(params.licenseId || ''),
+    maskedKey: String(params.maskedKey || ''),
+    bindingVersion: String(params.bindingVersion || 1),
+    initiatedBy: params.initiatedBy === 'user' ? 'user' : 'admin',
+    timestamp: String(params.timestamp || new Date().toISOString()),
+    title,
+    body,
+  };
+
+  if (!configured) {
+    return {
+      attempted: false,
+      acceptedByFcm: false,
+      skipped: true,
+      configured: false,
+      eventType,
+      reason: 'FCM service account credentials are not configured on the server.',
+    };
+  }
+
+  try {
+    let result: { ok: boolean; messageId?: string; errorCode?: string; errorMessage?: string };
+
+    if (licenseFcmTestSender) {
+      result = await licenseFcmTestSender({
+        token: cleanToken,
+        data,
+        collapseKey,
+        eventType,
+      });
+    } else if (creds) {
+      const accessToken = await getFcmAccessToken(creds);
+      result = await sendFcmV1DeviceDataMessage(
+        creds.projectId,
+        accessToken,
+        cleanToken,
+        data,
+        collapseKey
+      );
+    } else {
+      return {
+        attempted: false,
+        acceptedByFcm: false,
+        skipped: true,
+        configured: false,
+        eventType,
+        reason: 'FCM service account credentials are not configured on the server.',
+      };
+    }
+
+    if (result.ok) {
+      return {
+        attempted: true,
+        acceptedByFcm: true,
+        configured: true,
+        eventType,
+        messageId: result.messageId,
+        reason: 'FCM accepted the device-specific notification request.',
+      };
+    }
+
+    let staleTokenRemoved = false;
+    if (isStaleFcmTokenError(result.errorCode, result.errorMessage)) {
+      staleTokenRemoved = await removeStaleTokenFromFcmDevices(cleanToken);
+    }
+
+    console.warn('License device FCM dispatch not accepted:', {
+      eventType,
+      licenseId: params.licenseId,
+      errorCode: result.errorCode || 'UNKNOWN',
+      staleTokenRemoved,
+    });
+
+    return {
+      attempted: true,
+      acceptedByFcm: false,
+      configured: true,
+      eventType,
+      staleTokenRemoved,
+      errorCode: result.errorCode || 'FCM_SEND_FAILED',
+      reason: result.errorMessage || 'FCM did not accept the notification request.',
+    };
+  } catch (err: unknown) {
+    const safeMsg = err instanceof Error ? err.message : 'FCM dispatch failed.';
+    console.warn('License device FCM dispatch error:', {
+      eventType,
+      licenseId: params.licenseId,
+      error: safeMsg,
+    });
+    return {
+      attempted: true,
+      acceptedByFcm: false,
+      configured: true,
+      eventType,
+      errorCode: 'FCM_TRANSPORT_ERROR',
+      reason: safeMsg,
+    };
+  }
+}
+

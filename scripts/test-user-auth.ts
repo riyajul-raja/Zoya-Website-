@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
@@ -11,6 +13,7 @@ import {
 import {
   createLifetimeLicense,
   clearLicenseInMemoryCache,
+  revokeLicense,
   setUseInMemoryStoreForTesting,
 } from '../server/licenses';
 import {
@@ -23,6 +26,11 @@ import {
   type JwkKey,
 } from '../server/userAuth';
 import { handleApiRequest } from '../server/apiHandler';
+import {
+  setLicenseFcmSenderForTesting,
+  type LicenseFcmTransportPayload,
+} from '../server/fcm';
+import { resetRateLimits } from '../server/rateLimit';
 
 // ------------------------------------------------------------
 // In-Memory Firestore Test Adapter
@@ -215,6 +223,8 @@ async function runTests() {
     GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
     SESSION_SECRET: process.env.SESSION_SECRET,
     LICENSE_KEY_ENCRYPTION_SECRET: process.env.LICENSE_KEY_ENCRYPTION_SECRET,
+    ADMIN_JWT_SECRET: process.env.ADMIN_JWT_SECRET,
+    ENTITLEMENT_TOKEN_SECRET: process.env.ENTITLEMENT_TOKEN_SECRET,
   };
 
   try {
@@ -238,6 +248,8 @@ async function runTests() {
     process.env.GOOGLE_REDIRECT_URI = 'https://zoyalive.vercel.app/api/auth/google/callback';
     process.env.SESSION_SECRET = crypto.randomBytes(32).toString('hex');
     process.env.LICENSE_KEY_ENCRYPTION_SECRET = crypto.randomBytes(32).toString('hex');
+    process.env.ADMIN_JWT_SECRET = crypto.randomBytes(32).toString('hex');
+    process.env.ENTITLEMENT_TOKEN_SECRET = crypto.randomBytes(32).toString('hex');
 
     // 2. OAuth start generates PKCE, state, nonce and sets HttpOnly Secure cookie
     const startRes = await invokeApi({
@@ -505,11 +517,390 @@ async function runTests() {
     assert.equal(replayDash.statusCode, 401);
     console.log('PASS 10: Logout enforces same-origin CSRF protection, invalidates Firestore session & blocks cookie replay.');
 
-    console.log('\nALL 10 STAGE 1 & STAGE 2 SECURITY & ACCOUNT TESTS PASSED!');
+    // 11. User Dashboard License Logout / Device Unbind (Ownership, 24h Cooldown, CSRF, Unauth, Previous-Device & Vercel Rewrite)
+    const { signedCookie: aliceFreshCookieVal } = await createUserSession(
+      userSecond,
+      fakeReq,
+      process.env.SESSION_SECRET!
+    );
+    const aliceFreshCookie = `${USER_SESSION_COOKIE_NAME}=${aliceFreshCookieVal}`;
+    const aliceLicId = aliceLic.success ? aliceLic.license.id : '';
+    const aliceLicKey = aliceLic.success ? aliceLic.generatedKey : '';
+    const bobLicId = bobLic.success ? bobLic.license.id : '';
+
+    // 11a. Unauthenticated request rejected (401)
+    const unauthUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: { origin: 'https://zoyalive.vercel.app' },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(unauthUnbind.statusCode, 401);
+    assert.equal(unauthUnbind.json.code, 'UNAUTHENTICATED');
+
+    // 11b. Cross-origin CSRF rejected (403)
+    const csrfUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://evil-attacker.example',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(csrfUnbind.statusCode, 403);
+    assert.equal(csrfUnbind.json.code, 'CSRF_ORIGIN_MISMATCH');
+
+    // 11c. Unactivated license cannot be unbound (400 LICENSE_NOT_BOUND)
+    const unactivatedUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(unactivatedUnbind.statusCode, 400);
+    assert.equal(unactivatedUnbind.json.code, 'LICENSE_NOT_BOUND');
+
+    // Activate Alice's license on Phone 1 and Bob's license on Bob's Phone
+    const alicePhone1 = {
+      deviceId: 'android_alice_phone_one_001',
+      deviceModel: 'Google Pixel 8',
+      androidVersion: 'Android 14',
+      appVersion: '2.6.0',
+    };
+    const alicePhone2 = {
+      deviceId: 'android_alice_phone_two_002',
+      deviceModel: 'Samsung Galaxy S25',
+      androidVersion: 'Android 15',
+      appVersion: '2.6.0',
+    };
+    const bobPhone = {
+      deviceId: 'android_bob_phone_one_009',
+      deviceModel: 'OnePlus 12',
+      androidVersion: 'Android 14',
+      appVersion: '2.6.0',
+    };
+
+    const actAlice1 = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: aliceLicKey, deviceInfo: alicePhone1 },
+    });
+    assert.equal(actAlice1.statusCode, 200);
+
+    const actBob = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: bobLic.success ? bobLic.generatedKey : '', deviceInfo: bobPhone },
+    });
+    assert.equal(actBob.statusCode, 200);
+
+    // 11d. Cross-user unbind rejected (403 UNAUTHORIZED)
+    const crossUserUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: bobLicId },
+    });
+    assert.equal(crossUserUnbind.statusCode, 403);
+    assert.equal(crossUserUnbind.json.code, 'UNAUTHORIZED');
+
+    // Confirm Bob's license was NOT altered
+    const bobRawDoc = collections.get('licenses')?.get(bobLicId);
+    assert.equal(bobRawDoc?.status, 'active');
+    assert.equal(bobRawDoc?.linkedDevice?.deviceId, bobPhone.deviceId);
+
+    // 11e. Owner unbind succeeds via Vercel rewrite route, preserves account ownership, hides sensitive fields
+    const vercelConfig = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'vercel.json'), 'utf-8'));
+    assert.ok(
+      (vercelConfig.rewrites as Array<{ source: string; destination: string }>).some(
+        (r) =>
+          r.source === '/api/account/license/unbind' &&
+          r.destination === '/api/auth?__route=/api/account/license/unbind'
+      ),
+      'vercel.json must rewrite /api/account/license/unbind to /api/auth'
+    );
+
+    const ownerUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/auth?__route=/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(ownerUnbind.statusCode, 200);
+    assert.equal(ownerUnbind.json.success, true);
+    assert.equal(ownerUnbind.json.licenseSummary.status, 'unactivated');
+    assert.equal(ownerUnbind.json.licenseSummary.hasLicense, true);
+    assert.equal(ownerUnbind.json.licenseSummary.license.linkedDevice, null);
+    assert.equal(ownerUnbind.json.licenseSummary.license.canUnbindDevice, false);
+    assert.ok(ownerUnbind.json.licenseSummary.license.nextUnbindAvailableAt);
+    // Security: no sensitive fields exposed to dashboard
+    assert.equal(ownerUnbind.json.licenseSummary.license.keyHash, undefined);
+    assert.equal(ownerUnbind.json.licenseSummary.license.encryptedKey, undefined);
+    assert.equal(ownerUnbind.json.licenseSummary.license.auditLog, undefined);
+    assert.equal(JSON.stringify(ownerUnbind.json).includes(alicePhone1.deviceId), false);
+    assert.equal(JSON.stringify(ownerUnbind.json).includes(aliceLicKey), false);
+
+    // Confirm Firestore state: ownership anchored to Google sub, bindingVersion incremented, audit recorded
+    const aliceDocAfterUnbind = collections.get('licenses')?.get(aliceLicId);
+    assert.equal(aliceDocAfterUnbind?.userSub, userSecond.googleSub);
+    assert.equal(aliceDocAfterUnbind?.customerEmail, 'alice@example.com');
+    assert.equal(aliceDocAfterUnbind?.bindingVersion, 2);
+    assert.equal(aliceDocAfterUnbind?.unbindCount, 1);
+    assert.ok(
+      (aliceDocAfterUnbind?.auditLog || []).some((e: any) => e.action === 'device_unbound'),
+      'Audit log must record device_unbound'
+    );
+
+    // 11f. Previous device CANNOT silently reclaim Alice's unbound license; new Phone 2 CAN activate
+    const alicePhone1Reclaim = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/validate',
+      body: { licenseKey: aliceLicKey, deviceInfo: alicePhone1 },
+    });
+    assert.equal(alicePhone1Reclaim.statusCode, 403);
+    assert.equal(alicePhone1Reclaim.json.code, 'DEVICE_MISMATCH');
+
+    const alicePhone2Activate = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: aliceLicKey, deviceInfo: alicePhone2 },
+    });
+    assert.equal(alicePhone2Activate.statusCode, 200);
+    assert.equal(alicePhone2Activate.json.license.linkedDevice.deviceId, alicePhone2.deviceId);
+
+    // 11g. 24-hour user cooldown is enforced on the server
+    const cooldownUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(cooldownUnbind.statusCode, 429);
+    assert.equal(cooldownUnbind.json.code, 'UNBIND_COOLDOWN_ACTIVE');
+    assert.ok(cooldownUnbind.json.nextUnbindAvailableAt);
+
+    // Confirm dashboard also reflects cooldown accurately
+    const dashDuringCooldown = await invokeApi({
+      method: 'GET',
+      url: '/api/account/dashboard',
+      headers: { cookie: aliceFreshCookie },
+    });
+    assert.equal(dashDuringCooldown.statusCode, 200);
+    assert.equal(dashDuringCooldown.json.licenseSummary.license.canUnbindDevice, false);
+    assert.ok(dashDuringCooldown.json.licenseSummary.license.nextUnbindAvailableAt);
+
+    // 11h. After 24 hours pass, user can unbind again
+    const storedAliceDoc = collections.get('licenses')?.get(aliceLicId);
+    assert.ok(storedAliceDoc);
+    storedAliceDoc.lastUserUnboundAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    clearLicenseInMemoryCache();
+
+    const postCooldownUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(postCooldownUnbind.statusCode, 200);
+    assert.equal(postCooldownUnbind.json.licenseSummary.status, 'unactivated');
+
+    // 11i. Revoked license cannot be unbound by user (403 LICENSE_REVOKED)
+    await revokeLicense(aliceLicId, { reason: 'Test revocation before user unbind' }, adminUser);
+    const revokedUserUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: aliceLicId },
+    });
+    assert.equal(revokedUserUnbind.statusCode, 403);
+    assert.equal(revokedUserUnbind.json.code, 'LICENSE_REVOKED');
+
+    console.log('PASS 11: User Dashboard device unbind enforces ownership, CSRF, 24h cooldown, previous-device block & safe response shape.');
+
+    // 12. User Dashboard Logout / Unbind FCM Notifications (Post-commit dispatch, non-rollback on FCM failure, zero token leakage)
+    resetRateLimits();
+    const userFcmPayloads: LicenseFcmTransportPayload[] = [];
+    setLicenseFcmSenderForTesting(async (payload) => {
+      userFcmPayloads.push(payload);
+      return { ok: true, messageId: `projects/zoya-updates/messages/user_unbind_${userFcmPayloads.length}` };
+    });
+
+    const userFcmLic = await createLifetimeLicense(
+      { customerName: 'Alice Updated', customerEmail: 'alice@example.com', licenseType: 'Lifetime' },
+      adminUser
+    );
+    assert.equal(userFcmLic.success, true);
+    const userFcmLicId = userFcmLic.success ? userFcmLic.license.id : '';
+    const userFcmLicKey = userFcmLic.success ? userFcmLic.generatedKey : '';
+
+    const aliceFcmPhone1 = {
+      deviceId: 'android_alice_fcm_phone_010',
+      deviceModel: 'Google Pixel 9',
+      androidVersion: 'Android 15',
+      appVersion: '2.7.0',
+    };
+    const aliceFcmPhone2 = {
+      deviceId: 'android_alice_fcm_phone_011',
+      deviceModel: 'Samsung Galaxy S25',
+      androidVersion: 'Android 15',
+      appVersion: '2.7.0',
+    };
+    const aliceFcmToken1 = 'fcm_user_alice_phone1_token_1111222233334444';
+    const aliceFcmToken2 = 'fcm_user_alice_phone2_token_5555666677778888';
+
+    // Activate & register FCM token on Alice's Phone 1
+    const actUserFcm1 = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: userFcmLicKey, deviceInfo: aliceFcmPhone1 },
+    });
+    assert.equal(actUserFcm1.statusCode, 200);
+
+    const regUserFcm1 = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: { licenseKey: userFcmLicKey, deviceId: aliceFcmPhone1.deviceId, fcmToken: aliceFcmToken1 },
+    });
+    assert.equal(regUserFcm1.statusCode, 200);
+
+    // Confirm dashboard NEVER exposes deviceFcmToken
+    const dashWithToken = await invokeApi({
+      method: 'GET',
+      url: '/api/account/dashboard',
+      headers: { cookie: aliceFreshCookie },
+    });
+    assert.equal(dashWithToken.statusCode, 200);
+    assert.equal(JSON.stringify(dashWithToken.json).includes(aliceFcmToken1), false, 'User dashboard must never expose FCM token');
+
+    // Cross-user unbind attempt fails -> NO FCM notification sent
+    userFcmPayloads.length = 0;
+    const { signedCookie: bobCookieVal } = await createUserSession(
+      await upsertGoogleUser({
+        sub: 'bob_sub_777888999',
+        email: 'bob@example.com',
+        emailVerified: true,
+        name: 'Bob Other',
+        picture: null,
+      }),
+      fakeReq,
+      process.env.SESSION_SECRET!
+    );
+    const bobCrossAttempt = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: `${USER_SESSION_COOKIE_NAME}=${bobCookieVal}`,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: userFcmLicId },
+    });
+    assert.equal(bobCrossAttempt.statusCode, 403);
+    assert.equal(userFcmPayloads.length, 0, 'Failed cross-user unbind must not send FCM notification');
+
+    // Owner unbind succeeds -> commits transaction, clears token, sends device-specific license_unbound notification
+    const ownerFcmUnbind = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: userFcmLicId },
+    });
+    assert.equal(ownerFcmUnbind.statusCode, 200);
+    assert.equal(JSON.stringify(ownerFcmUnbind.json).includes(aliceFcmToken1), false, 'User unbind response must never expose FCM token');
+    assert.equal(userFcmPayloads.length, 1, 'User unbind must dispatch exactly one device-specific FCM message');
+    assert.equal(userFcmPayloads[0].token, aliceFcmToken1);
+    assert.equal(userFcmPayloads[0].eventType, 'license_unbound');
+    assert.equal(userFcmPayloads[0].data.event, 'license_unbound');
+    assert.equal(userFcmPayloads[0].data.action, 'OPEN_LICENSE_ACTIVATION');
+    assert.equal(userFcmPayloads[0].data.initiatedBy, 'user');
+    assert.equal(JSON.stringify(userFcmPayloads[0].data).includes(userFcmLicKey), false);
+    assert.equal(collections.get('licenses')?.get(userFcmLicId)?.deviceFcmToken, null);
+
+    // Activate on Phone 2, register token 2, verify cooldown blocks unbind WITHOUT sending FCM, then expire cooldown & test FCM outage non-rollback
+    const actUserFcm2 = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: userFcmLicKey, deviceInfo: aliceFcmPhone2 },
+    });
+    assert.equal(actUserFcm2.statusCode, 200);
+
+    const regUserFcm2 = await invokeApi({
+      method: 'POST',
+      url: '/api/licenses/fcm/register',
+      body: { licenseKey: userFcmLicKey, deviceId: aliceFcmPhone2.deviceId, fcmToken: aliceFcmToken2 },
+    });
+    assert.equal(regUserFcm2.statusCode, 200);
+
+    userFcmPayloads.length = 0;
+    const cooldownBlocked = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: userFcmLicId },
+    });
+    assert.equal(cooldownBlocked.statusCode, 429);
+    assert.equal(userFcmPayloads.length, 0, 'Cooldown-blocked unbind must not send FCM notification');
+
+    // Expire cooldown, simulate FCM throw -> unbind MUST still commit and return 200
+    const userFcmDoc = collections.get('licenses')?.get(userFcmLicId);
+    assert.ok(userFcmDoc);
+    userFcmDoc.lastUserUnboundAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    clearLicenseInMemoryCache();
+
+    setLicenseFcmSenderForTesting(async (payload) => {
+      userFcmPayloads.push(payload);
+      throw new Error('Simulated FCM outage during user unbind');
+    });
+
+    const userUnbindFcmOutage = await invokeApi({
+      method: 'POST',
+      url: '/api/account/license/unbind',
+      headers: {
+        cookie: aliceFreshCookie,
+        origin: 'https://zoyalive.vercel.app',
+      },
+      body: { licenseId: userFcmLicId },
+    });
+    assert.equal(userUnbindFcmOutage.statusCode, 200, 'User unbind must not roll back when FCM fails');
+    assert.equal(userFcmPayloads.length, 1);
+    assert.equal(userFcmPayloads[0].token, aliceFcmToken2);
+    assert.equal(collections.get('licenses')?.get(userFcmLicId)?.status, 'unactivated');
+    assert.equal(collections.get('licenses')?.get(userFcmLicId)?.deviceFcmToken, null);
+
+    setLicenseFcmSenderForTesting(null);
+    console.log('PASS 12: User Dashboard unbind dispatches post-commit FCM notification, preserves non-rollback on FCM failure & leaks no tokens.');
+
+    console.log('\nALL 12 STAGE 1, STAGE 2, DEVICE UNBIND & FCM NOTIFICATION SECURITY & ACCOUNT TESTS PASSED!');
   } finally {
+    setLicenseFcmSenderForTesting(null);
     setGoogleJwksProviderForTests(null);
     setServerFirestoreTestAdapter(null);
     clearLicenseInMemoryCache();
+    resetRateLimits();
     for (const [k, v] of Object.entries(origEnv)) {
       if (v === undefined) {
         delete process.env[k];

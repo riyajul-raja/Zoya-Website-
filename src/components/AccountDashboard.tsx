@@ -68,6 +68,11 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
   const [revealError, setRevealError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
 
+  const [confirmingUnbind, setConfirmingUnbind] = useState(false);
+  const [unbindingDevice, setUnbindingDevice] = useState(false);
+  const [unbindError, setUnbindError] = useState<string | null>(null);
+  const [unbindSuccess, setUnbindSuccess] = useState<string | null>(null);
+
   const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
@@ -111,6 +116,8 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
         setLicenseSummary(data.licenseSummary);
         setRevealedKey(null);
         setRevealError(null);
+        setConfirmingUnbind(false);
+        setUnbindError(null);
       } catch {
         setError('Network error while loading your Zoyalive account. Please check your connection.');
       } finally {
@@ -182,6 +189,69 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
       window.setTimeout(() => setCopiedKey(false), 2000);
     } catch {
       // Clipboard API unavailable
+    }
+  };
+
+  const handleConfirmUnbindDevice = async () => {
+    const license = licenseSummary?.license;
+    if (!license || unbindingDevice) return;
+
+    setUnbindingDevice(true);
+    setUnbindError(null);
+    setUnbindSuccess(null);
+
+    try {
+      const res = await fetch('/api/account/license/unbind', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ licenseId: license.id }),
+      });
+
+      if (res.status === 401) {
+        onSessionExpired();
+        return;
+      }
+
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        message?: string;
+        error?: string;
+        code?: string;
+        nextUnbindAvailableAt?: string | null;
+        licenseSummary?: UserLicenseSummary;
+      };
+
+      if (!res.ok || !data.success) {
+        if (data.code === 'UNBIND_COOLDOWN_ACTIVE' && data.nextUnbindAvailableAt) {
+          const formattedNext = formatDateDisplay(data.nextUnbindAvailableAt) || data.nextUnbindAvailableAt;
+          setUnbindError(
+            `You can unbind this license once every 24 hours. Next unbind available on ${formattedNext}.`
+          );
+        } else {
+          setUnbindError(data.error || 'Unable to unbind your device right now. Please try again.');
+        }
+        return;
+      }
+
+      if (data.licenseSummary) {
+        setLicenseSummary(data.licenseSummary);
+      } else {
+        await fetchDashboard(true);
+      }
+      setConfirmingUnbind(false);
+      setUnbindSuccess(
+        data.message ||
+          'Device unbound successfully. Your license remains linked to your Google account and can now be activated on another Android phone.'
+      );
+    } catch {
+      setUnbindError('Network error while unbinding your device. Please check your connection and try again.');
+    } finally {
+      setUnbindingDevice(false);
     }
   };
 
@@ -542,48 +612,165 @@ export const AccountDashboard: React.FC<AccountDashboardProps> = ({
 
                     {/* Device Activation & Binding Info */}
                     <div className="rounded-2xl bg-pink-50/45 border border-pink-100 p-4 sm:p-5 space-y-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
-                        <Smartphone className="w-4 h-4 text-pink-600" aria-hidden="true" />
-                        <span>Device Activation</span>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-sm font-bold text-zinc-900">
+                          <Smartphone className="w-4 h-4 text-pink-600" aria-hidden="true" />
+                          <span>Device Activation</span>
+                        </div>
+
+                        {licenseSummary.license.status === 'active' &&
+                          licenseSummary.license.linkedDevice &&
+                          !confirmingUnbind && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUnbindError(null);
+                                setUnbindSuccess(null);
+                                setConfirmingUnbind(true);
+                              }}
+                              disabled={!licenseSummary.license.canUnbindDevice || unbindingDevice}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-700 bg-white hover:bg-rose-50 border border-rose-200/90 transition-colors cursor-pointer disabled:opacity-55 disabled:cursor-not-allowed"
+                            >
+                              <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Logout / Unbind Device</span>
+                            </button>
+                          )}
                       </div>
 
+                      {unbindSuccess && (
+                        <div
+                          role="status"
+                          className="rounded-xl bg-emerald-50/95 border border-emerald-200 p-3 flex items-start gap-2 text-xs text-emerald-800"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                          <span>{unbindSuccess}</span>
+                        </div>
+                      )}
+
+                      {unbindError && (
+                        <div
+                          role="alert"
+                          className="rounded-xl bg-rose-50/95 border border-rose-200 p-3 flex items-start gap-2 text-xs text-rose-800"
+                        >
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+                          <span>{unbindError}</span>
+                        </div>
+                      )}
+
                       {licenseSummary.license.linkedDevice ? (
-                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
-                          <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
-                            <dt className="text-xs text-zinc-500">Bound Android Device</dt>
-                            <dd className="mt-0.5 font-semibold text-zinc-900">
-                              {licenseSummary.license.linkedDevice.deviceModel}
-                            </dd>
-                          </div>
-
-                          <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
-                            <dt className="text-xs text-zinc-500">Activated On</dt>
-                            <dd className="mt-0.5 font-semibold text-zinc-900">
-                              {formatDateDisplay(
-                                licenseSummary.license.activatedAt ||
-                                  licenseSummary.license.linkedDevice.linkedAt
-                              ) || 'Verified'}
-                            </dd>
-                          </div>
-
-                          {licenseSummary.license.linkedDevice.androidVersion && (
+                        <div className="space-y-3">
+                          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
                             <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
-                              <dt className="text-xs text-zinc-500">Android Version</dt>
-                              <dd className="mt-0.5 font-medium text-zinc-800">
-                                {licenseSummary.license.linkedDevice.androidVersion}
+                              <dt className="text-xs text-zinc-500">Bound Android Device</dt>
+                              <dd className="mt-0.5 font-semibold text-zinc-900">
+                                {licenseSummary.license.linkedDevice.deviceModel}
                               </dd>
                             </div>
-                          )}
 
-                          {licenseSummary.license.lastSeenAt && (
                             <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
-                              <dt className="text-xs text-zinc-500">Last Verified</dt>
-                              <dd className="mt-0.5 font-medium text-zinc-800">
-                                {formatDateDisplay(licenseSummary.license.lastSeenAt)}
+                              <dt className="text-xs text-zinc-500">Activated On</dt>
+                              <dd className="mt-0.5 font-semibold text-zinc-900">
+                                {formatDateDisplay(
+                                  licenseSummary.license.activatedAt ||
+                                    licenseSummary.license.linkedDevice.linkedAt
+                                ) || 'Verified'}
                               </dd>
                             </div>
+
+                            {licenseSummary.license.linkedDevice.androidVersion && (
+                              <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
+                                <dt className="text-xs text-zinc-500">Android Version</dt>
+                                <dd className="mt-0.5 font-medium text-zinc-800">
+                                  {licenseSummary.license.linkedDevice.androidVersion}
+                                </dd>
+                              </div>
+                            )}
+
+                            {licenseSummary.license.lastSeenAt && (
+                              <div className="p-3 rounded-xl bg-white/80 border border-pink-100">
+                                <dt className="text-xs text-zinc-500">Last Verified</dt>
+                                <dd className="mt-0.5 font-medium text-zinc-800">
+                                  {formatDateDisplay(licenseSummary.license.lastSeenAt)}
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+
+                          {!licenseSummary.license.canUnbindDevice &&
+                            licenseSummary.license.nextUnbindAvailableAt && (
+                              <p className="text-xs text-amber-800 bg-amber-50/90 border border-amber-200/80 rounded-xl px-3 py-2 flex items-start gap-2">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true" />
+                                <span>
+                                  Self-service device unbind is limited to once every 24 hours. Next unbind
+                                  available on{' '}
+                                  <strong>
+                                    {formatDateDisplay(licenseSummary.license.nextUnbindAvailableAt) ||
+                                      licenseSummary.license.nextUnbindAvailableAt}
+                                  </strong>
+                                  .
+                                </span>
+                              </p>
+                            )}
+
+                          {confirmingUnbind && (
+                            <div
+                              role="region"
+                              aria-label="Confirm device unbind"
+                              className="rounded-xl bg-white border border-rose-200 p-4 space-y-3 text-xs text-zinc-700"
+                            >
+                              <div className="font-bold text-zinc-900 flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" aria-hidden="true" />
+                                <span>
+                                  Confirm Logout / Unbind Device ({licenseSummary.license.linkedDevice.deviceModel})
+                                </span>
+                              </div>
+                              <ul className="space-y-1.5 text-zinc-600 list-disc pl-4 leading-relaxed">
+                                <li>
+                                  Your current phone ({licenseSummary.license.linkedDevice.deviceModel}) will be
+                                  disconnected from this Zoya AI license.
+                                </li>
+                                <li>
+                                  Your license will remain linked to your verified Google account and will not be
+                                  revoked or deleted.
+                                </li>
+                                <li>
+                                  After unbinding, you can activate the same license key on another Android phone.
+                                </li>
+                              </ul>
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={handleConfirmUnbindDevice}
+                                  disabled={unbindingDevice}
+                                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors cursor-pointer disabled:opacity-60"
+                                >
+                                  {unbindingDevice ? (
+                                    <>
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                                      <span>Unbinding Device...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+                                      <span>Confirm Unbind Device</span>
+                                    </>
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setConfirmingUnbind(false);
+                                    setUnbindError(null);
+                                  }}
+                                  disabled={unbindingDevice}
+                                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-700 bg-zinc-100 hover:bg-zinc-200/80 transition-colors cursor-pointer disabled:opacity-60"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
                           )}
-                        </dl>
+                        </div>
                       ) : (
                         <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
                           {licenseSummary.license.status === 'revoked'

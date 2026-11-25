@@ -1,54 +1,43 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
+import type { IncomingMessage } from 'http';
 
-import firebaseConfig from '../firebase-applet-config.json';
+export class AdminAuthConfigurationError extends Error {
+  public readonly status = 500;
+  public readonly code = 'ADMIN_AUTH_NOT_CONFIGURED';
 
-const DEFAULT_ADMIN_PIN = '8825316434';
-
-let cachedDerivedJwtSecret: string | null = null;
-let loggedJwtSecretNotice = false;
+  constructor(message: string) {
+    super(message);
+    this.name = 'AdminAuthConfigurationError';
+  }
+}
 
 export function getAdminPin(): string {
   const envPin = process.env.ZOYA_ADMIN_PIN;
-  if (envPin !== undefined && envPin !== null && String(envPin).trim().length > 0) {
-    return String(envPin).trim();
+  const cleanPin = envPin !== undefined && envPin !== null ? String(envPin).trim() : '';
+  if (!cleanPin) {
+    throw new AdminAuthConfigurationError(
+      'Admin authentication is not configured on the server: ZOYA_ADMIN_PIN environment variable is required.'
+    );
   }
-  return DEFAULT_ADMIN_PIN;
-}
-
-function readServerIdentitySalt(): string {
-  if (
-    firebaseConfig &&
-    typeof firebaseConfig.firestoreDatabaseId === 'string' &&
-    typeof firebaseConfig.appId === 'string'
-  ) {
-    return `${firebaseConfig.projectId || 'zoya'}:${firebaseConfig.firestoreDatabaseId}:${firebaseConfig.appId}`;
-  }
-  return 'zoya-server-jwt-derivation-v2';
+  return cleanPin;
 }
 
 export function getJwtSecret(): string {
-  const envSecret = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
-  if (envSecret !== undefined && envSecret !== null && String(envSecret).trim().length >= 16) {
-    return String(envSecret).trim();
+  const envSecret = process.env.ADMIN_JWT_SECRET;
+  const cleanSecret =
+    envSecret !== undefined && envSecret !== null ? String(envSecret).trim() : '';
+
+  if (
+    !cleanSecret ||
+    Buffer.byteLength(cleanSecret, 'utf-8') < 16 ||
+    cleanSecret.startsWith('CHANGE_ME')
+  ) {
+    throw new AdminAuthConfigurationError(
+      'Admin JWT signing is not configured on the server: ADMIN_JWT_SECRET environment variable (minimum 16 bytes, 32+ recommended) is required.'
+    );
   }
 
-  if (!cachedDerivedJwtSecret) {
-    if (!loggedJwtSecretNotice) {
-      loggedJwtSecretNotice = true;
-      console.warn(
-        '[Security Notice] ADMIN_JWT_SECRET is not configured in environment variables. Deriving a server-only cryptographic JWT key so existing Admin Portal PIN login continues working without interruption. Set ADMIN_JWT_SECRET (32+ random bytes) in Vercel environment variables for dedicated secret rotation.'
-      );
-    }
-    const pinSeed = getAdminPin();
-    const salt = `zoya-admin-jwt-v2:${readServerIdentitySalt()}`;
-    cachedDerivedJwtSecret = crypto
-      .pbkdf2Sync(pinSeed, salt, 100_000, 32, 'sha256')
-      .toString('hex');
-  }
-
-  return cachedDerivedJwtSecret;
+  return cleanSecret;
 }
 
 export interface AdminUser {
@@ -61,6 +50,7 @@ export interface AdminUser {
  * Creates a signed stateless token: base64(header).base64(payload).signature
  */
 export function createToken(user: AdminUser): string {
+  const jwtSecret = getJwtSecret();
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const payload = Buffer.from(
     JSON.stringify({
@@ -73,7 +63,7 @@ export function createToken(user: AdminUser): string {
   ).toString('base64url');
 
   const signature = crypto
-    .createHmac('sha256', getJwtSecret())
+    .createHmac('sha256', jwtSecret)
     .update(`${header}.${payload}`)
     .digest('base64url');
 
@@ -81,10 +71,13 @@ export function createToken(user: AdminUser): string {
 }
 
 /**
- * Verifies a token and returns the admin payload if valid
+ * Verifies a token and returns the admin payload if valid.
+ * Propagates AdminAuthConfigurationError if ADMIN_JWT_SECRET is missing or invalid.
  */
 export function verifyToken(token: string | null | undefined): AdminUser | null {
   if (!token) return null;
+
+  const jwtSecret = getJwtSecret();
 
   try {
     const parts = token.split('.');
@@ -92,7 +85,7 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
 
     const [header, payload, signature] = parts;
     const expectedSignature = crypto
-      .createHmac('sha256', getJwtSecret())
+      .createHmac('sha256', jwtSecret)
       .update(`${header}.${payload}`)
       .digest('base64url');
 
@@ -116,7 +109,10 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
       role: 'admin',
       name: decoded.name || 'Administrator',
     };
-  } catch {
+  } catch (err) {
+    if (err instanceof AdminAuthConfigurationError) {
+      throw err;
+    }
     return null;
   }
 }
@@ -126,9 +122,9 @@ export function verifyToken(token: string | null | undefined): AdminUser | null 
  */
 export function authenticateAdminPin(pin: unknown): AdminUser | null {
   if (pin === undefined || pin === null) return null;
-  const cleanPin = String(pin).trim();
   const targetPin = getAdminPin();
-  if (!cleanPin || !targetPin) return null;
+  const cleanPin = String(pin).trim();
+  if (!cleanPin) return null;
 
   const cleanBuf = Buffer.from(cleanPin, 'utf-8');
   const targetBuf = Buffer.from(targetPin, 'utf-8');
@@ -171,13 +167,19 @@ export function authenticateAdmin(email: string, password: string): AdminUser | 
   return null;
 }
 
+export interface ExtractedAuthToken {
+  token: string | null;
+  source: 'bearer' | 'cookie' | null;
+}
+
 /**
- * Extracts Bearer token from Authorization header or cookie.
- * If both a Bearer header and a zoya_admin_token cookie are present, and the Bearer
- * header is expired/invalid while the cookie token is valid, falls back to the valid cookie token.
+ * Extracts Bearer token from Authorization header or zoya_admin_token cookie
+ * and identifies which source supplied the verified token.
  */
-export function extractAuthToken(reqHeaders: Record<string, string | string[] | undefined>): string | null {
-  if (!reqHeaders) return null;
+export function extractAuthTokenDetails(
+  reqHeaders: IncomingMessage['headers'] | Record<string, string | string[] | undefined>
+): ExtractedAuthToken {
+  if (!reqHeaders) return { token: null, source: null };
 
   let bearerCandidate: string | null = null;
   const authHeader = reqHeaders['authorization'] || reqHeaders['Authorization'];
@@ -186,7 +188,7 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
     if (bearer && bearer !== 'cookie-session') {
       bearerCandidate = bearer;
       if (verifyToken(bearerCandidate)) {
-        return bearerCandidate;
+        return { token: bearerCandidate, source: 'bearer' };
       }
     }
   }
@@ -203,12 +205,29 @@ export function extractAuthToken(reqHeaders: Record<string, string | string[] | 
         if (val && val !== 'cookie-session') {
           cookieCandidate = val;
           if (verifyToken(cookieCandidate)) {
-            return cookieCandidate;
+            return { token: cookieCandidate, source: 'cookie' };
           }
         }
       }
     }
   }
 
-  return bearerCandidate || cookieCandidate || null;
+  if (bearerCandidate) {
+    return { token: bearerCandidate, source: 'bearer' };
+  }
+  if (cookieCandidate) {
+    return { token: cookieCandidate, source: 'cookie' };
+  }
+  return { token: null, source: null };
+}
+
+/**
+ * Extracts Bearer token from Authorization header or cookie.
+ * If both a Bearer header and a zoya_admin_token cookie are present, and the Bearer
+ * header is expired/invalid while the cookie token is valid, falls back to the valid cookie token.
+ */
+export function extractAuthToken(
+  reqHeaders: IncomingMessage['headers'] | Record<string, string | string[] | undefined>
+): string | null {
+  return extractAuthTokenDetails(reqHeaders).token;
 }

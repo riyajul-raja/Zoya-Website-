@@ -197,6 +197,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
     try {
       const res = await fetch('/api/admin/licenses', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -519,6 +520,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
     try {
       const res = await fetch(`/api/admin/licenses/${encodeURIComponent(rebindLicenseId)}`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -542,13 +544,13 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
       }
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to rebind device (${res.status}).`);
+        throw new Error(data.error || `Failed to unbind/rebind device (${res.status}).`);
       }
 
       setRebindLicenseId(null);
       setActionFeedback({
         type: 'success',
-        text: data.message || 'Device binding cleared. License is now unactivated and ready for a new phone.',
+        text: data.message || 'Device unbound. License is now unactivated and ready for a new phone.',
       });
       await fetchLicenses();
     } catch (err: unknown) {
@@ -589,6 +591,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
     try {
       const res = await fetch(`/api/admin/licenses/${encodeURIComponent(revokingLicenseId)}`, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -1332,6 +1335,17 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                   </div>
                 )}
 
+                {selectedLicense.unbindCount > 0 && (
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-400">
+                    <span>
+                      Unbinds: {selectedLicense.unbindCount} (v{selectedLicense.bindingVersion || 1})
+                    </span>
+                    {selectedLicense.lastUnboundAt && (
+                      <span>Last Unbound: {formatTimestamp(selectedLicense.lastUnboundAt)}</span>
+                    )}
+                  </div>
+                )}
+
                 {selectedLicense.status === 'revoked' && (
                   <div className="pt-2 border-t border-red-900/50 text-red-300 text-[11px]">
                     <strong>Revoked:</strong> {selectedLicense.revokeReason || 'Revoked by admin'} (
@@ -1342,7 +1356,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
 
               {/* Administrative Action Controls */}
               <div className="space-y-2.5 pt-1">
-                {/* 1. REBIND ACTION (Only if active and has bound phone) */}
+                {/* 1. UNBIND / REBIND ACTION (Only if active and has bound phone) */}
                 {selectedLicense.status === 'active' && selectedLicense.linkedDevice && rebindLicenseId !== selectedLicense.id && (
                   <button
                     type="button"
@@ -1350,18 +1364,18 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                     className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 min-h-[38px] rounded-xl font-semibold text-xs text-amber-300 bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 transition-colors cursor-pointer"
                   >
                     <Smartphone className="w-3.5 h-3.5" />
-                    <span>Rebind Device (Admin Authorized)</span>
+                    <span>Unbind / Rebind Device</span>
                   </button>
                 )}
 
-                {/* Inline Rebind Confirmation Form */}
+                {/* Inline Unbind / Rebind Confirmation Form */}
                 {rebindLicenseId === selectedLicense.id && (
                   <form
                     onSubmit={handleConfirmRebind}
                     className="p-3.5 rounded-xl bg-slate-900 border border-amber-500/40 space-y-3 text-xs"
                   >
                     <div className="font-bold text-amber-300 uppercase tracking-wider text-[11px] flex items-center justify-between">
-                      <span>Authorize Device Rebind</span>
+                      <span>Unbind / Rebind Device</span>
                       <button
                         type="button"
                         onClick={() => setRebindLicenseId(null)}
@@ -1371,12 +1385,12 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                       </button>
                     </div>
                     <p className="text-[11px] text-amber-200/80 leading-relaxed">
-                      This clears the current phone binding ({selectedLicense.linkedDevice?.deviceModel}).
-                      The license returns to <strong>Unactivated</strong> status so the customer can activate their replacement phone.
+                      This unbinds the current phone ({selectedLicense.linkedDevice?.deviceModel}) without revoking or deleting the license.
+                      The license returns to <strong>Unactivated</strong> status so the customer can activate a replacement phone. Admin unbind bypasses the 24-hour user cooldown.
                     </p>
                     <div>
                       <label className="block text-[11px] text-slate-300 mb-1">
-                        Reason for Rebinding <span className="text-amber-400">*</span>
+                        Reason for Unbinding / Rebinding <span className="text-amber-400">*</span>
                       </label>
                       <input
                         type="text"
@@ -1393,7 +1407,7 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                         disabled={submittingRebind}
                         className="flex-1 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs cursor-pointer disabled:opacity-50"
                       >
-                        {submittingRebind ? 'Rebinding...' : 'Confirm Rebind'}
+                        {submittingRebind ? 'Unbinding...' : 'Confirm Unbind / Rebind'}
                       </button>
                       <button
                         type="button"
@@ -1484,8 +1498,20 @@ export const LicenseManager: React.FC<LicenseManagerProps> = ({ token, onUnautho
                         className="p-2.5 rounded-lg bg-[#050d12] border border-slate-800/80 text-[11px] space-y-0.5"
                       >
                         <div className="flex items-center justify-between gap-2 text-slate-400 font-mono text-[10px]">
-                          <span className="uppercase text-teal-300 font-semibold">
-                            {entry.action.replace(/_/g, ' ')}
+                          <span
+                            className={`uppercase font-semibold ${
+                              entry.action === 'device_unbound' || entry.action === 'device_rebound'
+                                ? 'text-amber-300'
+                                : entry.action === 'revoked'
+                                  ? 'text-red-300'
+                                  : 'text-teal-300'
+                            }`}
+                          >
+                            {entry.action === 'device_unbound'
+                              ? 'DEVICE UNBOUND (USER)'
+                              : entry.action === 'device_rebound'
+                                ? 'DEVICE UNBOUND / REBOUND (ADMIN)'
+                                : entry.action.replace(/_/g, ' ')}
                           </span>
                           <span>{formatTimestamp(entry.timestamp)}</span>
                         </div>

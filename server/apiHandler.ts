@@ -23,11 +23,15 @@ import {
   OFFICIAL_ZOYA_PACKAGE,
 } from './apkParser';
 import {
+  AdminAuthConfigurationError,
   authenticateAdmin,
   authenticateAdminPin,
   createToken,
   verifyToken,
   extractAuthToken,
+  extractAuthTokenDetails,
+  getAdminPin,
+  getJwtSecret,
 } from './auth';
 import {
   sendReleasePushNotification,
@@ -44,9 +48,14 @@ import {
   rebindLicenseDeviceByAdmin,
   revokeLicense,
   revealLicenseKeyByAdmin,
+  activateLicenseForAndroid,
+  verifyLicenseForAndroid,
   validateLicenseForAndroid,
   getUserOwnedLicenseSummary,
   revealLicenseKeyForUser,
+  unbindLicenseDeviceForUser,
+  registerLicenseDeviceFcmToken,
+  sanitizeLicenseForResponse,
   LicenseStorageError,
 } from './licenses';
 import {
@@ -68,7 +77,9 @@ import {
   getGoogleOAuthConfig,
   getGoogleOAuthConfigStatus,
   invalidateUserSessionFromRequest,
+  isHttpsRequest,
   parseCookies,
+  resolveRequestOrigin,
   setOAuthTxCookie,
   setUserSessionCookie,
   timingSafeStringEqual,
@@ -77,6 +88,48 @@ import {
   verifyGoogleIdToken,
   verifySameOriginRequest,
 } from './userAuth';
+
+function applyAdminSecurityHeaders(req: IncomingMessage, res: ServerResponse): void {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Vary', 'Origin, Cookie');
+
+  const expectedOrigin = resolveRequestOrigin(req).replace(/\/+$/, '');
+  const reqOrigin = typeof req.headers.origin === 'string' ? req.headers.origin.trim() : '';
+  if (reqOrigin && reqOrigin.replace(/\/+$/, '') === expectedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-filename, Accept, X-Requested-With'
+    );
+  }
+}
+
+function buildAdminSessionCookie(
+  req: IncomingMessage,
+  tokenValue: string,
+  maxAgeSeconds: number
+): string {
+  const isSecure =
+    isHttpsRequest(req) || Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
+  const parts = [
+    `zoya_admin_token=${tokenValue}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Strict',
+    `Max-Age=${maxAgeSeconds}`,
+  ];
+  if (isSecure) {
+    parts.push('Secure');
+  }
+  return parts.join('; ');
+}
 
 export function sendJson(res: ServerResponse, status: number, data: unknown) {
   if (res.writableEnded || res.headersSent) {
@@ -271,6 +324,16 @@ export async function handleApiRequest(
     rawReqPath === '/licenses/validate'
   ) {
     pathname = '/api/licenses/validate';
+  } else if (
+    rawReqPath === '/api/licenses/activate' ||
+    rawReqPath === '/licenses/activate'
+  ) {
+    pathname = '/api/licenses/activate';
+  } else if (
+    rawReqPath === '/api/licenses/verify' ||
+    rawReqPath === '/licenses/verify'
+  ) {
+    pathname = '/api/licenses/verify';
   } else {
     pathname = explicitRoute || parsedUrl.pathname;
   }
@@ -286,6 +349,7 @@ export async function handleApiRequest(
 
   const isUserAuthOrAccountRoute =
     pathname.startsWith('/api/auth/') || pathname.startsWith('/api/account/');
+  const isAdminRoute = pathname.startsWith('/api/admin/');
 
   if (isUserAuthOrAccountRoute) {
     // Strict no-store + same-origin credentials security headers (never wildcard CORS)
@@ -296,8 +360,17 @@ export async function handleApiRequest(
       res.end();
       return true;
     }
+  } else if (isAdminRoute) {
+    // Restrict Admin API CORS strictly to legitimate same-origin website requests (never wildcard '*')
+    applyAdminSecurityHeaders(req, res);
+
+    if (method === 'OPTIONS') {
+      res.statusCode = 204;
+      res.end();
+      return true;
+    }
   } else {
-    // CORS headers for public Android / Admin API endpoints
+    // CORS headers for public Android / release API endpoints
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-filename, Accept, X-Requested-With');
@@ -627,6 +700,78 @@ export async function handleApiRequest(
         return true;
       }
 
+      // 7. POST /api/account/license/unbind (Protected owner-only device unbind / logout)
+      if (pathname === '/api/account/license/unbind') {
+        if (method !== 'POST') {
+          sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+          return true;
+        }
+
+        if (!verifySameOriginRequest(req)) {
+          sendError(res, 403, 'Cross-origin requests are not permitted.', 'CSRF_ORIGIN_MISMATCH');
+          return true;
+        }
+
+        const unbindLimit = checkRateLimit(req, {
+          namespace: 'account_license_unbind',
+          maxRequests: 10,
+          windowMs: 60_000,
+        });
+        applyRateLimitHeaders(res, unbindLimit);
+        if (!unbindLimit.allowed) {
+          sendError(res, 429, `Too many requests. Please wait ${unbindLimit.retryAfterSeconds}s.`, 'RATE_LIMITED');
+          return true;
+        }
+
+        const authResult = await getAuthenticatedUserFromRequest(req);
+        if (!authResult.authenticated || !authResult.user) {
+          if (authResult.hadCookie && !authResult.storageUnavailable) {
+            clearUserSessionCookie(req, res);
+          }
+          sendError(res, 401, 'Authentication required.', 'UNAUTHENTICATED');
+          return true;
+        }
+
+        let body: { licenseId?: unknown } = {};
+        try {
+          body = await parseJsonBody<{ licenseId?: unknown }>(req);
+        } catch (err) {
+          sendError(res, 400, err instanceof Error ? err.message : 'Invalid JSON body.');
+          return true;
+        }
+
+        const licenseId = typeof body.licenseId === 'string' ? body.licenseId.trim() : '';
+        if (!licenseId) {
+          sendError(res, 400, 'License ID is required.');
+          return true;
+        }
+
+        const unbound = await unbindLicenseDeviceForUser(licenseId, {
+          googleSub: authResult.user.googleSub,
+          email: authResult.user.email,
+          emailVerified: authResult.user.emailVerified,
+        });
+
+        if (!unbound.success) {
+          sendJson(res, unbound.status, {
+            success: false,
+            error: unbound.error || 'Unable to unbind license device.',
+            ...(unbound.code ? { code: unbound.code } : {}),
+            ...(unbound.nextUnbindAvailableAt
+              ? { nextUnbindAvailableAt: unbound.nextUnbindAvailableAt }
+              : {}),
+          });
+          return true;
+        }
+
+        sendJson(res, 200, {
+          success: true,
+          message: unbound.message,
+          licenseSummary: unbound.licenseSummary,
+        });
+        return true;
+      }
+
       sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
       return true;
     }
@@ -784,15 +929,15 @@ export async function handleApiRequest(
       return true;
     }
 
-    // 5. POST /api/licenses/validate and /api/licenses/activate (Public rate-limited Android license validation & activation)
-    if (pathname === '/api/licenses/validate' || pathname === '/api/licenses/activate') {
+    // 5. POST /api/licenses/activate (Stage 2 Fast Active — rate-limited license activation)
+    if (pathname === '/api/licenses/activate') {
       if (method !== 'POST') {
         sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
         return true;
       }
 
       const rateLimit = checkRateLimit(req, {
-        namespace: 'license_validate',
+        namespace: 'license_activate',
         maxRequests: 20,
         windowMs: 60_000,
       });
@@ -804,7 +949,64 @@ export async function handleApiRequest(
           valid: false,
           status: 'rate_limited',
           code: 'RATE_LIMITED',
-          error: `Too many license validation requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+          error: `Too many license activation requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        });
+        return true;
+      }
+
+      let body: {
+        licenseKey?: unknown;
+        entitlementToken?: unknown;
+        deviceInfo?: {
+          deviceId?: unknown;
+          deviceModel?: unknown;
+          androidVersion?: unknown;
+          appVersion?: unknown;
+        } | null;
+      } = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendJson(res, 400, {
+          success: false,
+          valid: false,
+          status: 'malformed',
+          code: 'MALFORMED_KEY',
+          error: err instanceof Error ? err.message : 'Invalid JSON body.',
+        });
+        return true;
+      }
+
+      const result = await activateLicenseForAndroid(body);
+      const { httpStatus, ...payload } = result;
+      sendJson(res, httpStatus, {
+        success: result.valid,
+        ...payload,
+      });
+      return true;
+    }
+
+    // 5b. POST /api/licenses/verify (Stage 2 Read-Only License Verification)
+    if (pathname === '/api/licenses/verify') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      const rateLimit = checkRateLimit(req, {
+        namespace: 'license_verify',
+        maxRequests: 30,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          valid: false,
+          status: 'rate_limited',
+          code: 'RATE_LIMITED',
+          error: `Too many license verification requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
         });
         return true;
       }
@@ -831,12 +1033,116 @@ export async function handleApiRequest(
         return true;
       }
 
+      const result = await verifyLicenseForAndroid(body);
+      const { httpStatus, ...payload } = result;
+      sendJson(res, httpStatus, {
+        success: result.valid,
+        ...payload,
+      });
+      return true;
+    }
+
+    // 5c. POST /api/licenses/validate (Existing compatible Android license validation endpoint)
+    if (pathname === '/api/licenses/validate') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      const rateLimit = checkRateLimit(req, {
+        namespace: 'license_validate',
+        maxRequests: 20,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          valid: false,
+          status: 'rate_limited',
+          code: 'RATE_LIMITED',
+          error: `Too many license validation requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        });
+        return true;
+      }
+
+      let body: {
+        licenseKey?: unknown;
+        entitlementToken?: unknown;
+        deviceInfo?: {
+          deviceId?: unknown;
+          deviceModel?: unknown;
+          androidVersion?: unknown;
+          appVersion?: unknown;
+        } | null;
+      } = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendJson(res, 400, {
+          success: false,
+          valid: false,
+          status: 'malformed',
+          code: 'MALFORMED_KEY',
+          error: err instanceof Error ? err.message : 'Invalid JSON body.',
+        });
+        return true;
+      }
+
       const result = await validateLicenseForAndroid(body);
       const { httpStatus, ...payload } = result;
       sendJson(res, httpStatus, {
         success: result.valid,
         ...payload,
       });
+      return true;
+    }
+
+    // 5d. POST /api/licenses/fcm/register (Device-specific FCM token registration bound to an active license)
+    if (pathname === '/api/licenses/fcm/register') {
+      if (method !== 'POST') {
+        sendError(res, 405, `Method ${method} Not Allowed. Expected POST.`);
+        return true;
+      }
+
+      const rateLimit = checkRateLimit(req, {
+        namespace: 'license_fcm_register',
+        maxRequests: 20,
+        windowMs: 60_000,
+      });
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        sendJson(res, 429, {
+          success: false,
+          code: 'RATE_LIMITED',
+          error: `Too many FCM registration requests. Please wait ${rateLimit.retryAfterSeconds}s and try again.`,
+        });
+        return true;
+      }
+
+      let body: {
+        licenseKey?: unknown;
+        deviceId?: unknown;
+        deviceInfo?: { deviceId?: unknown } | null;
+        fcmToken?: unknown;
+        token?: unknown;
+      } = {};
+      try {
+        body = await parseJsonBody(req);
+      } catch (err) {
+        sendJson(res, 400, {
+          success: false,
+          code: 'MALFORMED_KEY',
+          error: err instanceof Error ? err.message : 'Invalid JSON body.',
+        });
+        return true;
+      }
+
+      const result = await registerLicenseDeviceFcmToken(body);
+      const { httpStatus, ...payload } = result;
+      sendJson(res, httpStatus, payload);
       return true;
     }
 
@@ -867,6 +1173,10 @@ export async function handleApiRequest(
         return true;
       }
 
+      // Fail closed immediately if required admin environment configuration is missing or invalid
+      getAdminPin();
+      getJwtSecret();
+
       let body: { pin?: string | number; email?: string; password?: string } = {};
       try {
         body = await parseJsonBody<{ pin?: string | number; email?: string; password?: string }>(req);
@@ -895,10 +1205,7 @@ export async function handleApiRequest(
       }
 
       const token = createToken(user);
-      res.setHeader(
-        'Set-Cookie',
-        `zoya_admin_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=7200`
-      );
+      res.setHeader('Set-Cookie', buildAdminSessionCookie(req, token, 7200));
 
       sendJson(res, 200, {
         success: true,
@@ -933,7 +1240,12 @@ export async function handleApiRequest(
 
     // POST /api/admin/logout
     if (pathname === '/api/admin/logout' && method === 'POST') {
-      res.setHeader('Set-Cookie', 'zoya_admin_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+      if (!verifySameOriginRequest(req)) {
+        sendError(res, 403, 'Cross-origin logout requests are not permitted.', 'CSRF_ORIGIN_MISMATCH');
+        return true;
+      }
+
+      res.setHeader('Set-Cookie', buildAdminSessionCookie(req, '', 0));
       sendJson(res, 200, { success: true, message: 'Logged out successfully.' });
       return true;
     }
@@ -942,11 +1254,23 @@ export async function handleApiRequest(
     // PROTECTED ADMIN ENDPOINTS (Require Valid Token)
     // ----------------------------------------------------
     if (pathname.startsWith('/api/admin/')) {
-      const token = extractAuthToken(req.headers);
+      const { token, source: tokenSource } = extractAuthTokenDetails(req.headers);
       const user = verifyToken(token);
 
       if (!user) {
         sendError(res, 401, 'Unauthorized: Admin authentication token is required or expired.');
+        return true;
+      }
+
+      const isMutatingMethod =
+        method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+      if (isMutatingMethod && tokenSource === 'cookie' && !verifySameOriginRequest(req)) {
+        sendError(
+          res,
+          403,
+          'Cross-origin cookie-authenticated admin requests are not permitted.',
+          'CSRF_ORIGIN_MISMATCH'
+        );
         return true;
       }
 
@@ -1422,7 +1746,7 @@ export async function handleApiRequest(
         sendJson(res, 200, {
           success: true,
           stats,
-          licenses,
+          licenses: licenses.map(sanitizeLicenseForResponse),
         });
         return true;
       }
@@ -1447,7 +1771,7 @@ export async function handleApiRequest(
           success: true,
           message: `Lifetime license generated for ${created.license.customerName} (Unactivated).`,
           generatedKey: created.generatedKey,
-          license: created.license,
+          license: sanitizeLicenseForResponse(created.license),
         });
         return true;
       }
@@ -1491,7 +1815,7 @@ export async function handleApiRequest(
           }
           sendJson(res, 200, {
             success: true,
-            license,
+            license: sanitizeLicenseForResponse(license),
           });
           return true;
         }
@@ -1524,16 +1848,16 @@ export async function handleApiRequest(
             return true;
           }
 
-          if (action === 'rebind') {
+          if (action === 'rebind' || action === 'unbind') {
             const rebound = await rebindLicenseDeviceByAdmin(licenseId, body, user);
             if (!rebound.success) {
-              sendError(res, rebound.status, rebound.error);
+              sendError(res, rebound.status, rebound.error, rebound.code);
               return true;
             }
             sendJson(res, 200, {
               success: true,
-              message: `License device binding cleared by administrator (${user.name}). Key is now ready for activation on a new phone.`,
-              license: rebound.license,
+              message: `License device unbound by administrator (${user.name}). Key is now ready for activation on a new phone.`,
+              license: sanitizeLicenseForResponse(rebound.license),
             });
             return true;
           }
@@ -1547,7 +1871,7 @@ export async function handleApiRequest(
             sendJson(res, 200, {
               success: true,
               message: `License ${revoked.license.maskedKey} has been revoked.`,
-              license: revoked.license,
+              license: sanitizeLicenseForResponse(revoked.license),
             });
             return true;
           }
@@ -1555,7 +1879,7 @@ export async function handleApiRequest(
           sendError(
             res,
             400,
-            'Invalid license action. Supported actions: "reveal", "rebind", "revoke".'
+            'Invalid license action. Supported actions: "reveal", "rebind", "unbind", "revoke".'
           );
           return true;
         }
@@ -1569,6 +1893,10 @@ export async function handleApiRequest(
     sendError(res, 404, `Endpoint ${method} ${pathname} not found.`);
     return true;
   } catch (err: unknown) {
+    if (err instanceof AdminAuthConfigurationError) {
+      sendError(res, err.status, err.message, err.code);
+      return true;
+    }
     if (err instanceof LicenseStorageError) {
       sendError(res, 503, err.message, err.code);
       return true;
