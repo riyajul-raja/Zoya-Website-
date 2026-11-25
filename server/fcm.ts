@@ -917,6 +917,8 @@ export type LicenseFcmEventType = 'license_unbound' | 'license_revoked';
 
 export interface LicenseFcmNotificationParams {
   fcmToken: string | null | undefined;
+  deviceId: string | null | undefined;
+  eventId?: string;
   eventType: LicenseFcmEventType;
   licenseId: string;
   maskedKey: string;
@@ -931,6 +933,7 @@ export interface LicenseFcmNotificationResult {
   skipped?: boolean;
   configured: boolean;
   eventType: LicenseFcmEventType;
+  eventId?: string;
   messageId?: string;
   staleTokenRemoved?: boolean;
   errorCode?: string;
@@ -1050,6 +1053,8 @@ async function removeStaleTokenFromFcmDevices(fcmToken: string): Promise<boolean
  * Sends a device-specific FCM push notification for a committed license unbind or revocation event.
  * - MUST only be invoked AFTER the Firestore transaction commits.
  * - Targets ONLY the single captured device FCM token (never topics or broadcasts).
+ * - Includes the exact captured `deviceId`, a unique server-generated `eventId`, and the
+ *   bindingVersion of the specific binding affected by the event.
  * - Never throws; failures are captured safely so committed unbind/revoke operations are never rolled back.
  * - Never logs plaintext license keys, FCM tokens, private keys, or customer PII.
  * - Reports `acceptedByFcm` honestly (FCM accepting a send request does not guarantee device delivery).
@@ -1058,7 +1063,12 @@ export async function sendLicenseDeviceFcmNotification(
   params: LicenseFcmNotificationParams
 ): Promise<LicenseFcmNotificationResult> {
   const cleanToken = typeof params.fcmToken === 'string' ? params.fcmToken.trim() : '';
+  const cleanDeviceId = typeof params.deviceId === 'string' ? params.deviceId.trim() : '';
   const eventType = params.eventType;
+  const eventId =
+    typeof params.eventId === 'string' && params.eventId.trim().length > 0
+      ? params.eventId.trim()
+      : `evt_${crypto.randomUUID()}`;
   const creds = getServiceAccountCredentials();
   const configured = Boolean(creds || licenseFcmTestSender);
 
@@ -1069,9 +1079,29 @@ export async function sendLicenseDeviceFcmNotification(
       skipped: true,
       configured,
       eventType,
+      eventId,
       reason: 'No FCM registration token was registered for the bound device.',
     };
   }
+
+  if (!cleanDeviceId) {
+    return {
+      attempted: false,
+      acceptedByFcm: false,
+      skipped: true,
+      configured,
+      eventType,
+      eventId,
+      reason: 'No bound deviceId was captured for this license event.',
+    };
+  }
+
+  const safeBindingVersion =
+    typeof params.bindingVersion === 'number' &&
+    Number.isInteger(params.bindingVersion) &&
+    params.bindingVersion >= 1
+      ? params.bindingVersion
+      : 1;
 
   const isRevoked = eventType === 'license_revoked';
   const title = isRevoked ? 'Zoya License Revoked' : 'Zoya License Unbound';
@@ -1084,10 +1114,12 @@ export async function sendLicenseDeviceFcmNotification(
   const data: Record<string, string> = {
     event: eventType,
     type: eventType,
+    eventId,
     action,
+    deviceId: cleanDeviceId,
     licenseId: String(params.licenseId || ''),
     maskedKey: String(params.maskedKey || ''),
-    bindingVersion: String(params.bindingVersion || 1),
+    bindingVersion: String(safeBindingVersion),
     initiatedBy: params.initiatedBy === 'user' ? 'user' : 'admin',
     timestamp: String(params.timestamp || new Date().toISOString()),
     title,
@@ -1101,6 +1133,7 @@ export async function sendLicenseDeviceFcmNotification(
       skipped: true,
       configured: false,
       eventType,
+      eventId,
       reason: 'FCM service account credentials are not configured on the server.',
     };
   }
@@ -1131,6 +1164,7 @@ export async function sendLicenseDeviceFcmNotification(
         skipped: true,
         configured: false,
         eventType,
+        eventId,
         reason: 'FCM service account credentials are not configured on the server.',
       };
     }
@@ -1141,6 +1175,7 @@ export async function sendLicenseDeviceFcmNotification(
         acceptedByFcm: true,
         configured: true,
         eventType,
+        eventId,
         messageId: result.messageId,
         reason: 'FCM accepted the device-specific notification request.',
       };
@@ -1153,6 +1188,7 @@ export async function sendLicenseDeviceFcmNotification(
 
     console.warn('License device FCM dispatch not accepted:', {
       eventType,
+      eventId,
       licenseId: params.licenseId,
       errorCode: result.errorCode || 'UNKNOWN',
       staleTokenRemoved,
@@ -1163,6 +1199,7 @@ export async function sendLicenseDeviceFcmNotification(
       acceptedByFcm: false,
       configured: true,
       eventType,
+      eventId,
       staleTokenRemoved,
       errorCode: result.errorCode || 'FCM_SEND_FAILED',
       reason: result.errorMessage || 'FCM did not accept the notification request.',
@@ -1171,6 +1208,7 @@ export async function sendLicenseDeviceFcmNotification(
     const safeMsg = err instanceof Error ? err.message : 'FCM dispatch failed.';
     console.warn('License device FCM dispatch error:', {
       eventType,
+      eventId,
       licenseId: params.licenseId,
       error: safeMsg,
     });
@@ -1179,6 +1217,7 @@ export async function sendLicenseDeviceFcmNotification(
       acceptedByFcm: false,
       configured: true,
       eventType,
+      eventId,
       errorCode: 'FCM_TRANSPORT_ERROR',
       reason: safeMsg,
     };

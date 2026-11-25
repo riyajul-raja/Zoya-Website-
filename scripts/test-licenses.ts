@@ -1987,13 +1987,33 @@ async function runTests() {
     assert.equal(regBadToken.statusCode, 400);
     assert.equal(regBadToken.json?.code, 'INVALID_FCM_TOKEN');
 
-    // Activate on Phone 1 via Fast Active
+    const decodeJwtPayload = (jwt: string): Record<string, any> => {
+      const parts = String(jwt || '').split('.');
+      assert.equal(parts.length, 3, 'Signed entitlementToken must be a 3-part JWT');
+      return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
+    };
+
+    // Activate on Phone 1 via Fast Active -> bindingVersion === 1
     const fcmAct1 = await invokeHandler({
       method: 'POST',
       url: '/api/licenses/activate',
       body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone1 },
     });
     assert.equal(fcmAct1.statusCode, 200);
+    assert.equal(fcmAct1.json?.license?.bindingVersion, 1, 'Initial activation must return bindingVersion 1');
+    const act1TokenPayload = decodeJwtPayload(fcmAct1.json?.entitlementToken);
+    assert.equal(act1TokenPayload.bindingVersion, 1, 'Signed entitlementToken must include bindingVersion 1');
+    assert.equal(act1TokenPayload.bv, 1, 'Signed entitlementToken must include bv 1');
+
+    // Repeated Fast Active on same phone preserves bindingVersion 1 in both response and token
+    const fcmAct1Repeat = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/activate',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone1 },
+    });
+    assert.equal(fcmAct1Repeat.statusCode, 200);
+    assert.equal(fcmAct1Repeat.json?.license?.bindingVersion, 1);
+    assert.equal(decodeJwtPayload(fcmAct1Repeat.json?.entitlementToken).bindingVersion, 1);
 
     // 14d. Reject mismatched device trying to register its FCM token against Phone 1's license
     const regMismatch = await invokeHandler({
@@ -2065,6 +2085,7 @@ async function runTests() {
       body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone1 },
     });
     assert.equal(publicVerifyCheck.statusCode, 200);
+    assert.equal(publicVerifyCheck.json?.license?.bindingVersion, 1, 'Verify response must include authoritative bindingVersion 1');
     assert.equal(JSON.stringify(publicVerifyCheck.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in POST /api/licenses/verify');
 
     // 14f. Failed transaction (simulated storage outage) must NOT send any FCM notification
@@ -2080,7 +2101,8 @@ async function runTests() {
     assert.equal(failedTxUnbind.statusCode, 503);
     assert.equal(capturedFcmPayloads.length, 0, 'No FCM notification may be sent when Firestore transaction fails');
 
-    // 14g. Admin unbind captures refreshed token, commits transaction, clears token, and sends device-specific license_unbound notification
+    // 14g. Admin unbind captures refreshed token, exact deviceId, and OLD bindingVersion (1), advances Firestore to 2, and generates unique eventId
+    const seenEventIds = new Set<string>();
     const adminUnbindFcmRes = await invokeHandler({
       method: 'POST',
       url: `/api/admin/licenses/${fcmLicId}`,
@@ -2089,26 +2111,44 @@ async function runTests() {
     });
     assert.equal(adminUnbindFcmRes.statusCode, 200);
     assert.equal(adminUnbindFcmRes.json?.license?.status, 'unactivated');
+    assert.equal(adminUnbindFcmRes.json?.license?.bindingVersion, 2, 'Firestore bindingVersion must advance to 2 after first unbind');
     assert.equal(JSON.stringify(adminUnbindFcmRes.json).includes(fcmToken1Refreshed), false, 'FCM token must not leak in Admin unbind response');
     assert.equal(capturedFcmPayloads.length, 1, 'Admin unbind must dispatch exactly one device-specific FCM message');
     assert.equal(capturedFcmPayloads[0].token, fcmToken1Refreshed, 'Notification must target the captured old device token');
     assert.equal(capturedFcmPayloads[0].eventType, 'license_unbound');
     assert.equal(capturedFcmPayloads[0].data.event, 'license_unbound');
+    assert.equal(capturedFcmPayloads[0].data.type, 'license_unbound');
     assert.equal(capturedFcmPayloads[0].data.action, 'OPEN_LICENSE_ACTIVATION');
+    assert.equal(capturedFcmPayloads[0].data.deviceId, fcmPhone1.deviceId, 'FCM event must carry exact captured deviceId');
+    assert.equal(capturedFcmPayloads[0].data.bindingVersion, '1', 'FCM unbind event must carry the terminated bindingVersion (1), NOT the newer bindingVersion (2)');
+    assert.equal(capturedFcmPayloads[0].data.licenseId, fcmLicId);
+    assert.ok(typeof capturedFcmPayloads[0].data.eventId === 'string' && capturedFcmPayloads[0].data.eventId.startsWith('evt_'), 'FCM event must include unique server-generated eventId');
+    seenEventIds.add(capturedFcmPayloads[0].data.eventId);
     assert.equal(capturedFcmPayloads[0].data.initiatedBy, 'admin');
+    assert.ok(capturedFcmPayloads[0].data.maskedKey && capturedFcmPayloads[0].data.timestamp && capturedFcmPayloads[0].data.title && capturedFcmPayloads[0].data.body);
     assert.equal(JSON.stringify(capturedFcmPayloads[0].data).includes(fcmLicKey), false, 'Plaintext license key must never appear in FCM payload');
     assert.equal(JSON.stringify(capturedFcmPayloads[0].data).includes(fcmToken1Refreshed), false, 'FCM token must never appear in FCM data payload');
 
     const storedAfterAdminUnbind = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
     assert.equal(storedAfterAdminUnbind.data?.deviceFcmToken, null, 'deviceFcmToken must be cleared after unbind');
 
-    // 14h. Re-activate on Phone 2, register Phone 2 token, simulate FCM failure (UNREGISTERED + stale cleanup & thrown error) -> NO rollback!
+    // 14h. Re-activate on Phone 2 -> bindingVersion MUST be 2 (never silently reset to 1), register Phone 2 token, simulate FCM failure (UNREGISTERED + stale cleanup) -> NO rollback!
     const fcmAct2 = await invokeHandler({
       method: 'POST',
       url: '/api/licenses/activate',
       body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone2 },
     });
     assert.equal(fcmAct2.statusCode, 200);
+    assert.equal(fcmAct2.json?.license?.bindingVersion, 2, 'Reactivation after first unbind must preserve bindingVersion 2');
+    assert.equal(decodeJwtPayload(fcmAct2.json?.entitlementToken).bindingVersion, 2, 'Entitlement token for Phone 2 must carry bindingVersion 2');
+
+    const verifyPhone2 = await invokeHandler({
+      method: 'POST',
+      url: '/api/licenses/verify',
+      body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone2 },
+    });
+    assert.equal(verifyPhone2.statusCode, 200);
+    assert.equal(verifyPhone2.json?.license?.bindingVersion, 2, 'Verification for Phone 2 must return bindingVersion 2');
 
     const regPhone2 = await invokeHandler({
       method: 'POST',
@@ -2135,12 +2175,17 @@ async function runTests() {
     });
     assert.equal(unbindOnFcmError.statusCode, 200, 'Admin unbind must still succeed even if FCM returns UNREGISTERED');
     assert.equal(capturedFcmPayloads.length, 1);
+    assert.equal(capturedFcmPayloads[0].data.deviceId, fcmPhone2.deviceId, 'Second unbind event must carry Phone 2 deviceId');
+    assert.equal(capturedFcmPayloads[0].data.bindingVersion, '2', 'Second unbind event must carry terminated bindingVersion (2)');
+    assert.ok(typeof capturedFcmPayloads[0].data.eventId === 'string' && !seenEventIds.has(capturedFcmPayloads[0].data.eventId), 'Each unbind event must have a strictly unique eventId');
+    seenEventIds.add(capturedFcmPayloads[0].data.eventId);
     const staleAfterCleanup = await zoyaUpdatesAdapter.getDocumentById('fcm_devices', staleDocId);
     assert.equal(staleAfterCleanup.exists, false, 'Stale UNREGISTERED token must be removed from /fcm_devices');
     const docAfterFcmErrUnbind = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
     assert.equal(docAfterFcmErrUnbind.data?.status, 'unactivated', 'Unbind must NOT roll back on FCM error');
+    assert.equal(docAfterFcmErrUnbind.data?.bindingVersion, 3, 'Firestore bindingVersion must advance to 3 after second unbind');
 
-    // 14i. Admin Revoke on active bound device sends distinct `license_revoked` notification, and revoking when FCM throws does NOT roll back
+    // 14i. Admin Revoke on active bound device sends distinct `license_revoked` notification with Phone 3 deviceId, bindingVersion 3, unique eventId, and advances Firestore to 4
     const fcmPhone3 = {
       deviceId: 'android_fcm_revoke_phone_003',
       deviceModel: 'OnePlus 13',
@@ -2154,6 +2199,8 @@ async function runTests() {
       body: { licenseKey: fcmLicKey, deviceInfo: fcmPhone3 },
     });
     assert.equal(actPhone3.statusCode, 200);
+    assert.equal(actPhone3.json?.license?.bindingVersion, 3);
+    assert.equal(decodeJwtPayload(actPhone3.json?.entitlementToken).bindingVersion, 3);
 
     const regPhone3 = await invokeHandler({
       method: 'POST',
@@ -2176,16 +2223,24 @@ async function runTests() {
     });
     assert.equal(revokeWithFcmOutage.statusCode, 200, 'Admin revoke must succeed even if FCM transport throws');
     assert.equal(revokeWithFcmOutage.json?.license?.status, 'revoked');
+    assert.equal(revokeWithFcmOutage.json?.license?.bindingVersion, 4, 'Revoke must advance Firestore bindingVersion monotonically to 4');
     assert.equal(JSON.stringify(revokeWithFcmOutage.json).includes(fcmToken3), false, 'FCM token must not leak in Admin revoke response');
     assert.equal(capturedFcmPayloads.length, 1, 'Admin revoke must attempt exactly one device-specific FCM message');
     assert.equal(capturedFcmPayloads[0].token, fcmToken3);
     assert.equal(capturedFcmPayloads[0].eventType, 'license_revoked');
     assert.equal(capturedFcmPayloads[0].data.event, 'license_revoked');
+    assert.equal(capturedFcmPayloads[0].data.type, 'license_revoked');
     assert.equal(capturedFcmPayloads[0].data.action, 'SHOW_LICENSE_REVOKED');
+    assert.equal(capturedFcmPayloads[0].data.deviceId, fcmPhone3.deviceId, 'Revoke FCM event must carry exact Phone 3 deviceId');
+    assert.equal(capturedFcmPayloads[0].data.bindingVersion, '3', 'Revoke FCM event must carry revoked active bindingVersion (3)');
+    assert.ok(typeof capturedFcmPayloads[0].data.eventId === 'string' && !seenEventIds.has(capturedFcmPayloads[0].data.eventId), 'Revoke eventId must be strictly unique');
+    seenEventIds.add(capturedFcmPayloads[0].data.eventId);
+    assert.equal(seenEventIds.size, 3, 'All three unbind/revoke events must have distinct eventIds');
     assert.equal(capturedFcmPayloads[0].data.initiatedBy, 'admin');
 
     const storedAfterRevoke = await zoyaUpdatesAdapter.getDocumentById('licenses', fcmLicId);
     assert.equal(storedAfterRevoke.data?.status, 'revoked', 'Revocation must stay committed when FCM fails');
+    assert.equal(storedAfterRevoke.data?.bindingVersion, 4);
     assert.equal(storedAfterRevoke.data?.deviceFcmToken, null, 'deviceFcmToken must be cleared on revocation');
 
     // Re-entering revoked key on activate, verify, validate, and fcm/register must ALL fail with 403 LICENSE_REVOKED

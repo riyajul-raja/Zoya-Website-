@@ -504,7 +504,12 @@ function normalizeRecordOnRead(raw: Record<string, any>): LicenseRecord {
     bindingVersion:
       typeof raw.bindingVersion === 'number' && Number.isInteger(raw.bindingVersion) && raw.bindingVersion >= 1
         ? raw.bindingVersion
-        : 1,
+        : Math.max(
+            1,
+            (typeof raw.unbindCount === 'number' && Number.isInteger(raw.unbindCount) && raw.unbindCount >= 0
+              ? raw.unbindCount
+              : 0) + 1
+          ),
     lastUnboundAt: raw.lastUnboundAt ? String(raw.lastUnboundAt) : null,
     lastUserUnboundAt: raw.lastUserUnboundAt ? String(raw.lastUserUnboundAt) : null,
     unbindCount:
@@ -1138,11 +1143,14 @@ export async function rebindLicenseDeviceByAdmin(
         }
 
         const prevDevice = current.linkedDevice;
+        const capturedDeviceId = prevDevice.deviceId;
         const capturedFcmToken = current.deviceFcmToken || null;
+        const capturedBindingVersion = current.bindingVersion >= 1 ? current.bindingVersion : 1;
+        const eventId = `evt_${crypto.randomUUID()}`;
         const prevDeviceLabel = `${prevDevice.deviceModel} (${prevDevice.deviceId})`;
         const nowIso = new Date().toISOString();
         const actorLabel = `${admin.name} <${admin.email}>`;
-        const nextBindingVersion = (current.bindingVersion || 1) + 1;
+        const nextBindingVersion = capturedBindingVersion + 1;
         const nextUnbindCount = (current.unbindCount || 0) + 1;
 
         const auditEntry: LicenseAuditEntry = {
@@ -1171,7 +1179,10 @@ export async function rebindLicenseDeviceByAdmin(
         return {
           type: 'success' as const,
           record: updated,
+          capturedDeviceId,
           capturedFcmToken,
+          capturedBindingVersion,
+          eventId,
         };
       });
 
@@ -1196,15 +1207,18 @@ export async function rebindLicenseDeviceByAdmin(
       invalidateLicenseCaches(saved.id, saved.keyHash);
 
       // Dispatch device-specific FCM notification strictly AFTER transaction commits.
+      // Carries the exact deviceId and bindingVersion of the unbound binding (never the newer version).
       // FCM failure must never roll back or fail a committed unbind.
       let fcmNotification: LicenseFcmNotificationResult | undefined;
       try {
         fcmNotification = await sendLicenseDeviceFcmNotification({
           fcmToken: txResult.capturedFcmToken,
+          deviceId: txResult.capturedDeviceId,
+          eventId: txResult.eventId,
           eventType: 'license_unbound',
           licenseId: saved.id,
           maskedKey: saved.maskedKey,
-          bindingVersion: saved.bindingVersion,
+          bindingVersion: txResult.capturedBindingVersion,
           initiatedBy: 'admin',
           timestamp: saved.lastUnboundAt || saved.updatedAt,
         });
@@ -1275,10 +1289,14 @@ export async function revokeLicense(
         const reason = sanitizeText(input?.reason, 300) || 'Revoked by administrator';
         const nowIso = new Date().toISOString();
         const actorLabel = `${admin.name} <${admin.email}>`;
-        const capturedFcmToken =
+        const hasActiveBoundDevice = Boolean(
           current.status === 'active' && current.linkedDevice && current.linkedDevice.deviceId
-            ? current.deviceFcmToken || null
-            : null;
+        );
+        const capturedDeviceId = hasActiveBoundDevice ? current.linkedDevice!.deviceId : null;
+        const capturedFcmToken = hasActiveBoundDevice ? current.deviceFcmToken || null : null;
+        const capturedBindingVersion = current.bindingVersion >= 1 ? current.bindingVersion : 1;
+        const nextBindingVersion = capturedBindingVersion + 1;
+        const eventId = `evt_${crypto.randomUUID()}`;
 
         const auditEntry: LicenseAuditEntry = {
           id: `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
@@ -1291,6 +1309,7 @@ export async function revokeLicense(
         const updated: LicenseRecord = sanitizeRecordForStorage({
           ...current,
           status: 'revoked',
+          bindingVersion: nextBindingVersion,
           revokedAt: nowIso,
           revokedBy: {
             email: admin.email,
@@ -1307,7 +1326,10 @@ export async function revokeLicense(
         return {
           type: 'success' as const,
           record: updated,
+          capturedDeviceId,
           capturedFcmToken,
+          capturedBindingVersion,
+          eventId,
         };
       });
 
@@ -1327,15 +1349,18 @@ export async function revokeLicense(
       invalidateLicenseCaches(saved.id, saved.keyHash);
 
       // Dispatch device-specific `license_revoked` FCM notification strictly AFTER transaction commits.
+      // Carries the exact deviceId and bindingVersion of the revoked active binding.
       // FCM failure must never roll back or fail a committed revocation.
       let fcmNotification: LicenseFcmNotificationResult | undefined;
       try {
         fcmNotification = await sendLicenseDeviceFcmNotification({
           fcmToken: txResult.capturedFcmToken,
+          deviceId: txResult.capturedDeviceId,
+          eventId: txResult.eventId,
           eventType: 'license_revoked',
           licenseId: saved.id,
           maskedKey: saved.maskedKey,
-          bindingVersion: saved.bindingVersion,
+          bindingVersion: txResult.capturedBindingVersion,
           initiatedBy: 'admin',
           timestamp: saved.revokedAt || saved.updatedAt,
         });
@@ -1370,7 +1395,14 @@ export function generateSignedEntitlementToken(payload: {
   maskedKey: string;
   activatedAt: string;
   deviceId?: string | null;
+  bindingVersion?: number;
 }): string {
+  const safeBindingVersion =
+    typeof payload.bindingVersion === 'number' &&
+    Number.isInteger(payload.bindingVersion) &&
+    payload.bindingVersion >= 1
+      ? payload.bindingVersion
+      : 1;
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const nowSec = Math.floor(Date.now() / 1000);
   const expSec = nowSec + 30 * 24 * 60 * 60; // 30-day offline grace validity
@@ -1381,6 +1413,8 @@ export function generateSignedEntitlementToken(payload: {
       mk: payload.maskedKey,
       act: payload.activatedAt,
       did: payload.deviceId || null,
+      bv: safeBindingVersion,
+      bindingVersion: safeBindingVersion,
       iat: nowSec,
       exp: expSec,
     })
@@ -1397,7 +1431,8 @@ export function generateSignedEntitlementToken(payload: {
 export function verifySignedEntitlementToken(
   token: string | null | undefined,
   expectedKeyHash: string,
-  expectedDeviceId?: string | null
+  expectedDeviceId?: string | null,
+  expectedBindingVersion?: number | null
 ): { valid: boolean; payload?: any; reason?: string } {
   if (!token || typeof token !== 'string') {
     return { valid: false, reason: 'Entitlement token missing or invalid.' };
@@ -1438,6 +1473,22 @@ export function verifySignedEntitlementToken(
     // Preserve one-phone device binding during offline grace validation
     if (expectedDeviceId && payload.did && payload.did !== expectedDeviceId) {
       return { valid: false, reason: 'Entitlement token was issued to a different Android device.' };
+    }
+
+    if (
+      typeof expectedBindingVersion === 'number' &&
+      Number.isInteger(expectedBindingVersion) &&
+      expectedBindingVersion >= 1
+    ) {
+      const tokenBv =
+        typeof payload.bindingVersion === 'number'
+          ? payload.bindingVersion
+          : typeof payload.bv === 'number'
+            ? payload.bv
+            : null;
+      if (tokenBv !== null && tokenBv !== expectedBindingVersion) {
+        return { valid: false, reason: 'Entitlement token belongs to a superseded license binding version.' };
+      }
     }
 
     return { valid: true, payload };
@@ -1482,6 +1533,7 @@ export interface AndroidValidationResponse {
     customerName: string;
     activatedAt: string;
     lastSeenAt: string;
+    bindingVersion: number;
     linkedDevice: LinkedDeviceInfo | null;
   };
 }
@@ -1649,6 +1701,7 @@ export async function validateLicenseForAndroid(
         const updated: LicenseRecord = {
           ...current,
           status: 'active',
+          bindingVersion: current.bindingVersion >= 1 ? current.bindingVersion : 1,
           activatedAt: current.activatedAt || nowIso,
           lastSeenAt: nowIso,
           validationCount: 1,
@@ -1706,6 +1759,7 @@ export async function validateLicenseForAndroid(
         maskedKey: saved.maskedKey,
         activatedAt: saved.activatedAt || new Date().toISOString(),
         deviceId: saved.linkedDevice?.deviceId || clientDevice.deviceId,
+        bindingVersion: saved.bindingVersion,
       });
 
       return {
@@ -1714,22 +1768,23 @@ export async function validateLicenseForAndroid(
         code: 'LICENSE_VALID',
         httpStatus: 200,
         entitlementToken,
-        license: {
-          id: saved.id,
-          maskedKey: saved.maskedKey,
-          licenseType: 'Lifetime',
-          status: 'active',
-          customerName: saved.customerName,
-          activatedAt: saved.activatedAt || new Date().toISOString(),
-          lastSeenAt: saved.lastSeenAt || new Date().toISOString(),
-          linkedDevice: saved.linkedDevice,
-        },
+        license: buildSafeAndroidLicenseView(saved),
       };
     } catch (err) {
       if (err instanceof LicenseStorageError) {
         // Offline grace validation for previously activated phone submitting valid signed token
         const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
         if (tokenVerification.valid && tokenVerification.payload) {
+          const graceBindingVersion =
+            typeof tokenVerification.payload.bindingVersion === 'number' &&
+            Number.isInteger(tokenVerification.payload.bindingVersion) &&
+            tokenVerification.payload.bindingVersion >= 1
+              ? tokenVerification.payload.bindingVersion
+              : typeof tokenVerification.payload.bv === 'number' &&
+                  Number.isInteger(tokenVerification.payload.bv) &&
+                  tokenVerification.payload.bv >= 1
+                ? tokenVerification.payload.bv
+                : 1;
           return {
             valid: true,
             status: 'active',
@@ -1747,6 +1802,7 @@ export async function validateLicenseForAndroid(
               customerName: 'Lifetime Subscriber',
               activatedAt: tokenVerification.payload.act || new Date().toISOString(),
               lastSeenAt: new Date().toISOString(),
+              bindingVersion: graceBindingVersion,
               linkedDevice: {
                 deviceId: clientDevice.deviceId,
                 deviceModel: clientDevice.deviceModel,
@@ -1788,6 +1844,12 @@ function buildSafeAndroidLicenseView(record: LicenseRecord): NonNullable<Android
     customerName: record.customerName,
     activatedAt: record.activatedAt || record.updatedAt || new Date().toISOString(),
     lastSeenAt: record.lastSeenAt || record.activatedAt || new Date().toISOString(),
+    bindingVersion:
+      typeof record.bindingVersion === 'number' &&
+      Number.isInteger(record.bindingVersion) &&
+      record.bindingVersion >= 1
+        ? record.bindingVersion
+        : 1,
     linkedDevice: record.linkedDevice,
   };
 }
@@ -1885,6 +1947,7 @@ export async function activateLicenseForAndroid(
           maskedKey: existing.maskedKey,
           activatedAt: existing.activatedAt || existing.updatedAt || new Date().toISOString(),
           deviceId: existing.linkedDevice.deviceId,
+          bindingVersion: existing.bindingVersion,
         });
 
         return {
@@ -1969,6 +2032,7 @@ export async function activateLicenseForAndroid(
         const updated: LicenseRecord = {
           ...current,
           status: 'active',
+          bindingVersion: current.bindingVersion >= 1 ? current.bindingVersion : 1,
           activatedAt: current.activatedAt || nowIso,
           lastSeenAt: nowIso,
           validationCount: 1,
@@ -2026,6 +2090,7 @@ export async function activateLicenseForAndroid(
         maskedKey: saved.maskedKey,
         activatedAt: saved.activatedAt || new Date().toISOString(),
         deviceId: saved.linkedDevice?.deviceId || clientDevice.deviceId,
+        bindingVersion: saved.bindingVersion,
       });
 
       return {
@@ -2040,6 +2105,16 @@ export async function activateLicenseForAndroid(
       if (err instanceof LicenseStorageError) {
         const tokenVerification = verifySignedEntitlementToken(rawToken, keyHash, clientDevice.deviceId);
         if (tokenVerification.valid && tokenVerification.payload) {
+          const graceBindingVersion =
+            typeof tokenVerification.payload.bindingVersion === 'number' &&
+            Number.isInteger(tokenVerification.payload.bindingVersion) &&
+            tokenVerification.payload.bindingVersion >= 1
+              ? tokenVerification.payload.bindingVersion
+              : typeof tokenVerification.payload.bv === 'number' &&
+                  Number.isInteger(tokenVerification.payload.bv) &&
+                  tokenVerification.payload.bv >= 1
+                ? tokenVerification.payload.bv
+                : 1;
           return {
             valid: true,
             status: 'active',
@@ -2057,6 +2132,7 @@ export async function activateLicenseForAndroid(
               customerName: 'Lifetime Subscriber',
               activatedAt: tokenVerification.payload.act || new Date().toISOString(),
               lastSeenAt: new Date().toISOString(),
+              bindingVersion: graceBindingVersion,
               linkedDevice: {
                 deviceId: clientDevice.deviceId,
                 deviceModel: clientDevice.deviceModel,
@@ -2560,9 +2636,12 @@ export async function unbindLicenseDeviceForUser(
 
         const nowIso = new Date(nowMs).toISOString();
         const prevDevice = current.linkedDevice;
+        const capturedDeviceId = prevDevice.deviceId;
         const capturedFcmToken = current.deviceFcmToken || null;
+        const capturedBindingVersion = current.bindingVersion >= 1 ? current.bindingVersion : 1;
+        const eventId = `evt_${crypto.randomUUID()}`;
         const prevDeviceLabel = `${prevDevice.deviceModel} (${prevDevice.deviceId})`;
-        const nextBindingVersion = (current.bindingVersion || 1) + 1;
+        const nextBindingVersion = capturedBindingVersion + 1;
         const nextUnbindCount = (current.unbindCount || 0) + 1;
 
         const auditEntry: LicenseAuditEntry = {
@@ -2594,7 +2673,10 @@ export async function unbindLicenseDeviceForUser(
           type: 'success' as const,
           record: updated,
           prevDeviceModel: prevDevice.deviceModel,
+          capturedDeviceId,
           capturedFcmToken,
+          capturedBindingVersion,
+          eventId,
         };
       });
 
@@ -2650,15 +2732,18 @@ export async function unbindLicenseDeviceForUser(
       invalidateLicenseCaches(saved.id, saved.keyHash);
 
       // Dispatch device-specific `license_unbound` FCM notification strictly AFTER transaction commits.
+      // Carries the exact deviceId and bindingVersion of the unbound binding (never the newer version).
       // FCM failure must never roll back or fail a committed unbind.
       let fcmNotification: LicenseFcmNotificationResult | undefined;
       try {
         fcmNotification = await sendLicenseDeviceFcmNotification({
           fcmToken: txResult.capturedFcmToken,
+          deviceId: txResult.capturedDeviceId,
+          eventId: txResult.eventId,
           eventType: 'license_unbound',
           licenseId: saved.id,
           maskedKey: saved.maskedKey,
-          bindingVersion: saved.bindingVersion,
+          bindingVersion: txResult.capturedBindingVersion,
           initiatedBy: 'user',
           timestamp: saved.lastUnboundAt || saved.updatedAt,
         });

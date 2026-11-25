@@ -832,18 +832,25 @@ async function runTests() {
     assert.equal(userFcmPayloads[0].token, aliceFcmToken1);
     assert.equal(userFcmPayloads[0].eventType, 'license_unbound');
     assert.equal(userFcmPayloads[0].data.event, 'license_unbound');
+    assert.equal(userFcmPayloads[0].data.type, 'license_unbound');
     assert.equal(userFcmPayloads[0].data.action, 'OPEN_LICENSE_ACTIVATION');
+    assert.equal(userFcmPayloads[0].data.deviceId, aliceFcmPhone1.deviceId, 'User unbind FCM event must carry exact Phone 1 deviceId');
+    assert.equal(userFcmPayloads[0].data.bindingVersion, '1', 'User unbind FCM event must carry terminated bindingVersion (1)');
+    assert.ok(typeof userFcmPayloads[0].data.eventId === 'string' && userFcmPayloads[0].data.eventId.startsWith('evt_'));
+    const firstUserEventId = userFcmPayloads[0].data.eventId;
     assert.equal(userFcmPayloads[0].data.initiatedBy, 'user');
     assert.equal(JSON.stringify(userFcmPayloads[0].data).includes(userFcmLicKey), false);
     assert.equal(collections.get('licenses')?.get(userFcmLicId)?.deviceFcmToken, null);
+    assert.equal(collections.get('licenses')?.get(userFcmLicId)?.bindingVersion, 2);
 
-    // Activate on Phone 2, register token 2, verify cooldown blocks unbind WITHOUT sending FCM, then expire cooldown & test FCM outage non-rollback
+    // Activate on Phone 2 (bindingVersion 2), register token 2, verify cooldown blocks unbind WITHOUT sending FCM, then expire cooldown & test FCM outage non-rollback
     const actUserFcm2 = await invokeApi({
       method: 'POST',
       url: '/api/licenses/activate',
       body: { licenseKey: userFcmLicKey, deviceInfo: aliceFcmPhone2 },
     });
     assert.equal(actUserFcm2.statusCode, 200);
+    assert.equal(actUserFcm2.json?.license?.bindingVersion, 2);
 
     const regUserFcm2 = await invokeApi({
       method: 'POST',
@@ -888,11 +895,15 @@ async function runTests() {
     assert.equal(userUnbindFcmOutage.statusCode, 200, 'User unbind must not roll back when FCM fails');
     assert.equal(userFcmPayloads.length, 1);
     assert.equal(userFcmPayloads[0].token, aliceFcmToken2);
+    assert.equal(userFcmPayloads[0].data.deviceId, aliceFcmPhone2.deviceId, 'Second user unbind FCM event must carry Phone 2 deviceId');
+    assert.equal(userFcmPayloads[0].data.bindingVersion, '2', 'Second user unbind FCM event must carry terminated bindingVersion (2)');
+    assert.ok(typeof userFcmPayloads[0].data.eventId === 'string' && userFcmPayloads[0].data.eventId !== firstUserEventId, 'Each user unbind event must have a unique eventId');
     assert.equal(collections.get('licenses')?.get(userFcmLicId)?.status, 'unactivated');
+    assert.equal(collections.get('licenses')?.get(userFcmLicId)?.bindingVersion, 3);
     assert.equal(collections.get('licenses')?.get(userFcmLicId)?.deviceFcmToken, null);
 
     setLicenseFcmSenderForTesting(null);
-    console.log('PASS 12: User Dashboard unbind dispatches post-commit FCM notification, preserves non-rollback on FCM failure & leaks no tokens.');
+    console.log('PASS 12: User Dashboard unbind dispatches post-commit FCM notification with deviceId, unique eventId & bindingVersion, preserves non-rollback on FCM failure & leaks no tokens.');
 
     console.log('\nALL 12 STAGE 1, STAGE 2, DEVICE UNBIND & FCM NOTIFICATION SECURITY & ACCOUNT TESTS PASSED!');
   } finally {
